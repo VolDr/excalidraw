@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import {
   blankScene,
   createShape,
@@ -15,12 +16,20 @@ describe("native scene compatibility", () => {
   it("round-trips imported unknown elements and embedded binary files", () => {
     const original = blankScene();
     original.elements = [
-      { ...createShape("rectangle", { x: 3, y: 6 }, { x: 50, y: 70 }),
-        customData: { createdBy: "external" } },
-      { ...createShape("rectangle", { x: 10, y: 10 }, { x: 40, y: 40 }),
-        type: "image", fileId: "img1", status: "saved" },
+      {
+        ...createShape("rectangle", { x: 3, y: 6 }, { x: 50, y: 70 }),
+        customData: { createdBy: "external" },
+      },
+      {
+        ...createShape("rectangle", { x: 10, y: 10 }, { x: 40, y: 40 }),
+        type: "image",
+        fileId: "img1",
+        status: "saved",
+      },
     ] as typeof original.elements;
-    original.files = { img1: { mimeType: "image/png", dataURL: "data:image/png;base64,AAAA" } };
+    original.files = {
+      img1: { mimeType: "image/png", dataURL: "data:image/png;base64,AAAA" },
+    };
     original.appState = { viewBackgroundColor: "#fdfaf3", gridSize: 20 };
     const restored = parseScene(serializeScene(original));
     expect(restored).toEqual(original);
@@ -29,9 +38,17 @@ describe("native scene compatibility", () => {
 
   it("normalizes reverse drag and preserves arrow endpoints", () => {
     const arrow = createShape("arrow", { x: 90, y: 85 }, { x: 15, y: 25 });
-    expect([arrow.x, arrow.y, arrow.width, arrow.height]).toEqual([15, 25, 75, 60]);
+    expect([arrow.x, arrow.y, arrow.width, arrow.height]).toEqual([
+      15,
+      25,
+      75,
+      60,
+    ]);
     if (arrow.type === "arrow") {
-      expect(arrow.points).toEqual([[75, 60], [0, 0]]);
+      expect(arrow.points).toEqual([
+        [75, 60],
+        [0, 0],
+      ]);
     }
   });
 
@@ -52,6 +69,8 @@ describe("native scene compatibility", () => {
 
   it("rejects non-Excalidraw input", () => {
     expect(() => parseScene('{"elements":[]}')).toThrow();
-    expect(() => parseScene('{"type":"excalidraw","elements":[null]}')).toThrow();
+    expect(() =>
+      parseScene('{"type":"excalidraw","elements":[null]}'),
+    ).toThrow();
   });
 });

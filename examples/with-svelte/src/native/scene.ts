@@ -28,7 +28,11 @@ export type Point = { x: number; y: number };
 
 const SOURCE = "https://github.com/VolDr/excalidraw";
 const SUPPORTED_TYPES = new Set<string>([
-  "rectangle", "ellipse", "diamond", "line", "arrow",
+  "rectangle",
+  "ellipse",
+  "diamond",
+  "line",
+  "arrow",
 ]);
 
 export const blankScene = (): SceneFile => ({
@@ -54,13 +58,16 @@ export function parseScene(input: string): SceneFile {
   ) {
     throw new Error("Это не файл .excalidraw.");
   }
-  if (!data.elements.every((element: unknown) =>
-    isRecord(element) &&
-    typeof element.id === "string" &&
-    typeof element.type === "string" &&
-    Number.isFinite(element.x) &&
-    Number.isFinite(element.y)
-  )) {
+  if (
+    !data.elements.every(
+      (element: unknown) =>
+        isRecord(element) &&
+        typeof element.id === "string" &&
+        typeof element.type === "string" &&
+        Number.isFinite(element.x) &&
+        Number.isFinite(element.y),
+    )
+  ) {
     throw new Error("Файл содержит некорректные элементы.");
   }
   return {
