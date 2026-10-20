@@ -34,7 +34,7 @@
 
   let canvas: HTMLCanvasElement;
   let viewport: HTMLDivElement;
-  let textInput: HTMLTextAreaElement;
+  let textInput = $state<HTMLTextAreaElement>();
 
   let tool = $state<NativeTool>("selection");
   let selectedId = $state<string | null>(null);
