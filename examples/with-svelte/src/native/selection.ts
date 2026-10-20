@@ -1,6 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import { editableSelection, selectionUnit } from "./groups";
+import { canEditIndependently, editableSelection, selectionUnit } from "./groups";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -96,7 +96,14 @@ export function duplicateSelection(
   ids: readonly string[],
   offset = 24,
 ): { scene: SceneFile; ids: string[] } {
-  const selected = new Set(editableSelection(scene, ids));
+  // Linked targets may move but must not be copied without also remapping arrows.
+  const selected = new Set(
+    editableSelection(scene, ids).filter((id) => {
+      const element = scene.elements.find((item) => item.id === id);
+      return !!element &&
+        (canEditIndependently(element) || element.groupIds.length === 1);
+    }),
+  );
   const now = Date.now();
   const newGroupIds = new Map<string, string>();
   const duplicates = scene.elements

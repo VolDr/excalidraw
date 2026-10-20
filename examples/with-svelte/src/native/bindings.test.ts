@@ -14,6 +14,7 @@ import {
   moveSelection,
   transformSelected,
 } from "./transforms";
+import { duplicateSelection } from "./selection";
 
 const makeScene = () => {
   const left = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
@@ -29,6 +30,13 @@ const makeScene = () => {
 };
 
 describe("native reciprocal arrow binding", () => {
+  it("refuses to duplicate linked targets without duplicating their arrows", () => {
+    const { left, scene } = makeScene();
+    const duplicate = duplicateSelection(scene, [left.id]);
+    expect(duplicate.scene).toBe(scene);
+    expect(duplicate.ids).toEqual([]);
+  });
+
   it("deletes linked shapes and arrows without dangling reciprocal bindings", () => {
     const { left, right, arrow, scene } = makeScene();
     const removedBox = deleteSelection(scene, [left.id]);
