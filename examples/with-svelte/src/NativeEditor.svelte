@@ -14,7 +14,6 @@
     deleteById,
     elementBounds,
     isNativeShape,
-    moveById,
     pickElement,
     unsupportedCount,
     type NativeShape,
@@ -22,6 +21,16 @@
     type Point,
     type SceneFile,
   } from "./native/scene";
+  import {
+    canMove,
+    deleteSelection,
+    handleLocations,
+    isBoxTransformable,
+    moveSelection,
+    pickHandle,
+    transformSelected,
+    type Handle,
+  } from "./native/transforms";
 
   type Props = {
     scene: SceneFile;
@@ -37,7 +46,8 @@
   let textInput = $state<HTMLTextAreaElement>();
 
   let tool = $state<NativeTool>("selection");
-  let selectedId = $state<string | null>(null);
+  let selectedIds = $state<string[]>([]);
+  let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
   let preview = $state.raw<ExcalidrawElement | null>(null);
   let zoom = $state(1);
   let pan = $state<Point>({ x: 0, y: 0 });
@@ -51,11 +61,13 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "select";
     start: Point;
     original: SceneFile;
     initialPan: Point;
     id: string | null;
+    ids: string[];
+    handle: Handle | null;
     draft: ExcalidrawElement | null;
     changed: boolean;
     points: Point[];
@@ -67,7 +79,7 @@
   $effect(() => {
     documentEpoch;
     history.clear();
-    selectedId = null;
+    selectedIds = [];
     undoAvailable = false;
     redoAvailable = false;
   });
@@ -87,7 +99,7 @@
     if (history.canUndo) {
       onChange(history.undo(scene));
       refreshHistory();
-      selectedId = null;
+      selectedIds = [];
     }
   }
 
@@ -95,7 +107,7 @@
     if (history.canRedo) {
       onChange(history.redo(scene));
       refreshHistory();
-      selectedId = null;
+      selectedIds = [];
     }
   }
 
@@ -132,12 +144,12 @@
       const existing = scene.elements.find((element) => element.id === editor.id);
       if (existing?.type === "text" && value !== existing.text) {
         commit(scene, replaceText(scene, editor.id, value));
-        selectedId = editor.id;
+        selectedIds = [editor.id];
       }
     } else {
       const element = createText(editor.at, value);
       commit(scene, { ...scene, elements: [...scene.elements, element] });
-      selectedId = element.id;
+      selectedIds = [element.id];
     }
     tool = "selection";
   }
@@ -323,18 +335,18 @@
       draw(preview);
     }
 
-    const selected = scene.elements.find(
-      (element) => element.id === selectedId && !element.isDeleted,
-    );
-    if (selected) {
-      const { x, y, width, height } = elementBounds(selected);
+    for (const element of scene.elements) {
+      if (!selectedIds.includes(element.id) || element.isDeleted || !isNativeShape(element)) {
+        continue;
+      }
+      const { x, y, width, height } = elementBounds(element);
       const padding = 5 / zoom;
       ctx.save();
-      if (selected.angle) {
+      if (element.angle) {
         const cx = x + width / 2;
         const cy = y + height / 2;
         ctx.translate(cx, cy);
-        ctx.rotate(selected.angle);
+        ctx.rotate(element.angle);
         ctx.translate(-cx, -cy);
       }
       ctx.setLineDash([5 / zoom, 3 / zoom]);
@@ -344,8 +356,31 @@
         x - padding, y - padding,
         width + padding * 2, height + padding * 2,
       );
-      ctx.setLineDash([]);
       ctx.restore();
+
+      if (selectedId === element.id && isBoxTransformable(element)) {
+        const handles = handleLocations(element);
+        const top = {
+          x: (handles.nw.x + handles.ne.x) / 2,
+          y: (handles.nw.y + handles.ne.y) / 2,
+        };
+        ctx.strokeStyle = "#6965db";
+        ctx.lineWidth = 1.5 / zoom;
+        ctx.beginPath();
+        ctx.moveTo(top.x, top.y);
+        ctx.lineTo(handles.rotate.x, handles.rotate.y);
+        ctx.stroke();
+        ctx.fillStyle = theme === "dark" ? "#282637" : "#ffffff";
+        for (const key of ["nw", "ne", "sw", "se"] as const) {
+          const p = handles[key];
+          ctx.fillRect(p.x - 5 / zoom, p.y - 5 / zoom, 10 / zoom, 10 / zoom);
+          ctx.strokeRect(p.x - 5 / zoom, p.y - 5 / zoom, 10 / zoom, 10 / zoom);
+        }
+        ctx.beginPath();
+        ctx.arc(handles.rotate.x, handles.rotate.y, 6 / zoom, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
@@ -355,7 +390,7 @@
     scene;
     theme;
     preview;
-    selectedId;
+    selectedIds;
     zoom;
     pan;
     viewSize;
@@ -373,18 +408,46 @@
       return;
     }
     viewport.setPointerCapture(event.pointerId);
-    const action = tool === "hand" || event.button === 1
-      ? "pan"
-      : tool === "selection" ? "move" : tool === "freedraw" ? "free" : "draw";
+    let action: Gesture["action"] =
+      tool === "hand" || event.button === 1
+        ? "pan"
+        : tool === "selection"
+          ? "move"
+          : tool === "freedraw"
+            ? "free"
+            : "draw";
     let id: string | null = null;
+    let ids: string[] = [];
+    let handle: Handle | null = null;
     let draft: ExcalidrawElement | null = null;
 
     if (action === "move") {
-      const hit = pickElement(scene.elements, start, 8 / zoom);
-      selectedId = hit?.id ?? null;
-      id = hit?.id ?? null;
+      const selected = scene.elements.find((element) => element.id === selectedId);
+      handle = selected ? pickHandle(selected, start, 9 / zoom) : null;
+      if (handle && selectedId) {
+        action = "transform";
+        id = selectedId;
+        ids = [selectedId];
+      } else {
+        const hit = pickElement(scene.elements, start, 8 / zoom);
+        if (event.shiftKey) {
+          if (hit) {
+            selectedIds = selectedIds.includes(hit.id)
+              ? selectedIds.filter((item) => item !== hit.id)
+              : [...selectedIds, hit.id];
+          }
+          action = "select";
+        } else if (hit) {
+          ids = selectedIds.includes(hit.id) ? [...selectedIds] : [hit.id];
+          selectedIds = ids;
+          id = hit.id;
+        } else {
+          selectedIds = [];
+          action = "select";
+        }
+      }
     } else if (action === "draw" || action === "free") {
-      selectedId = null;
+      selectedIds = [];
       draft = action === "free"
         ? createFreeDraw([start], [event.pressure || 0.5])
         : createShape(tool as NativeShape, start, start);
@@ -397,6 +460,8 @@
       original: scene,
       initialPan: { ...pan },
       id,
+      ids,
+      handle,
       draft,
       changed: false,
       points: [start],
@@ -425,9 +490,17 @@
     const dx = point.x - g.start.x;
     const dy = point.y - g.start.y;
     if (g.action === "move" && g.id) {
+      if (Math.hypot(dx, dy) > 0.2 && g.ids.some((id) => {
+        const element = g.original.elements.find((el) => el.id === id);
+        return element ? canMove(element) : false;
+      })) {
+        g.changed = true;
+        onChange(moveSelection(g.original, g.ids, dx, dy));
+      }
+    } else if (g.action === "transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
         g.changed = true;
-        onChange(moveById(g.original, g.id, dx, dy));
+        onChange(transformSelected(g.original, g.id, g.handle, point));
       }
     } else if (g.action === "free" && g.draft) {
       const last = g.points[g.points.length - 1];
@@ -462,7 +535,7 @@
     if (viewport.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
     }
-    if (g.action === "move" && g.changed) {
+    if ((g.action === "move" || g.action === "transform") && g.changed) {
       // The move was previewed in-place; record the *original* scene once.
       history.commit(g.original);
       refreshHistory();
@@ -472,7 +545,7 @@
           ...g.original,
           elements: [...g.original.elements, preview],
         });
-        selectedId = preview.id;
+        selectedIds = [preview.id];
         tool = "selection";
       }
     } else if (g.action === "draw" && preview) {
@@ -481,7 +554,7 @@
           ...g.original,
           elements: [...g.original.elements, preview],
         });
-        selectedId = preview.id;
+        selectedIds = [preview.id];
         tool = "selection";
       }
     }
@@ -494,7 +567,7 @@
     if (!g || event.pointerId !== g.pointerId) {
       return;
     }
-    if (g.action === "move" && g.changed) {
+    if ((g.action === "move" || g.action === "transform") && g.changed) {
       onChange(g.original);
     }
     pan = g.initialPan;
@@ -518,16 +591,47 @@
       redo();
       return;
     }
-    if ((event.key === "Delete" || event.key === "Backspace") && selectedId) {
+    if (cmd && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      commit(scene, deleteById(scene, selectedId));
-      selectedId = null;
+      selectedIds = scene.elements.filter((element) =>
+        canMove(element)).map((element) => element.id);
+      return;
+    }
+    if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length) {
+      event.preventDefault();
+      const next = deleteSelection(scene, selectedIds);
+      if (next.elements.some((el, i) => el.isDeleted !== scene.elements[i].isDeleted)) {
+        commit(scene, next);
+      }
+      selectedIds = [];
       return;
     }
     if (event.key === "Escape") {
-      selectedId = null;
+      selectedIds = [];
       preview = null;
       tool = "selection";
+      return;
+    }
+    const nudges: Record<string, Point> = {
+      ArrowUp: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 },
+    };
+    if (!cmd && selectedIds.length && nudges[event.key]) {
+      event.preventDefault();
+      const multiplier = event.shiftKey ? 10 : 1;
+      const offset = nudges[event.key];
+      const next = moveSelection(
+        scene,
+        selectedIds,
+        offset.x * multiplier,
+        offset.y * multiplier,
+      );
+      if (next !== scene && next.elements.some((el, i) => el !== scene.elements[i])) {
+        commit(scene, next);
+      }
+      return;
     }
     if (cmd || event.altKey) {
       return;
@@ -591,7 +695,7 @@
     ] as item}
       <button
         class:active={tool === item[0]}
-        onclick={() => { tool = item[0] as NativeTool; selectedId = null; }}
+        onclick={() => { tool = item[0] as NativeTool; selectedIds = []; }}
         title={item[1]}
         aria-pressed={tool === item[0]}
       >
@@ -602,6 +706,7 @@
     <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <span class="zoom">{Math.round(zoom * 100)}%</span>
+    {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
   </div>
 
