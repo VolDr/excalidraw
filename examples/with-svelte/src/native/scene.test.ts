@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   blankScene,
   createShape,
+  createText,
+  createFreeDraw,
+  replaceText,
+  hitTest,
   deleteById,
   moveById,
   parseScene,
@@ -62,6 +66,35 @@ describe("native scene compatibility", () => {
     expect(history.redo(scene).elements[0].x).toBe(21);
     expect(deleteById(moved, rect.id).elements[0].isDeleted).toBe(true);
     expect(scene.elements[0].isDeleted).toBe(false);
+  });
+
+  it("creates text with Excalidraw metrics, preserves identity when edited", () => {
+    const text = createText({ x: 10, y: 20 }, "Hello");
+    expect(text.type).toBe("text");
+    expect(text.width).toBeGreaterThan(0);
+    const scene = blankScene();
+    scene.elements = [text];
+    const edited = replaceText(scene, text.id, "Hello world");
+    const result = edited.elements[0];
+    expect(result.id).toBe(text.id);
+    expect(result.version).toBeGreaterThan(text.version);
+    if (result.type === "text") {
+      expect(result.text).toBe("Hello world");
+      expect(result.width).toBeGreaterThan(text.width);
+    }
+  });
+
+  it("serializes pressure-aware freehand and avoids selecting empty arrow bounds", () => {
+    const stroke = createFreeDraw(
+      [{ x: 40, y: 30 }, { x: 60, y: 55 }, { x: 80, y: 35 }],
+      [0.5, 0.7, 0.6],
+    );
+    expect(stroke.points.length).toBe(3);
+    expect(stroke.pressures.length).toBe(3);
+    expect(parseScene(serializeScene({ ...blankScene(), elements: [stroke] })).elements[0]).toEqual(stroke);
+    const line = createShape("arrow", { x: 10, y: 10 }, { x: 100, y: 100 });
+    expect(hitTest(line, { x: 50, y: 50 })).toBe(true);
+    expect(hitTest(line, { x: 90, y: 10 })).toBe(false);
   });
 
   it("rejects non-Excalidraw input", () => {

@@ -1,4 +1,9 @@
-import type { ExcalidrawElement } from "@excalidraw/element/types";
+import { newFreeDrawElement, newTextElement } from "@excalidraw/element";
+
+import type {
+  ExcalidrawElement,
+  ExcalidrawTextElement,
+} from "@excalidraw/element/types";
 
 /**
  * A serializable scene boundary shared by the native Svelte editor and
@@ -21,9 +26,11 @@ export type NativeTool =
   | "diamond"
   | "line"
   | "arrow"
+  | "text"
+  | "freedraw"
   | "hand";
 
-export type NativeShape = Exclude<NativeTool, "selection" | "hand">;
+export type NativeShape = Exclude<NativeTool, "selection" | "hand" | "text" | "freedraw">;
 export type Point = { x: number; y: number };
 
 const SOURCE = "https://github.com/VolDr/excalidraw";
@@ -33,6 +40,8 @@ const SUPPORTED_TYPES = new Set<string>([
   "diamond",
   "line",
   "arrow",
+  "text",
+  "freedraw",
 ]);
 
 export const blankScene = (): SceneFile => ({
@@ -84,9 +93,7 @@ export const serializeScene = (scene: SceneFile): string =>
   JSON.stringify(scene, null, 2);
 
 export const unsupportedCount = (scene: SceneFile): number =>
-  scene.elements.filter(
-    (element) => !element.isDeleted && !SUPPORTED_TYPES.has(element.type),
-  ).length;
+  scene.elements.filter((element) => !element.isDeleted && !isNativeShape(element)).length;
 
 const versionNonce = () => Math.floor(Math.random() * 2 ** 31);
 
@@ -150,6 +157,72 @@ export function createShape(
   return base as unknown as ExcalidrawElement;
 }
 
+/** Create canonical Excalidraw text with the element package's own metrics. */
+export const createText = (point: Point, value: string): ExcalidrawTextElement =>
+  newTextElement({ x: point.x, y: point.y, text: value, fontSize: 20 });
+
+/**
+ * Preserve the original id, container metadata, index and custom fields.
+ * Complex/bound text is intentionally not offered for native editing yet.
+ */
+export function replaceText(
+  scene: SceneFile,
+  id: string,
+  value: string,
+): SceneFile {
+  return {
+    ...scene,
+    elements: scene.elements.map((element) => {
+      if (element.id !== id || element.type !== "text" || element.locked || element.containerId) {
+        return element;
+      }
+      const measured = newTextElement({
+        x: element.x,
+        y: element.y,
+        text: value,
+        fontSize: element.fontSize,
+        fontFamily: element.fontFamily,
+        textAlign: "left",
+        verticalAlign: "top",
+      });
+      return {
+        ...element,
+        text: measured.text,
+        originalText: measured.originalText,
+        width: measured.width,
+        height: measured.height,
+        version: element.version + 1,
+        versionNonce: versionNonce(),
+        updated: Date.now(),
+      };
+    }),
+  };
+}
+
+/**
+ * Svelte pointer samples become an official Excalidraw freedraw element.
+ * Coordinates are normalized while pressure samples retain their order.
+ */
+export function createFreeDraw(points: readonly Point[], pressures: readonly number[]) {
+  if (!points.length) {
+    throw new Error("Freehand drawing needs at least one point.");
+  }
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return newFreeDrawElement({
+    type: "freedraw",
+    x,
+    y,
+    width: Math.max(...xs) - x,
+    height: Math.max(...ys) - y,
+    points: points.map((p) => [p.x - x, p.y - y] as unknown as readonly [number, number] & { _brand: "LocalPoint" }),
+    pressures: [...pressures],
+    simulatePressure: false,
+  });
+}
+
 export function moveElement(
   element: ExcalidrawElement,
   dx: number,
@@ -202,8 +275,13 @@ export function deleteById(scene: SceneFile, id: string): SceneFile {
   };
 }
 
+
 export function isNativeShape(element: ExcalidrawElement): boolean {
-  return SUPPORTED_TYPES.has(element.type) && !element.isDeleted;
+  if (element.isDeleted || !SUPPORTED_TYPES.has(element.type)) {
+    return false;
+  }
+  // Bound text needs layout/binding support before it can be edited safely.
+  return element.type !== "text" || element.containerId === null;
 }
 
 export function elementBounds(element: ExcalidrawElement) {
@@ -215,6 +293,59 @@ export function elementBounds(element: ExcalidrawElement) {
   };
 }
 
+function segmentDistance(point: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / l2)) : 0;
+  return Math.hypot(point.x - a.x - t * dx, point.y - a.y - t * dy);
+}
+
+/**
+ * Hit-test in the rotated element coordinate space; don't select an entire
+ * arrow's bounding rectangle. Defer bound/complex geometry to the full editor.
+ */
+export function hitTest(element: ExcalidrawElement, point: Point, tolerance = 7): boolean {
+  if (!isNativeShape(element) || element.locked) {
+    return false;
+  }
+  const { x, y, width, height } = elementBounds(element);
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const angle = -element.angle;
+  const dx = point.x - cx;
+  const dy = point.y - cy;
+  const local = {
+    x: cx + dx * Math.cos(angle) - dy * Math.sin(angle),
+    y: cy + dx * Math.sin(angle) + dy * Math.cos(angle),
+  };
+  if (element.type === "line" || element.type === "arrow" || element.type === "freedraw") {
+    const points = element.points.map((p) => ({ x: element.x + p[0], y: element.y + p[1] }));
+    if (points.length === 1) {
+      return Math.hypot(local.x - points[0].x, local.y - points[0].y) <= tolerance;
+    }
+    return points.slice(1).some((p, i) =>
+      segmentDistance(local, points[i], p) <= tolerance + element.strokeWidth / 2
+    );
+  }
+  if (element.type === "ellipse") {
+    const rx = width / 2 + tolerance;
+    const ry = height / 2 + tolerance;
+    return rx > 0 && ry > 0 &&
+      ((local.x - cx) / rx) ** 2 + ((local.y - cy) / ry) ** 2 <= 1;
+  }
+  if (element.type === "diamond") {
+    const rx = width / 2 + tolerance;
+    const ry = height / 2 + tolerance;
+    return rx > 0 && ry > 0 &&
+      Math.abs((local.x - cx) / rx) + Math.abs((local.y - cy) / ry) <= 1;
+  }
+  return local.x >= x - tolerance &&
+    local.x <= x + width + tolerance &&
+    local.y >= y - tolerance &&
+    local.y <= y + height + tolerance;
+}
+
 export function pickElement(
   elements: readonly ExcalidrawElement[],
   point: Point,
@@ -222,16 +353,7 @@ export function pickElement(
 ): ExcalidrawElement | null {
   for (let i = elements.length - 1; i >= 0; i--) {
     const element = elements[i];
-    if (!isNativeShape(element) || element.locked) {
-      continue;
-    }
-    const { x, y, width, height } = elementBounds(element);
-    if (
-      point.x >= x - tolerance &&
-      point.x <= x + width + tolerance &&
-      point.y >= y - tolerance &&
-      point.y <= y + height + tolerance
-    ) {
+    if (hitTest(element, point, tolerance)) {
       return element;
     }
   }
