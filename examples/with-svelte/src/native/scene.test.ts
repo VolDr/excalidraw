@@ -86,12 +86,19 @@ describe("native scene compatibility", () => {
 
   it("serializes pressure-aware freehand and avoids selecting empty arrow bounds", () => {
     const stroke = createFreeDraw(
-      [{ x: 40, y: 30 }, { x: 60, y: 55 }, { x: 80, y: 35 }],
+      [
+        { x: 40, y: 30 },
+        { x: 60, y: 55 },
+        { x: 80, y: 35 },
+      ],
       [0.5, 0.7, 0.6],
     );
     expect(stroke.points.length).toBe(3);
     expect(stroke.pressures.length).toBe(3);
-    expect(parseScene(serializeScene({ ...blankScene(), elements: [stroke] })).elements[0]).toEqual(stroke);
+    expect(
+      parseScene(serializeScene({ ...blankScene(), elements: [stroke] }))
+        .elements[0],
+    ).toEqual(stroke);
     const line = createShape("arrow", { x: 10, y: 10 }, { x: 100, y: 100 });
     expect(hitTest(line, { x: 50, y: 50 })).toBe(true);
     expect(hitTest(line, { x: 90, y: 10 })).toBe(false);

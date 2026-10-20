@@ -33,7 +33,10 @@ export type NativeTool =
   | "freedraw"
   | "hand";
 
-export type NativeShape = Exclude<NativeTool, "selection" | "hand" | "text" | "freedraw">;
+export type NativeShape = Exclude<
+  NativeTool,
+  "selection" | "hand" | "text" | "freedraw"
+>;
 export type Point = { x: number; y: number };
 
 const SOURCE = "https://github.com/VolDr/excalidraw";
@@ -96,7 +99,9 @@ export const serializeScene = (scene: SceneFile): string =>
   JSON.stringify(scene, null, 2);
 
 export const unsupportedCount = (scene: SceneFile): number =>
-  scene.elements.filter((element) => !element.isDeleted && !isNativeShape(element)).length;
+  scene.elements.filter(
+    (element) => !element.isDeleted && !isNativeShape(element),
+  ).length;
 
 const versionNonce = () => Math.floor(Math.random() * 2 ** 31);
 
@@ -161,7 +166,10 @@ export function createShape(
 }
 
 /** Create canonical Excalidraw text with the element package's own metrics. */
-export const createText = (point: Point, value: string): ExcalidrawTextElement =>
+export const createText = (
+  point: Point,
+  value: string,
+): ExcalidrawTextElement =>
   newTextElement({ x: point.x, y: point.y, text: value, fontSize: 20 });
 
 /**
@@ -176,7 +184,12 @@ export function replaceText(
   return {
     ...scene,
     elements: scene.elements.map((element) => {
-      if (element.id !== id || element.type !== "text" || element.locked || element.containerId) {
+      if (
+        element.id !== id ||
+        element.type !== "text" ||
+        element.locked ||
+        element.containerId
+      ) {
         return element;
       }
       const measured = newTextElement({
@@ -206,7 +219,10 @@ export function replaceText(
  * Svelte pointer samples become an official Excalidraw freedraw element.
  * Coordinates are normalized while pressure samples retain their order.
  */
-export function createFreeDraw(points: readonly Point[], pressures: readonly number[]) {
+export function createFreeDraw(
+  points: readonly Point[],
+  pressures: readonly number[],
+) {
   if (!points.length) {
     throw new Error("Freehand drawing needs at least one point.");
   }
@@ -278,7 +294,6 @@ export function deleteById(scene: SceneFile, id: string): SceneFile {
   };
 }
 
-
 export function isNativeShape(element: ExcalidrawElement): boolean {
   if (element.isDeleted || !SUPPORTED_TYPES.has(element.type)) {
     return false;
@@ -300,7 +315,12 @@ function segmentDistance(point: Point, a: Point, b: Point): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const l2 = dx * dx + dy * dy;
-  const t = l2 ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / l2)) : 0;
+  const t = l2
+    ? Math.max(
+        0,
+        Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / l2),
+      )
+    : 0;
   return Math.hypot(point.x - a.x - t * dx, point.y - a.y - t * dy);
 }
 
@@ -308,7 +328,11 @@ function segmentDistance(point: Point, a: Point, b: Point): number {
  * Hit-test in the rotated element coordinate space; don't select an entire
  * arrow's bounding rectangle. Defer bound/complex geometry to the full editor.
  */
-export function hitTest(element: ExcalidrawElement, point: Point, tolerance = 7): boolean {
+export function hitTest(
+  element: ExcalidrawElement,
+  point: Point,
+  tolerance = 7,
+): boolean {
   if (!isNativeShape(element) || element.locked) {
     return false;
   }
@@ -322,31 +346,52 @@ export function hitTest(element: ExcalidrawElement, point: Point, tolerance = 7)
     x: cx + dx * Math.cos(angle) - dy * Math.sin(angle),
     y: cy + dx * Math.sin(angle) + dy * Math.cos(angle),
   };
-  if (element.type === "line" || element.type === "arrow" || element.type === "freedraw") {
-    const points = element.points.map((p) => ({ x: element.x + p[0], y: element.y + p[1] }));
+  if (
+    element.type === "line" ||
+    element.type === "arrow" ||
+    element.type === "freedraw"
+  ) {
+    const points = element.points.map((p) => ({
+      x: element.x + p[0],
+      y: element.y + p[1],
+    }));
     if (points.length === 1) {
-      return Math.hypot(local.x - points[0].x, local.y - points[0].y) <= tolerance;
+      return (
+        Math.hypot(local.x - points[0].x, local.y - points[0].y) <= tolerance
+      );
     }
-    return points.slice(1).some((p, i) =>
-      segmentDistance(local, points[i], p) <= tolerance + element.strokeWidth / 2
-    );
+    return points
+      .slice(1)
+      .some(
+        (p, i) =>
+          segmentDistance(local, points[i], p) <=
+          tolerance + element.strokeWidth / 2,
+      );
   }
   if (element.type === "ellipse") {
     const rx = width / 2 + tolerance;
     const ry = height / 2 + tolerance;
-    return rx > 0 && ry > 0 &&
-      ((local.x - cx) / rx) ** 2 + ((local.y - cy) / ry) ** 2 <= 1;
+    return (
+      rx > 0 &&
+      ry > 0 &&
+      ((local.x - cx) / rx) ** 2 + ((local.y - cy) / ry) ** 2 <= 1
+    );
   }
   if (element.type === "diamond") {
     const rx = width / 2 + tolerance;
     const ry = height / 2 + tolerance;
-    return rx > 0 && ry > 0 &&
-      Math.abs((local.x - cx) / rx) + Math.abs((local.y - cy) / ry) <= 1;
+    return (
+      rx > 0 &&
+      ry > 0 &&
+      Math.abs((local.x - cx) / rx) + Math.abs((local.y - cy) / ry) <= 1
+    );
   }
-  return local.x >= x - tolerance &&
+  return (
+    local.x >= x - tolerance &&
     local.x <= x + width + tolerance &&
     local.y >= y - tolerance &&
-    local.y <= y + height + tolerance;
+    local.y <= y + height + tolerance
+  );
 }
 
 export function pickElement(
