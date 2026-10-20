@@ -18,7 +18,8 @@ export function canEditEndpoints(element: ExcalidrawElement): boolean {
     !element.boundElements?.length &&
     !element.startBinding &&
     !element.endBinding &&
-    (element.type === "line" || ("elbowed" in element && element.elbowed === false)) &&
+    (element.type === "line" ||
+      ("elbowed" in element && element.elbowed === false)) &&
     element.points.length === 2
   );
 }
