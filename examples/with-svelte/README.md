@@ -12,7 +12,7 @@ From the monorepo root:
 ```sh
 yarn install
 yarn build:packages
-yarn --cwd examples/with-svelte check
+yarn --cwd examples/with-svelte typecheck
 yarn --cwd examples/with-svelte test
 yarn --cwd examples/with-svelte build
 yarn --cwd examples/with-svelte dev

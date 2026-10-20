@@ -8,8 +8,8 @@
     "dev": "vite --port 3007",
     "build": "vite build",
     "preview": "vite preview --port 3008",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "*",
