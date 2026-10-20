@@ -22,7 +22,6 @@
     type SceneFile,
   } from "./native/scene";
   import {
-    canMove,
     deleteSelection,
     handleLocations,
     isBoxTransformable,
