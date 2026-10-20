@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import rough from "roughjs/bin/rough";
 
   import { getFontString } from "@excalidraw/common";
@@ -9,6 +9,8 @@
   import {
     createShape,
     createFreeDraw,
+    createText,
+    replaceText,
     deleteById,
     elementBounds,
     isNativeShape,
@@ -32,6 +34,7 @@
 
   let canvas: HTMLCanvasElement;
   let viewport: HTMLDivElement;
+  let textInput: HTMLTextAreaElement;
 
   let tool = $state<NativeTool>("selection");
   let selectedId = $state<string | null>(null);
@@ -42,6 +45,7 @@
   let undoAvailable = $state(false);
   let redoAvailable = $state(false);
   let unsupported = $derived(unsupportedCount(scene));
+  let textEditor = $state<{ id: string | null; at: Point; value: string } | null>(null);
 
   const history = new SceneHistory();
 
@@ -95,7 +99,73 @@
     }
   }
 
-  function getPoint(event: PointerEvent): Point {
+
+  async function beginText(at: Point, existing?: ExcalidrawElement) {
+    if (existing && existing.type !== "text") {
+      return;
+    }
+    if (textEditor) {
+      finishText();
+    }
+    textEditor = {
+      id: existing?.id ?? null,
+      at: existing ? { x: existing.x, y: existing.y } : at,
+      value: existing?.type === "text" ? existing.text : "",
+    };
+    await tick();
+    textInput?.focus();
+    textInput?.select();
+  }
+
+  function finishText() {
+    const editor = textEditor;
+    if (!editor) {
+      return;
+    }
+    textEditor = null;
+    const value = editor.value.trimEnd();
+    if (!value.trim()) {
+      if (editor.id) {
+        commit(scene, deleteById(scene, editor.id));
+      }
+    } else if (editor.id) {
+      const existing = scene.elements.find((element) => element.id === editor.id);
+      if (existing?.type === "text" && value !== existing.text) {
+        commit(scene, replaceText(scene, editor.id, value));
+        selectedId = editor.id;
+      }
+    } else {
+      const element = createText(editor.at, value);
+      commit(scene, { ...scene, elements: [...scene.elements, element] });
+      selectedId = element.id;
+    }
+    tool = "selection";
+  }
+
+  function textKeyDown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      textEditor = null;
+      event.stopPropagation();
+      return;
+    }
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      finishText();
+    }
+    event.stopPropagation();
+  }
+
+  function doubleClick(event: MouseEvent) {
+    if (tool !== "selection") {
+      return;
+    }
+    const hit = pickElement(scene.elements, getPoint(event), 8 / zoom);
+    if (hit?.type === "text" && hit.containerId === null) {
+      void beginText({ x: hit.x, y: hit.y }, hit);
+    }
+  }
+
+  function getPoint(event: Pick<PointerEvent, "clientX" | "clientY">): Point {
     const rect = viewport.getBoundingClientRect();
     return {
       x: (event.clientX - rect.left - pan.x) / zoom,
@@ -184,7 +254,7 @@
             fontFamily: element.fontFamily,
           });
           ctx.textBaseline = "top";
-          for (const [i, line] of element.text.split("\\n").entries()) {
+          for (const [i, line] of element.text.split("\n").entries()) {
             ctx.fillText(line, x, y + i * element.fontSize * element.lineHeight);
           }
           break;
@@ -287,12 +357,16 @@
   });
 
   function pointerDown(event: PointerEvent) {
-    if (gesture || (event.button !== 0 && event.button !== 1)) {
+    if (gesture || textEditor || (event.button !== 0 && event.button !== 1)) {
       return;
     }
     viewport.focus({ preventScroll: true });
-    viewport.setPointerCapture(event.pointerId);
     const start = getPoint(event);
+    if (tool === "text" && event.button === 0) {
+      void beginText(start);
+      return;
+    }
+    viewport.setPointerCapture(event.pointerId);
     const action = tool === "hand" || event.button === 1
       ? "pan"
       : tool === "selection" ? "move" : tool === "freedraw" ? "free" : "draw";
@@ -496,6 +570,7 @@
       ["line", "Линия"],
       ["arrow", "Стрелка"],
       ["freedraw", "Карандаш"],
+      ["text", "Текст"],
       ["hand", "Рука"],
     ] as item}
       <button
@@ -532,9 +607,25 @@
     onpointermove={pointerMove}
     onpointerup={pointerUp}
     onpointercancel={pointerCancel}
+    ondblclick={doubleClick}
     onkeydown={handleKeys}
   >
     <canvas bind:this={canvas}></canvas>
+    {#if textEditor}
+      <textarea
+        class="text-input"
+        bind:this={textInput}
+        bind:value={textEditor.value}
+        aria-label="Редактировать текст"
+        placeholder="Введите текст…"
+        style:left={(textEditor.at.x * zoom + pan.x) + "px"}
+        style:top={(textEditor.at.y * zoom + pan.y) + "px"}
+        style:font-size={(20 * zoom) + "px"}
+        onpointerdown={(event) => event.stopPropagation()}
+        onkeydown={textKeyDown}
+        onblur={finishText}
+      ></textarea>
+    {/if}
   </div>
 </div>
 
@@ -561,4 +652,10 @@
   }
   .native-viewport.hand { cursor: grab; }
   .native-viewport canvas { display: block; width: 100%; height: 100%; }
+  .text-input {
+    position: absolute; z-index: 2; min-width: 180px; min-height: 68px;
+    padding: 4px; border: 1px solid #6965db; border-radius: 3px;
+    background: #fff; color: #20232b; font-family: sans-serif;
+    line-height: 1.25; resize: both;
+  }
 </style>
