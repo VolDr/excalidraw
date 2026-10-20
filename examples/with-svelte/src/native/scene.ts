@@ -1,4 +1,7 @@
 import { newFreeDrawElement, newTextElement } from "@excalidraw/element";
+import { pointFrom } from "@excalidraw/math";
+
+import type { LocalPoint } from "@excalidraw/math";
 
 import type {
   ExcalidrawElement,
@@ -217,7 +220,7 @@ export function createFreeDraw(points: readonly Point[], pressures: readonly num
     y,
     width: Math.max(...xs) - x,
     height: Math.max(...ys) - y,
-    points: points.map((p) => [p.x - x, p.y - y] as unknown as readonly [number, number] & { _brand: "LocalPoint" }),
+    points: points.map((p) => pointFrom<LocalPoint>(p.x - x, p.y - y)),
     pressures: [...pressures],
     simulatePressure: false,
   });

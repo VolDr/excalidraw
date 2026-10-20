@@ -19,8 +19,8 @@ Open http://localhost:3007.
 
 ## Native Svelte features
 
-- Draw rectangle, ellipse, diamond, line and arrow using the Canvas 2D API and the same Rough.js renderer family as Excalidraw.
-- Select and drag basic shapes, soft-delete selected shapes, and undo/redo.
+- Draw rectangle, ellipse, diamond, line, arrow and pressure-sampled freehand strokes using the Canvas 2D API and the same Rough.js renderer family as Excalidraw.
+- Add/edit plain text through a Svelte textarea (double-click text to edit); select, drag and delete shapes with undo/redo.
 - Pan using the hand tool or mouse wheel, and zoom using Ctrl+wheel.
 - Use keyboard: V (selection), R (rectangle), Delete, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
 - Import and export native `.excalidraw` JSON. Preserve unknown elements and embedded image data rather than dropping them from the document.
@@ -29,7 +29,7 @@ Open http://localhost:3007.
 
 ## Known limitations
 
-- Native mode does not render images, freehand, text, frames, rotated geometry, bindings, labels or advanced line geometry yet. It shows an explicit warning for unsupported element types, preserves their data, and provides a full React-editor fallback. Supported elements with complex geometry/rotation may be drawn approximately.
+- Native mode does not render images, frames, advanced bound text, geometry, bindings, labels or advanced line geometry yet. It shows an explicit warning for unsupported element types, preserves their data, and provides a full React-editor fallback. Supported elements with complex geometry/rotation may be drawn approximately.
 - It does not have the original editor's collaboration, PWA, persistence, full keyboard shortcuts, tool and selection semantics, PNG/SVG export, or touch gesture parity. History remains separate across mode switches.
 - The React fallback is **not** a migrated component; the application still declares React dependencies and shares the `@excalidraw/excalidraw` package.
 - Embedded scene data in PNG/SVG is not supported by this file importer.
