@@ -1,5 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
+import { isSafeBoundBox, isNativeLinkedArrow } from "./bindings";
 import { isNativeShape } from "./scene";
 
 import type { SceneFile } from "./scene";
@@ -47,7 +48,14 @@ export function safeGroupMembers(
 /** Hit-testing one grouped shape selects every safely movable member. */
 export function selectionUnit(scene: SceneFile, id: string): string[] {
   const element = scene.elements.find((item) => item.id === id);
-  if (!element || !isIndependent(element)) {
+  if (!element) {
+    return [];
+  }
+  if (isNativeLinkedArrow(scene, element) ||
+      (isSafeBoundBox(scene, element) && !!element.boundElements?.length)) {
+    return [id];
+  }
+  if (!isIndependent(element)) {
     return [];
   }
   if (!element.groupIds.length) {
@@ -83,6 +91,7 @@ export function editableSelection(
       (element) =>
         selected.has(element.id) &&
         (canEditIndependently(element) ||
+          (isSafeBoundBox(scene, element) && !!element.boundElements?.length) ||
           (element.groupIds.length === 1 && groupIds.has(element.groupIds[0]))),
     )
     .map((element) => element.id);

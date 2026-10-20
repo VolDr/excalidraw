@@ -1,5 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
+import { isSafeBoundBox, syncNativeBindings } from "./bindings";
 import { canEditIndependently, editableSelection } from "./groups";
 
 import type { Point, SceneFile } from "./scene";
@@ -21,7 +22,10 @@ const rotatePoint = (point: Point, center: Point, angle: number): Point => {
   };
 };
 
-export function isBoxTransformable(element: ExcalidrawElement): boolean {
+export function isBoxTransformable(
+  element: ExcalidrawElement,
+  scene?: SceneFile,
+): boolean {
   return (
     (element.type === "rectangle" ||
       element.type === "ellipse" ||
@@ -30,7 +34,7 @@ export function isBoxTransformable(element: ExcalidrawElement): boolean {
     !element.locked &&
     !element.frameId &&
     element.groupIds.length === 0 &&
-    !element.boundElements?.length
+    (!element.boundElements?.length || (!!scene && isSafeBoundBox(scene, element)))
   );
 }
 
@@ -55,8 +59,9 @@ export function pickHandle(
   element: ExcalidrawElement,
   point: Point,
   tolerance = 9,
+  scene?: SceneFile,
 ): Handle | null {
-  if (!isBoxTransformable(element)) {
+  if (!isBoxTransformable(element, scene)) {
     return null;
   }
   const locations = handleLocations(element);
@@ -80,8 +85,9 @@ export function resizeElement(
   element: ExcalidrawElement,
   corner: Corner,
   target: Point,
+  scene?: SceneFile,
 ): ExcalidrawElement {
-  if (!isBoxTransformable(element)) {
+  if (!isBoxTransformable(element, scene)) {
     return element;
   }
   const loc = handleLocations(element);
@@ -123,8 +129,9 @@ export function resizeElement(
 export function rotateElement(
   element: ExcalidrawElement,
   point: Point,
+  scene?: SceneFile,
 ): ExcalidrawElement {
-  if (!isBoxTransformable(element)) {
+  if (!isBoxTransformable(element, scene)) {
     return element;
   }
   const cx = element.x + element.width / 2;
@@ -155,7 +162,7 @@ export function moveSelection(
   if (!selected.size) {
     return scene;
   }
-  return {
+  return syncNativeBindings({
     ...scene,
     elements: scene.elements.map((element) =>
       selected.has(element.id)
@@ -169,7 +176,7 @@ export function moveSelection(
           }
         : element,
     ),
-  };
+  });
 }
 
 export function deleteSelection(
@@ -202,14 +209,14 @@ export function transformSelected(
   handle: Handle,
   point: Point,
 ): SceneFile {
-  return {
+  return syncNativeBindings({
     ...scene,
     elements: scene.elements.map((element) =>
       element.id !== id
         ? element
         : handle === "rotate"
-        ? rotateElement(element, point)
-        : resizeElement(element, handle, point),
+        ? rotateElement(element, point, scene)
+        : resizeElement(element, handle, point, scene),
     ),
-  };
+  });
 }
