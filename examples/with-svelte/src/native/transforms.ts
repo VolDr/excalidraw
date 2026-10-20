@@ -1,6 +1,11 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import { isSafeBoundBox, syncNativeBindings } from "./bindings";
+import {
+  detachDeletedNativeBindings,
+  isNativeLinkedArrow,
+  isSafeBoundBox,
+  syncNativeBindings,
+} from "./bindings";
 import { canEditIndependently, editableSelection } from "./groups";
 
 import type { Point, SceneFile } from "./scene";
@@ -184,12 +189,19 @@ export function deleteSelection(
   ids: readonly string[],
 ): SceneFile {
   const selected = new Set(editableSelection(scene, ids));
+  const wanted = new Set(ids);
+  for (const element of scene.elements) {
+    if (wanted.has(element.id) && isNativeLinkedArrow(scene, element)) {
+      selected.add(element.id);
+    }
+  }
   if (!selected.size) {
     return scene;
   }
+  const unlinked = detachDeletedNativeBindings(scene, selected);
   return {
-    ...scene,
-    elements: scene.elements.map((element) =>
+    ...unlinked,
+    elements: unlinked.elements.map((element) =>
       selected.has(element.id)
         ? {
             ...element,

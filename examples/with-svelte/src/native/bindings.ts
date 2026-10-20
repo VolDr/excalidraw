@@ -304,3 +304,38 @@ export function reconnectNativeEndpoint(
   });
   return { ...scene, elements };
 }
+
+/**
+ * Maintain both sides of a native binding when a box or linked arrow is
+ * deleted. The arrow's current geometry remains visible when detached.
+ */
+export function detachDeletedNativeBindings(
+  scene: SceneFile,
+  deletedIds: ReadonlySet<string>,
+): SceneFile {
+  const elements = scene.elements.map((element) => {
+    if (isNativeLinkedArrow(scene, element)) {
+      const start = element.startBinding;
+      const end = element.endBinding;
+      const clearStart = !!start && deletedIds.has(start.elementId);
+      const clearEnd = !!end && deletedIds.has(end.elementId);
+      if (deletedIds.has(element.id) || clearStart || clearEnd) {
+        return touch(element, {
+          startBinding: deletedIds.has(element.id) || clearStart ? null : start,
+          endBinding: deletedIds.has(element.id) || clearEnd ? null : end,
+        });
+      }
+    }
+    if (isSafeBoundBox(scene, element) && element.boundElements?.length) {
+      if (deletedIds.has(element.id)) {
+        return touch(element, { boundElements: null });
+      }
+      const retained = element.boundElements.filter((ref) => !deletedIds.has(ref.id));
+      if (retained.length !== element.boundElements.length) {
+        return touch(element, { boundElements: retained.length ? retained : null });
+      }
+    }
+    return element;
+  });
+  return { ...scene, elements };
+}

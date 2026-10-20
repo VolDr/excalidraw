@@ -9,7 +9,7 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { blankScene, createShape, parseScene, serializeScene } from "./scene";
-import { moveSelection, transformSelected } from "./transforms";
+import { deleteSelection, moveSelection, transformSelected } from "./transforms";
 
 const makeScene = () => {
   const left = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
@@ -25,6 +25,26 @@ const makeScene = () => {
 };
 
 describe("native reciprocal arrow binding", () => {
+  it("deletes linked shapes and arrows without dangling reciprocal bindings", () => {
+    const { left, right, arrow, scene } = makeScene();
+    const removedBox = deleteSelection(scene, [left.id]);
+    const remainingArrow = removedBox.elements[2];
+    expect(removedBox.elements[0].isDeleted).toBe(true);
+    if (remainingArrow.type !== "arrow") {
+      return;
+    }
+    expect(remainingArrow.startBinding).toBeNull();
+    expect(remainingArrow.endBinding?.elementId).toBe(right.id);
+    expect(removedBox.elements[1].boundElements?.[0].id).toBe(arrow.id);
+    expect(isNativeLinkedArrow(removedBox, remainingArrow)).toBe(true);
+    const removedArrow = deleteSelection(scene, [arrow.id]);
+    expect(removedArrow.elements[2].isDeleted).toBe(true);
+    expect(removedArrow.elements[0].boundElements).toBeNull();
+    expect(removedArrow.elements[1].boundElements).toBeNull();
+    expect(scene.elements[0].isDeleted).toBe(false);
+  });
+
+
   it("links both ends on creation and round-trips official Excalidraw metadata", () => {
     const { left, right, arrow, scene } = makeScene();
     const linked = scene.elements[2];
