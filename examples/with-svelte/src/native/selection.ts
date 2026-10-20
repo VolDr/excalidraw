@@ -1,6 +1,10 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import { canEditIndependently, editableSelection, selectionUnit } from "./groups";
+import {
+  canEditIndependently,
+  editableSelection,
+  selectionUnit,
+} from "./groups";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -100,8 +104,10 @@ export function duplicateSelection(
   const selected = new Set(
     editableSelection(scene, ids).filter((id) => {
       const element = scene.elements.find((item) => item.id === id);
-      return !!element &&
-        (canEditIndependently(element) || element.groupIds.length === 1);
+      return (
+        !!element &&
+        (canEditIndependently(element) || element.groupIds.length === 1)
+      );
     }),
   );
   const now = Date.now();
