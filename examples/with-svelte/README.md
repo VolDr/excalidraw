@@ -22,6 +22,7 @@ Open http://localhost:3007.
 - Draw rectangle, ellipse, diamond, line, arrow and pressure-sampled freehand strokes using the Canvas 2D API and the same Rough.js renderer family as Excalidraw.
 - Add/edit plain text through a Svelte textarea (double-click text to edit); select, drag and delete shapes with undo/redo.
 - Pan using the hand tool or mouse wheel, and zoom using Ctrl+wheel.
+- Shift-click to select multiple objects; drag, delete or use arrow keys to move the selection (Shift+arrows moves by 10). Ctrl+A selects all safely movable objects.
 - Use keyboard: V (selection), R (rectangle), Delete, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
 - Import and export native `.excalidraw` JSON. Preserve unknown elements and embedded image data rather than dropping them from the document.
 - Toggle Svelte/React editing modes while carrying scene JSON between them.

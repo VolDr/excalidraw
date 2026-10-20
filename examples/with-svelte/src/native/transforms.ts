@@ -52,7 +52,9 @@ export function canMove(element: ExcalidrawElement): boolean {
 }
 
 /** Handles in world coordinates, including rotated elements. */
-export function handleLocations(element: ExcalidrawElement): Record<Handle, Point> {
+export function handleLocations(
+  element: ExcalidrawElement,
+): Record<Handle, Point> {
   const { x, y, width, height, angle } = element;
   const center = { x: x + width / 2, y: y + height / 2 };
   return {
@@ -74,7 +76,10 @@ export function pickHandle(
   }
   const locations = handleLocations(element);
   for (const key of [...corners, "rotate"] as Handle[]) {
-    if (Math.hypot(point.x - locations[key].x, point.y - locations[key].y) <= tolerance) {
+    if (
+      Math.hypot(point.x - locations[key].x, point.y - locations[key].y) <=
+      tolerance
+    ) {
       return key;
     }
   }
@@ -96,7 +101,10 @@ export function resizeElement(
   }
   const loc = handleLocations(element);
   const opposite: Record<Corner, Corner> = {
-    nw: "se", ne: "sw", sw: "ne", se: "nw",
+    nw: "se",
+    ne: "sw",
+    sw: "ne",
+    se: "nw",
   };
   const fixed = loc[opposite[corner]];
   const dx = target.x - fixed.x;
@@ -108,8 +116,8 @@ export function resizeElement(
   const width = Math.max(MIN_SIZE, horizontalSign * (dx * cos + dy * sin));
   const height = Math.max(MIN_SIZE, verticalSign * (-dx * sin + dy * cos));
   const centerOffset = {
-    x: horizontalSign * width / 2,
-    y: verticalSign * height / 2,
+    x: (horizontalSign * width) / 2,
+    y: (verticalSign * height) / 2,
   };
   const center = {
     x: fixed.x + centerOffset.x * cos - centerOffset.y * sin,
@@ -176,7 +184,10 @@ export function moveSelection(
   };
 }
 
-export function deleteSelection(scene: SceneFile, ids: readonly string[]): SceneFile {
+export function deleteSelection(
+  scene: SceneFile,
+  ids: readonly string[],
+): SceneFile {
   const selected = new Set(ids);
   return {
     ...scene,
@@ -206,8 +217,8 @@ export function transformSelected(
       element.id !== id
         ? element
         : handle === "rotate"
-          ? rotateElement(element, point)
-          : resizeElement(element, handle, point),
+        ? rotateElement(element, point)
+        : resizeElement(element, handle, point),
     ),
   };
 }
