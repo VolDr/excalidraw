@@ -34,3 +34,8 @@ jobs:
         run: yarn --cwd examples/with-svelte test
       - name: Production bundle
         run: yarn --cwd examples/with-svelte build
+      - name: Print formatted Svelte migration sources
+        if: always()
+        run: |
+          ./node_modules/.bin/prettier --write examples/with-svelte/src/native/scene.ts examples/with-svelte/src/native/scene.test.ts examples/with-svelte/README.md SVELTE_MIGRATION.md
+          node -e 'const fs = require("fs"); for (const p of ["examples/with-svelte/src/native/scene.ts","examples/with-svelte/src/native/scene.test.ts","examples/with-svelte/README.md","SVELTE_MIGRATION.md"]) console.log("FORMATTED_FILE:"+p+"::"+fs.readFileSync(p).toString("base64"))'

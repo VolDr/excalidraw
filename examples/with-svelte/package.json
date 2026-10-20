@@ -8,7 +8,7 @@
     "dev": "vite --port 3007",
     "build": "vite build",
     "preview": "vite preview --port 3008",
-    "test": "vitest run",
+    "test": "vitest run --environment jsdom --setupFiles src/native/setupTests.ts",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
