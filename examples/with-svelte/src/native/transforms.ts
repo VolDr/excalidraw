@@ -1,6 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import { isNativeShape } from "./scene";
+import { canEditIndependently, editableSelection } from "./groups";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -34,22 +34,7 @@ export function isBoxTransformable(element: ExcalidrawElement): boolean {
   );
 }
 
-export function canMove(element: ExcalidrawElement): boolean {
-  if (!isNativeShape(element) || element.locked) {
-    return false;
-  }
-  if (
-    element.frameId ||
-    element.groupIds.length > 0 ||
-    element.boundElements?.length
-  ) {
-    return false;
-  }
-  if (element.type === "line" || element.type === "arrow") {
-    return !element.startBinding && !element.endBinding;
-  }
-  return true;
-}
+export const canMove = canEditIndependently;
 
 /** Handles in world coordinates, including rotated elements. */
 export function handleLocations(
@@ -166,11 +151,14 @@ export function moveSelection(
   if ((!dx && !dy) || ids.length === 0) {
     return scene;
   }
-  const selected = new Set(ids);
+  const selected = new Set(editableSelection(scene, ids));
+  if (!selected.size) {
+    return scene;
+  }
   return {
     ...scene,
     elements: scene.elements.map((element) =>
-      selected.has(element.id) && canMove(element)
+      selected.has(element.id)
         ? {
             ...element,
             x: element.x + dx,
@@ -188,11 +176,14 @@ export function deleteSelection(
   scene: SceneFile,
   ids: readonly string[],
 ): SceneFile {
-  const selected = new Set(ids);
+  const selected = new Set(editableSelection(scene, ids));
+  if (!selected.size) {
+    return scene;
+  }
   return {
     ...scene,
     elements: scene.elements.map((element) =>
-      selected.has(element.id) && canMove(element)
+      selected.has(element.id)
         ? {
             ...element,
             isDeleted: true,

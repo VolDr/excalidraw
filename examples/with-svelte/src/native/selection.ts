@@ -1,6 +1,9 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import { canMove } from "./transforms";
+import {
+  editableSelection,
+  selectionUnit,
+} from "./groups";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -57,23 +60,32 @@ export function elementsInMarquee(
 ): string[] {
   const selection = rectangleBetween(start, end);
   const enclosed = end.x < start.x;
-  return scene.elements
-    .filter((element) => {
-      if (!canMove(element)) {
-        return false;
-      }
-      const box = visualBounds(element);
-      return enclosed
-        ? box.x >= selection.x &&
-            box.y >= selection.y &&
-            box.x + box.width <= selection.x + selection.width &&
-            box.y + box.height <= selection.y + selection.height
-        : box.x <= selection.x + selection.width &&
-            box.x + box.width >= selection.x &&
-            box.y <= selection.y + selection.height &&
-            box.y + box.height >= selection.y;
-    })
-    .map((element) => element.id);
+  const seen = new Set<string>();
+  const result = new Set<string>();
+  const intersects = (element: ExcalidrawElement): boolean => {
+    const box = visualBounds(element);
+    return enclosed
+      ? box.x >= selection.x &&
+          box.y >= selection.y &&
+          box.x + box.width <= selection.x + selection.width &&
+          box.y + box.height <= selection.y + selection.height
+      : box.x <= selection.x + selection.width &&
+          box.x + box.width >= selection.x &&
+          box.y <= selection.y + selection.height &&
+          box.y + box.height >= selection.y;
+  };
+  for (const element of scene.elements) {
+    const unit = selectionUnit(scene, element.id);
+    if (!unit.length || unit.some((id) => seen.has(id))) {
+      continue;
+    }
+    unit.forEach((id) => seen.add(id));
+    const members = scene.elements.filter((member) => unit.includes(member.id));
+    if (enclosed ? members.every(intersects) : members.some(intersects)) {
+      unit.forEach((id) => result.add(id));
+    }
+  }
+  return scene.elements.filter((element) => result.has(element.id)).map((element) => element.id);
 }
 
 /**
@@ -85,22 +97,32 @@ export function duplicateSelection(
   ids: readonly string[],
   offset = 24,
 ): { scene: SceneFile; ids: string[] } {
-  const selected = new Set(ids);
+  const selected = new Set(editableSelection(scene, ids));
   const now = Date.now();
+  const newGroupIds = new Map<string, string>();
   const duplicates = scene.elements
-    .filter((element) => selected.has(element.id) && canMove(element))
-    .map((element) => ({
-      ...structuredClone(element),
-      id: crypto.randomUUID(),
-      x: element.x + offset,
-      y: element.y + offset,
-      index: null,
-      version: 1,
-      versionNonce: Math.floor(Math.random() * 2 ** 31),
-      seed: Math.floor(Math.random() * 2 ** 31),
-      created: now,
-      updated: now,
-    })) as ExcalidrawElement[];
+    .filter((element) => selected.has(element.id))
+    .map((element) => {
+      const groupIds = element.groupIds.map((id) => {
+        if (!newGroupIds.has(id)) {
+          newGroupIds.set(id, crypto.randomUUID());
+        }
+        return newGroupIds.get(id)!;
+      });
+      return {
+        ...structuredClone(element),
+        id: crypto.randomUUID(),
+        groupIds,
+        x: element.x + offset,
+        y: element.y + offset,
+        index: null,
+        version: 1,
+        versionNonce: Math.floor(Math.random() * 2 ** 31),
+        seed: Math.floor(Math.random() * 2 ** 31),
+        created: now,
+        updated: now,
+      };
+    }) as ExcalidrawElement[];
   if (!duplicates.length) {
     return { scene, ids: [] };
   }

@@ -42,6 +42,12 @@
     elementsInMarquee,
     rectangleBetween,
   } from "./native/selection";
+  import {
+    editableSelection,
+    groupSelection,
+    selectionUnit,
+    ungroupSelection,
+  } from "./native/groups";
 
   type Props = {
     scene: SceneFile;
@@ -115,6 +121,28 @@
       return;
     }
     const result = duplicateSelection(scene, selectedIds);
+    if (result.ids.length) {
+      commit(scene, result.scene);
+      selectedIds = result.ids;
+    }
+  }
+
+  function groupSelected() {
+    if (gesture || textEditor) {
+      return;
+    }
+    const result = groupSelection(scene, selectedIds);
+    if (result.groupId) {
+      commit(scene, result.scene);
+      selectedIds = result.ids;
+    }
+  }
+
+  function ungroupSelected() {
+    if (gesture || textEditor) {
+      return;
+    }
+    const result = ungroupSelection(scene, selectedIds);
     if (result.ids.length) {
       commit(scene, result.scene);
       selectedIds = result.ids;
@@ -493,18 +521,20 @@
         ids = [selectedId];
       } else {
         const target = pickElement(scene.elements, start, 8 / zoom);
-        const hit = target && canMove(target) ? target : null;
+        const unit = target ? selectionUnit(scene, target.id) : [];
         if (event.shiftKey) {
-          if (hit) {
-            selectedIds = selectedIds.includes(hit.id)
-              ? selectedIds.filter((item) => item !== hit.id)
-              : [...selectedIds, hit.id];
+          if (unit.length) {
+            const fullySelected = unit.every((item) => selectedIds.includes(item));
+            selectedIds = fullySelected
+              ? selectedIds.filter((item) => !unit.includes(item))
+              : [...new Set([...selectedIds, ...unit])];
           }
           action = "select";
-        } else if (hit) {
-          ids = selectedIds.includes(hit.id) ? [...selectedIds] : [hit.id];
+        } else if (unit.length) {
+          ids = unit.every((item) => selectedIds.includes(item))
+            ? [...selectedIds] : unit;
           selectedIds = ids;
-          id = hit.id;
+          id = target!.id;
         } else {
           selectedIds = [];
           action = "select";
@@ -556,10 +586,7 @@
     const dx = point.x - g.start.x;
     const dy = point.y - g.start.y;
     if (g.action === "move" && g.id) {
-      if (Math.hypot(dx, dy) > 0.2 && g.ids.some((id) => {
-        const element = g.original.elements.find((el) => el.id === id);
-        return element ? canMove(element) : false;
-      })) {
+      if (Math.hypot(dx, dy) > 0.2 && editableSelection(g.original, g.ids).length) {
         g.changed = true;
         onChange(moveSelection(g.original, g.ids, dx, dy));
       }
@@ -683,6 +710,15 @@
       redo();
       return;
     }
+    if (cmd && event.key.toLowerCase() === "g") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        ungroupSelected();
+      } else {
+        groupSelected();
+      }
+      return;
+    }
     if (cmd && event.key.toLowerCase() === "d") {
       event.preventDefault();
       duplicate();
@@ -690,8 +726,10 @@
     }
     if (cmd && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      selectedIds = scene.elements.filter((element) =>
-        canMove(element)).map((element) => element.id);
+      selectedIds = editableSelection(
+        scene,
+        scene.elements.map((element) => element.id),
+      );
       return;
     }
     if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length) {
@@ -803,6 +841,8 @@
     <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
+    <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
+    <button disabled={!selectedIds.length} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
     <span class="zoom">{Math.round(zoom * 100)}%</span>
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
