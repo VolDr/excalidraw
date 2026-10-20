@@ -231,6 +231,25 @@ export function appendNativeArrow(
   return { ...scene, elements: [...elements, bound] };
 }
 
+export function pickNativeLinkedEndpoint(
+  scene: SceneFile,
+  element: ExcalidrawElement,
+  point: Point,
+  tolerance = 9,
+): End | null {
+  const endpoints = nativeLinkedEndpoints(scene, element);
+  if (!endpoints) {
+    return null;
+  }
+  for (const key of ["start", "end"] as const) {
+    const p = endpoints[key];
+    if (Math.hypot(point.x - p.x, point.y - p.y) <= tolerance) {
+      return key;
+    }
+  }
+  return null;
+}
+
 /** Picking a bound arrow is allowed, but the arrow itself cannot be dragged. */
 export function nativeLinkedEndpoints(scene: SceneFile, element: ExcalidrawElement): { start: Point; end: Point } | null {
   return isNativeLinkedArrow(scene, element) ? worldEndpoints(element) : null;

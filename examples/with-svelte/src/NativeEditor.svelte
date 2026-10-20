@@ -7,6 +7,13 @@
   import type { ExcalidrawElement } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
   import {
+    appendNativeArrow,
+    isNativeLinkedArrow,
+    nativeLinkedEndpoints,
+    pickNativeLinkedEndpoint,
+    reconnectNativeEndpoint,
+  } from "./native/bindings";
+  import {
     createShape,
     createFreeDraw,
     createText,
@@ -411,7 +418,7 @@
       );
       ctx.restore();
 
-      if (selectedId === element.id && isBoxTransformable(element)) {
+      if (selectedId === element.id && isBoxTransformable(element, scene)) {
         const handles = handleLocations(element);
         const top = {
           x: (handles.nw.x + handles.ne.x) / 2,
@@ -435,7 +442,7 @@
         ctx.stroke();
       }
       if (selectedId === element.id) {
-        const locations = endpointLocations(element);
+        const locations = nativeLinkedEndpoints(scene, element) ?? endpointLocations(element);
         if (locations) {
           ctx.save();
           ctx.fillStyle = theme === "dark" ? "#282637" : "#fff";
@@ -507,9 +514,10 @@
     if (action === "move") {
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
-        ? pickEndpoint(selected, start, 9 / zoom) : null;
+        ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
+            pickEndpoint(selected, start, 9 / zoom)) : null;
       handle = !event.shiftKey && selected
-        ? pickHandle(selected, start, 9 / zoom) : null;
+        ? pickHandle(selected, start, 9 / zoom, scene) : null;
       if (endpoint && selectedId) {
         action = "endpoint";
         id = selectedId;
@@ -597,7 +605,10 @@
     } else if (g.action === "endpoint" && g.id && g.endpoint) {
       if (Math.hypot(dx, dy) > 0.2) {
         g.changed = true;
-        onChange(updateLineEndpoint(g.original, g.id, g.endpoint, point));
+        const element = g.original.elements.find((item) => item.id === g.id);
+        onChange(element && isNativeLinkedArrow(g.original, element)
+          ? reconnectNativeEndpoint(g.original, g.id, g.endpoint, point)
+          : updateLineEndpoint(g.original, g.id, g.endpoint, point));
       }
     } else if (g.action === "select") {
       if (Math.hypot(dx, dy) > 4 / zoom) {
@@ -660,10 +671,10 @@
       }
     } else if (g.action === "draw" && preview) {
       if (Math.max(preview.width, preview.height) >= 3 / zoom) {
-        commit(g.original, {
-          ...g.original,
-          elements: [...g.original.elements, preview],
-        });
+        const next = preview.type === "arrow"
+          ? appendNativeArrow(g.original, preview, g.start, getPoint(event))
+          : { ...g.original, elements: [...g.original.elements, preview] };
+        commit(g.original, next);
         selectedIds = [preview.id];
         tool = "selection";
       }
