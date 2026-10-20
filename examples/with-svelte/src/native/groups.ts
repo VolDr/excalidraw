@@ -51,8 +51,10 @@ export function selectionUnit(scene: SceneFile, id: string): string[] {
   if (!element) {
     return [];
   }
-  if (isNativeLinkedArrow(scene, element) ||
-      (isSafeBoundBox(scene, element) && !!element.boundElements?.length)) {
+  if (
+    isNativeLinkedArrow(scene, element) ||
+    (isSafeBoundBox(scene, element) && !!element.boundElements?.length)
+  ) {
     return [id];
   }
   if (!isIndependent(element)) {

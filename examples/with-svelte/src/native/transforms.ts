@@ -39,7 +39,8 @@ export function isBoxTransformable(
     !element.locked &&
     !element.frameId &&
     element.groupIds.length === 0 &&
-    (!element.boundElements?.length || (!!scene && isSafeBoundBox(scene, element)))
+    (!element.boundElements?.length ||
+      (!!scene && isSafeBoundBox(scene, element)))
   );
 }
 

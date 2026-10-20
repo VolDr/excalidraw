@@ -9,7 +9,11 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { blankScene, createShape, parseScene, serializeScene } from "./scene";
-import { deleteSelection, moveSelection, transformSelected } from "./transforms";
+import {
+  deleteSelection,
+  moveSelection,
+  transformSelected,
+} from "./transforms";
 
 const makeScene = () => {
   const left = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
@@ -43,7 +47,6 @@ describe("native reciprocal arrow binding", () => {
     expect(removedArrow.elements[1].boundElements).toBeNull();
     expect(scene.elements[0].isDeleted).toBe(false);
   });
-
 
   it("links both ends on creation and round-trips official Excalidraw metadata", () => {
     const { left, right, arrow, scene } = makeScene();
@@ -101,7 +104,10 @@ describe("native reciprocal arrow binding", () => {
       x: center.x + 50,
       y: center.y,
     });
-    const rotatedPoint = nativeLinkedEndpoints(rotated, rotated.elements[2])!.start;
+    const rotatedPoint = nativeLinkedEndpoints(
+      rotated,
+      rotated.elements[2],
+    )!.start;
     expect(rotatedPoint.x).toBeCloseTo(center.x);
     expect(rotatedPoint.y).toBeCloseTo(center.y + box.width / 2);
   });
@@ -124,12 +130,10 @@ describe("native reciprocal arrow binding", () => {
       x: 380,
       y: 180,
     });
-    const reconnected = reconnectNativeEndpoint(
-      detached,
-      arrow.id,
-      "end",
-      { x: right.x + 50, y: right.y + 50 },
-    );
+    const reconnected = reconnectNativeEndpoint(detached, arrow.id, "end", {
+      x: right.x + 50,
+      y: right.y + 50,
+    });
     const linked = reconnected.elements[2];
     expect(isNativeLinkedArrow(reconnected, linked)).toBe(true);
     expect(reconnected.elements[1].boundElements?.[0].id).toBe(arrow.id);
@@ -156,12 +160,18 @@ describe("native reciprocal arrow binding", () => {
     expect(isNativeLinkedArrow(imported, imported.elements[2])).toBe(false);
     expect(moveSelection(imported, [left.id], 10, 10)).toBe(imported);
     expect(syncNativeBindings(imported)).toBe(imported);
-    expect(transformSelected(imported, left.id, "se", { x: 300, y: 300 }).elements[0])
-      .toBe(imported.elements[0]);
+    expect(
+      transformSelected(imported, left.id, "se", { x: 300, y: 300 })
+        .elements[0],
+    ).toBe(imported.elements[0]);
   });
 
   it("avoids circular self-links and does not mutate unbound arrows", () => {
-    const rectangle = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
+    const rectangle = createShape(
+      "rectangle",
+      { x: 10, y: 10 },
+      { x: 110, y: 110 },
+    );
     const arrow = createShape("arrow", { x: 20, y: 30 }, { x: 90, y: 80 });
     const result = appendNativeArrow(
       { ...blankScene(), elements: [rectangle] },

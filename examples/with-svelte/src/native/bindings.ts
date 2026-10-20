@@ -1,13 +1,19 @@
 import { pointFrom } from "@excalidraw/math";
 
-import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/element/types";
+import type {
+  ExcalidrawElement,
+  ExcalidrawArrowElement,
+} from "@excalidraw/element/types";
 import type { LocalPoint } from "@excalidraw/math";
 
 import { hitTest } from "./scene";
 
 import type { Point, SceneFile } from "./scene";
 
-type Box = Extract<ExcalidrawElement, { type: "rectangle" | "ellipse" | "diamond" }>;
+type Box = Extract<
+  ExcalidrawElement,
+  { type: "rectangle" | "ellipse" | "diamond" }
+>;
 type End = "start" | "end";
 const EPS = 0.00001;
 
@@ -15,12 +21,21 @@ const isBox = (el: ExcalidrawElement): el is Box =>
   el.type === "rectangle" || el.type === "ellipse" || el.type === "diamond";
 
 const isTwoPointArrow = (el: ExcalidrawElement): el is ExcalidrawArrowElement =>
-  el.type === "arrow" && !el.elbowed && el.points.length === 2 &&
-  !el.isDeleted && !el.locked && !el.frameId && el.groupIds.length === 0 &&
+  el.type === "arrow" &&
+  "elbowed" in el &&
+  el.elbowed === false &&
+  el.points.length === 2 &&
+  !el.isDeleted &&
+  !el.locked &&
+  !el.frameId &&
+  el.groupIds.length === 0 &&
   !el.boundElements?.length;
 
-const validBinding = (binding: ExcalidrawArrowElement["startBinding"]): boolean =>
-  !binding || (binding.mode === "inside" &&
+const validBinding = (
+  binding: ExcalidrawArrowElement["startBinding"],
+): boolean =>
+  !binding ||
+  (binding.mode === "inside" &&
     binding.fixedPoint.length === 2 &&
     binding.fixedPoint.every((v) => Number.isFinite(v) && v >= 0 && v <= 1));
 
@@ -28,23 +43,45 @@ const validBinding = (binding: ExcalidrawArrowElement["startBinding"]): boolean 
  * Only recognize a reciprocal two-point "inside" binding; foreign/complex
  * bindings are never rewritten by native geometry operations.
  */
-export function isSafeBoundBox(scene: SceneFile, el: ExcalidrawElement): el is Box {
-  if (!isBox(el) || el.isDeleted || el.locked || el.frameId ||
-      el.groupIds.length || el.width < 8 || el.height < 8) {
+export function isSafeBoundBox(
+  scene: SceneFile,
+  el: ExcalidrawElement,
+): el is Box {
+  if (
+    !isBox(el) ||
+    el.isDeleted ||
+    el.locked ||
+    el.frameId ||
+    el.groupIds.length ||
+    el.width < 8 ||
+    el.height < 8
+  ) {
     return false;
   }
   return (el.boundElements ?? []).every((ref) => {
     const arrow = scene.elements.find((item) => item.id === ref.id);
-    return ref.type === "arrow" && !!arrow && isTwoPointArrow(arrow) &&
-      validBinding(arrow.startBinding) && validBinding(arrow.endBinding) &&
-      (arrow.startBinding?.elementId === el.id || arrow.endBinding?.elementId === el.id);
+    return (
+      ref.type === "arrow" &&
+      !!arrow &&
+      isTwoPointArrow(arrow) &&
+      validBinding(arrow.startBinding) &&
+      validBinding(arrow.endBinding) &&
+      (arrow.startBinding?.elementId === el.id ||
+        arrow.endBinding?.elementId === el.id)
+    );
   });
 }
 
-export function isNativeLinkedArrow(scene: SceneFile, el: ExcalidrawElement): el is ExcalidrawArrowElement {
-  if (!isTwoPointArrow(el) ||
-      (!el.startBinding && !el.endBinding) ||
-      !validBinding(el.startBinding) || !validBinding(el.endBinding)) {
+export function isNativeLinkedArrow(
+  scene: SceneFile,
+  el: ExcalidrawElement,
+): el is ExcalidrawArrowElement {
+  if (
+    !isTwoPointArrow(el) ||
+    (!el.startBinding && !el.endBinding) ||
+    !validBinding(el.startBinding) ||
+    !validBinding(el.endBinding)
+  ) {
     return false;
   }
   for (const binding of [el.startBinding, el.endBinding]) {
@@ -52,8 +89,13 @@ export function isNativeLinkedArrow(scene: SceneFile, el: ExcalidrawElement): el
       continue;
     }
     const target = scene.elements.find((item) => item.id === binding.elementId);
-    if (!target || !isSafeBoundBox(scene, target) ||
-        !target.boundElements?.some((ref) => ref.id === el.id && ref.type === "arrow")) {
+    if (
+      !target ||
+      !isSafeBoundBox(scene, target) ||
+      !target.boundElements?.some(
+        (ref) => ref.id === el.id && ref.type === "arrow",
+      )
+    ) {
       return false;
     }
   }
@@ -83,14 +125,20 @@ const local = (shape: ExcalidrawElement, point: Point): Point => {
 };
 
 const center = (shape: ExcalidrawElement): Point => ({
-  x: shape.x + shape.width / 2, y: shape.y + shape.height / 2,
+  x: shape.x + shape.width / 2,
+  y: shape.y + shape.height / 2,
 });
 
-const worldEndpoints = (el: ExcalidrawArrowElement): { start: Point; end: Point } => {
+const worldEndpoints = (
+  el: ExcalidrawArrowElement,
+): { start: Point; end: Point } => {
   const p = el.points;
   return {
     start: world(el, { x: el.x + p[0][0], y: el.y + p[0][1] }),
-    end: world(el, { x: el.x + p[p.length - 1][0], y: el.y + p[p.length - 1][1] }),
+    end: world(el, {
+      x: el.x + p[p.length - 1][0],
+      y: el.y + p[p.length - 1][1],
+    }),
   };
 };
 
@@ -126,7 +174,10 @@ const fixedPoint = (shape: Box, at: Point): [number, number] => {
   ];
 };
 
-const attached = (scene: SceneFile, binding: ExcalidrawArrowElement["startBinding"]): Point | null => {
+const attached = (
+  scene: SceneFile,
+  binding: ExcalidrawArrowElement["startBinding"],
+): Point | null => {
   if (!binding) {
     return null;
   }
@@ -141,23 +192,31 @@ const attached = (scene: SceneFile, binding: ExcalidrawArrowElement["startBindin
 };
 
 const touch = <T extends ExcalidrawElement>(el: T, patch: Partial<T>): T => ({
-  ...el, ...patch,
+  ...el,
+  ...patch,
   version: el.version + 1,
   versionNonce: Math.floor(Math.random() * 2 ** 31),
   updated: Date.now(),
 });
 
 /** Normalize two world endpoints to Excalidraw's local coordinate system. */
-function withEndpoints(arrow: ExcalidrawArrowElement, start: Point, end: Point): ExcalidrawArrowElement {
+function withEndpoints(
+  arrow: ExcalidrawArrowElement,
+  start: Point,
+  end: Point,
+): ExcalidrawArrowElement {
   const previous = worldEndpoints(arrow);
-  if (Math.hypot(previous.start.x - start.x, previous.start.y - start.y) < EPS &&
-      Math.hypot(previous.end.x - end.x, previous.end.y - end.y) < EPS) {
+  if (
+    Math.hypot(previous.start.x - start.x, previous.start.y - start.y) < EPS &&
+    Math.hypot(previous.end.x - end.x, previous.end.y - end.y) < EPS
+  ) {
     return arrow;
   }
   const x = Math.min(start.x, end.x);
   const y = Math.min(start.y, end.y);
   return touch(arrow, {
-    x, y,
+    x,
+    y,
     width: Math.abs(end.x - start.x),
     height: Math.abs(end.y - start.y),
     angle: 0 as ExcalidrawArrowElement["angle"],
@@ -208,18 +267,30 @@ export function appendNativeArrow(
   const startBox = findTarget(scene, startAt);
   const foundEnd = findTarget(scene, endAt);
   const endBox = foundEnd?.id === startBox?.id ? null : foundEnd;
-  const start = startBox ? outline(startBox, endBox ? center(endBox) : endAt) : startAt;
-  const end = endBox ? outline(endBox, startBox ? center(startBox) : startAt) : endAt;
+  const start = startBox
+    ? outline(startBox, endBox ? center(endBox) : endAt)
+    : startAt;
+  const end = endBox
+    ? outline(endBox, startBox ? center(startBox) : startAt)
+    : endAt;
   const arrow = withEndpoints(element, start, end);
   const startBinding = startBox
-    ? { elementId: startBox.id, fixedPoint: fixedPoint(startBox, start), mode: "inside" as const }
+    ? {
+        elementId: startBox.id,
+        fixedPoint: fixedPoint(startBox, start),
+        mode: "inside" as const,
+      }
     : null;
   const endBinding = endBox
-    ? { elementId: endBox.id, fixedPoint: fixedPoint(endBox, end), mode: "inside" as const }
+    ? {
+        elementId: endBox.id,
+        fixedPoint: fixedPoint(endBox, end),
+        mode: "inside" as const,
+      }
     : null;
   const bound = { ...arrow, startBinding, endBinding };
   const elements = scene.elements.map((el) =>
-    (el.id === startBox?.id || el.id === endBox?.id)
+    el.id === startBox?.id || el.id === endBox?.id
       ? touch(el, {
           boundElements: [
             ...(el.boundElements ?? []),
@@ -251,7 +322,10 @@ export function pickNativeLinkedEndpoint(
 }
 
 /** Picking a bound arrow is allowed, but the arrow itself cannot be dragged. */
-export function nativeLinkedEndpoints(scene: SceneFile, element: ExcalidrawElement): { start: Point; end: Point } | null {
+export function nativeLinkedEndpoints(
+  scene: SceneFile,
+  element: ExcalidrawElement,
+): { start: Point; end: Point } | null {
   return isNativeLinkedArrow(scene, element) ? worldEndpoints(element) : null;
 }
 
@@ -277,10 +351,17 @@ export function reconnectNativeEndpoint(
   const shape = found?.id === otherBinding?.elementId ? null : found;
   const target = shape ? outline(shape, before[opposite]) : pointer;
   const binding = shape
-    ? { elementId: shape.id, fixedPoint: fixedPoint(shape, target), mode: "inside" as const }
+    ? {
+        elementId: shape.id,
+        fixedPoint: fixedPoint(shape, target),
+        mode: "inside" as const,
+      }
     : null;
-  const moved = withEndpoints(el, endpoint === "start" ? target : before.start,
-    endpoint === "end" ? target : before.end);
+  const moved = withEndpoints(
+    el,
+    endpoint === "start" ? target : before.start,
+    endpoint === "end" ? target : before.end,
+  );
   const updated = touch(moved, {
     [endpoint === "start" ? "startBinding" : "endBinding"]: binding,
   });
@@ -330,9 +411,13 @@ export function detachDeletedNativeBindings(
       if (deletedIds.has(element.id)) {
         return touch(element, { boundElements: null });
       }
-      const retained = element.boundElements.filter((ref) => !deletedIds.has(ref.id));
+      const retained = element.boundElements.filter(
+        (ref) => !deletedIds.has(ref.id),
+      );
       if (retained.length !== element.boundElements.length) {
-        return touch(element, { boundElements: retained.length ? retained : null });
+        return touch(element, {
+          boundElements: retained.length ? retained : null,
+        });
       }
     }
     return element;

@@ -34,8 +34,3 @@ jobs:
         run: yarn --cwd examples/with-svelte test
       - name: Production bundle
         run: yarn --cwd examples/with-svelte build
-      - name: Print canonical formatted binding sources
-        if: always()
-        run: |
-          ./node_modules/.bin/prettier --write examples/with-svelte/src/native/bindings.ts examples/with-svelte/src/native/bindings.test.ts examples/with-svelte/src/native/groups.ts examples/with-svelte/src/native/transforms.ts
-          node -e 'const fs=require("fs"); for (const p of ["examples/with-svelte/src/native/bindings.ts","examples/with-svelte/src/native/bindings.test.ts","examples/with-svelte/src/native/groups.ts","examples/with-svelte/src/native/transforms.ts"]) console.log("BIND_FORMAT_FILE:"+p+"::"+fs.readFileSync(p).toString("base64"))'
