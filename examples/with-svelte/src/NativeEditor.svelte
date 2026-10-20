@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import rough from "roughjs/bin/rough";
 
-  import { getFontString } from "@excalidraw/common";
+  import { applyDarkModeFilter, getFontString } from "@excalidraw/common";
 
   import type { ExcalidrawElement } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
@@ -212,14 +212,20 @@
         return;
       }
       const { x, y, width, height } = elementBounds(element);
+      const stroke = theme === "dark"
+        ? applyDarkModeFilter(element.strokeColor)
+        : element.strokeColor;
+      const fill = element.backgroundColor === "transparent"
+        ? undefined
+        : theme === "dark"
+          ? applyDarkModeFilter(element.backgroundColor)
+          : element.backgroundColor;
       const opts = {
         seed: element.seed,
         roughness: element.roughness,
-        stroke: element.strokeColor,
+        stroke,
         strokeWidth: element.strokeWidth,
-        fill: element.backgroundColor === "transparent"
-          ? undefined
-          : element.backgroundColor,
+        fill,
         fillStyle: element.fillStyle,
       };
       ctx.save();
@@ -248,7 +254,7 @@
           ], opts);
           break;
         case "text": {
-          ctx.fillStyle = element.strokeColor;
+          ctx.fillStyle = stroke;
           ctx.font = getFontString({
             fontSize: element.fontSize,
             fontFamily: element.fontFamily,
@@ -263,7 +269,7 @@
           const points = element.points.map((p) => [element.x + p[0], element.y + p[1]] as const);
           if (points.length) {
             ctx.beginPath();
-            ctx.strokeStyle = element.strokeColor;
+            ctx.strokeStyle = stroke;
             ctx.lineWidth = element.strokeWidth * 2;
             ctx.lineJoin = "round";
             ctx.lineCap = "round";
@@ -289,7 +295,7 @@
               const [bx, by] = pts[pts.length - 1];
               const angle = Math.atan2(by - ay, bx - ax);
               const head = Math.min(15, Math.max(8, element.strokeWidth * 5));
-              ctx.strokeStyle = element.strokeColor;
+              ctx.strokeStyle = stroke;
               ctx.lineWidth = element.strokeWidth;
               ctx.beginPath();
               ctx.moveTo(
@@ -523,8 +529,18 @@
       preview = null;
       tool = "selection";
     }
-    if (event.key.toLowerCase() === "v") tool = "selection";
-    if (event.key.toLowerCase() === "r") tool = "rectangle";
+    if (cmd || event.altKey) {
+      return;
+    }
+    const key = event.key.toLowerCase();
+    if (key === "v") tool = "selection";
+    if (key === "r") tool = "rectangle";
+    if (key === "e") tool = "ellipse";
+    if (key === "d") tool = "diamond";
+    if (key === "l") tool = "line";
+    if (key === "a") tool = "arrow";
+    if (key === "t") tool = "text";
+    if (key === "p") tool = "freedraw";
   }
 
   onMount(() => {
@@ -599,6 +615,7 @@
   <div
     class="native-viewport"
     class:hand={tool === "hand"}
+    class:text-tool={tool === "text"}
     role="application"
     tabindex="0"
     aria-label="Нативный холст Excalidraw"
@@ -651,6 +668,7 @@
     outline-offset: -2px; cursor: crosshair; touch-action: none;
   }
   .native-viewport.hand { cursor: grab; }
+  .native-viewport.text-tool { cursor: text; }
   .native-viewport canvas { display: block; width: 100%; height: 100%; }
   .text-input {
     position: absolute; z-index: 2; min-width: 180px; min-height: 68px;
