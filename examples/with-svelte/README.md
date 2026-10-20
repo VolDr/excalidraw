@@ -22,15 +22,15 @@ Open http://localhost:3007.
 - Draw rectangle, ellipse, diamond, line, arrow and pressure-sampled freehand strokes using the Canvas 2D API and the same Rough.js renderer family as Excalidraw.
 - Add/edit plain text through a Svelte textarea (double-click text to edit); select, drag and delete shapes with undo/redo.
 - Pan using the hand tool or mouse wheel, and zoom using Ctrl+wheel.
-- Shift-click to select multiple objects; drag, delete or use arrow keys to move the selection (Shift+arrows moves by 10). Ctrl+A selects all safely movable objects.
-- Use keyboard: V (selection), R (rectangle), Delete, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
+- Shift-click or drag a selection marquee to select multiple independent objects; left-to-right marquee intersects, right-to-left fully encloses. Drag, delete or use arrow keys to move the selection (Shift+arrows moves by 10). Ctrl+A selects all safely movable objects. Ctrl+D duplicates the selection.
+- Drag end handles to edit simple unbound, two-point lines and arrows. Use keyboard: V (selection), R (rectangle), Delete, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
 - Import and export native `.excalidraw` JSON. Preserve unknown elements and embedded image data rather than dropping them from the document.
 - Toggle Svelte/React editing modes while carrying scene JSON between them.
 - Svelte theme and file toolbar; React chunk loads only when requested.
 
 ## Known limitations
 
-- Native mode does not render images, frames, advanced bound text, geometry, bindings, labels or advanced line geometry yet. It shows an explicit warning for unsupported element types, preserves their data, and provides a full React-editor fallback. Supported elements with complex geometry/rotation may be drawn approximately.
+- Native mode does not render images, frames, advanced bound text, bindings, labels or complex multi-point and elbow arrow geometry yet. It shows an explicit warning for unsupported element types, preserves their data, and provides a full React-editor fallback. Supported elements with complex geometry/rotation may be drawn approximately.
 - It does not have the original editor's collaboration, PWA, persistence, full keyboard shortcuts, tool and selection semantics, PNG/SVG export, or touch gesture parity. History remains separate across mode switches.
 - The React fallback is **not** a migrated component; the application still declares React dependencies and shares the `@excalidraw/excalidraw` package.
 - Embedded scene data in PNG/SVG is not supported by this file importer.
