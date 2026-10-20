@@ -1,46 +1,48 @@
 # Svelte 5 migration strategy
 
-## Current architecture
+## Current state (phase 2, partial)
 
-This repository includes a React 19 web application in `excalidraw-app/`
-and the React-based `@excalidraw/excalidraw` editor in
-`packages/excalidraw/`. The latter includes React components, hooks,
-context, and Jotai state; its editor APIs are not framework-neutral.
+`examples/with-svelte` now boots a Svelte 5 application with a **native**
+Rough.js/Canvas 2D vertical slice for simple shapes, scene JSON handling, and
+undo history. The user can switch to the existing React editor for the
+unported functionality. The React editor loads lazily on demand.
 
-The separate `@excalidraw/common`, `@excalidraw/element`,
-`@excalidraw/math`, and `@excalidraw/fractional-indexing` packages are
-the better starting point for extracting framework-independent domain logic.
-Do not assume every module in those packages is browser-independent without
-auditing imports.
+Core Excalidraw remains a React/Jotai application and library. The new native
+editor is **not feature-complete** or an equivalent drop-in replacement.
 
-## Phases
+## Architecture
 
-1. **Svelte host (this branch).** Add `examples/with-svelte/` with a native
-   Svelte 5 toolbar and the existing editor mounted behind a narrow React
-   interoperability boundary. This validates scene imports/exports and a
-   stable Svelte-to-editor API while keeping current editor functionality.
-2. **Framework-independent state.** Extract document state, selection,
-   history, command execution, and subscriptions into a TS controller with
-   no React hooks or Jotai. Freeze typed contracts and add parity tests.
-3. **Canvas/pointer engine.** Isolate rendering, hit testing, drag, pinch,
-   keyboard shortcuts, and text editing behind browser-neutral interfaces
-   where possible. Preserve scene JSON compatibility.
-4. **Native Svelte editor.** Move editor toolbars, menus, dialogs, panels,
-   selection UI, and tool state to Svelte 5. Replace the React adapter with
-   the extracted engine as each feature reaches parity.
-5. **Full app migration.** Port local-first persistence, multiplayer,
-   sharing, PWA, routing, and localization from `excalidraw-app/`.
-   Move builds and tests only after end-to-end parity is demonstrated.
-6. **Remove React.** Delete React/React DOM/Jotai only when no runtime
-   consumers remain, after checking the transitive dependency tree.
+- `packages/excalidraw/`: original React editor. Untouched.
+- `excalidraw-app/`: original production site. Untouched.
+- `packages/common`, `packages/element`, `packages/math`: reusable existing
+  geometry and data types, subject to per-module dependency audits.
+- `examples/with-svelte/src/native/scene.ts`: framework-independent scene
+  serialization, basic elements, selection picking, transform helpers.
+- `examples/with-svelte/src/native/history.ts`: undo/redo snapshots.
+- `examples/with-svelte/src/NativeEditor.svelte`: new Svelte UI, interactions,
+  rough canvas painting and pointer handling.
+- `examples/with-svelte/src/ExcalidrawEditor.svelte`: temporary React
+  interoperability boundary.
+
+## Next steps
+
+1. Run `check`, tests, build and browser smoke checks (unverified).
+2. Extract/reuse precise Excalidraw rendering, element geometry and
+   transform routines (text, arrows, bindings and rotated objects).
+3. Port rich selection, resize/rotate, keyboard/pointer/touch gestures,
+   clipboard, text editing, freehand, images, libraries and menus.
+4. Replace snapshot history with granular Excalidraw-compatible history.
+5. Port the site's local-first persistence, collaboration, end-to-end
+   encryption, share links and PWA functions.
+6. Compare saved documents between old and new implementations and
+   add automated end-to-end parity tests.
+7. Remove the React adapter and runtime dependencies only after parity.
+   Preserve MIT licensing and project notices.
 
 ## Non-negotiable parity
 
-- Open/save `.excalidraw`, including images and backward compatibility.
-- Shape creation, selection, drag/resize/rotate, arrows and bindings.
-- Undo/redo and keyboard, pointer, touch, and stylus interactions.
-- PNG/SVG/export, fonts, themes, localization, performance.
-- Collaboration, encrypted sharing, offline support, accessibility.
-
-Do not drop existing `excalidraw-app/` or the React package while native
-Svelte functionality is incomplete. Preserve the MIT attribution/license.
+- No data loss for imported `.excalidraw` files, including embedded images.
+- Import/export PNG, SVG and JSON when feature parity is claimed.
+- Full shape edit/selection/transform, arrow bindings and frame operations.
+- Keyboard, mouse, touch and stylus interaction correctness.
+- Collaboration, encrypted sharing, offline, accessibility and localization.

@@ -1,31 +1,45 @@
 <script lang="ts">
+  import NativeEditor from "./NativeEditor.svelte";
   import {
-    CaptureUpdateAction,
-    loadFromBlob,
-    serializeAsJSON,
-  } from "@excalidraw/excalidraw";
-  import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-
-  import ExcalidrawEditor from "./ExcalidrawEditor.svelte";
+    blankScene,
+    parseScene,
+    serializeScene,
+    type SceneFile,
+  } from "./native/scene";
 
   let theme = $state<"light" | "dark">("light");
-  // The editor API is a complex external object: never proxy it with $state.
-  let editorApi = $state.raw<ExcalidrawImperativeAPI | null>(null);
-  let message = $state("");
-  let fileInput: HTMLInputElement;
+  let mode = $state<"native" | "full">("native");
+  let scene = $state.raw<SceneFile>(blankScene());
+  let documentEpoch = $state(0);
+  let status = $state("");
+  let input: HTMLInputElement;
+  // Import the React code only on demand, when the user opens full Excalidraw.
+  let FullEditor = $state<any>(null);
 
-  function saveFile() {
-    if (!editorApi) {
+  function sceneChanged(next: SceneFile) {
+    scene = next;
+  }
+
+  async function switchMode(next: "native" | "full") {
+    if (next === "native") {
+      mode = next;
       return;
     }
 
-    const content = serializeAsJSON(
-      editorApi.getSceneElements(),
-      editorApi.getAppState(),
-      editorApi.getFiles(),
-      "local",
-    );
-    const blob = new Blob([content], {
+    mode = "full";
+    if (!FullEditor) {
+      try {
+        const module = await import("./ExcalidrawEditor.svelte");
+        FullEditor = module.default;
+      } catch (error) {
+        status = error instanceof Error ? error.message : "Не удалось загрузить полный редактор.";
+        mode = "native";
+      }
+    }
+  }
+
+  function saveFile() {
+    const blob = new Blob([serializeScene(scene)], {
       type: "application/vnd.excalidraw+json",
     });
     const url = URL.createObjectURL(blob);
@@ -35,75 +49,94 @@
     document.body.appendChild(link);
     link.click();
     link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-    message = "Файл сохранён.";
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    status = "Файл сохранён.";
   }
 
   async function importFile(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    const api = editorApi;
-
-    if (!file || !api) {
-      input.value = "";
+    const element = event.currentTarget as HTMLInputElement;
+    const file = element.files?.[0];
+    if (!file) {
       return;
     }
-
     try {
-      const scene = await loadFromBlob(
-        file,
-        api.getAppState(),
-        api.getSceneElements(),
-      );
-      api.addFiles(Object.values(scene.files ?? {}));
-      api.updateScene({
-        elements: scene.elements,
-        appState: scene.appState,
-        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-      });
-      message = `Импортирован файл: ${file.name}`;
+      const imported = parseScene(await file.text());
+      scene = imported;
+      // Reset native undo history and recreate a loaded React editor.
+      documentEpoch++;
+      status = `Открыт файл: ${file.name}`;
     } catch (error) {
-      message = error instanceof Error ? error.message : "Не удалось открыть файл.";
+      status = error instanceof Error ? error.message : "Ошибка импорта.";
     } finally {
-      input.value = "";
+      element.value = "";
     }
   }
 </script>
 
 <div class="app-shell">
   <header class="toolbar">
-    <strong>Excalidraw <span class="subtitle">/ Svelte</span></strong>
+    <div class="identity">
+      <strong>Excalidraw <span class="subtitle">/ Svelte 5</span></strong>
+      <span class="indicator">
+        {mode === "native" ? "Нативный Canvas" : "Полный редактор (React)"}
+      </span>
+    </div>
 
     <div class="actions">
       <input
         class="file-input"
         type="file"
         accept=".excalidraw,application/vnd.excalidraw+json"
-        bind:this={fileInput}
+        bind:this={input}
         onchange={importFile}
         aria-label="Импортировать .excalidraw"
       />
-      <button disabled={!editorApi} onclick={() => fileInput.click()}>
-        Открыть
-      </button>
-      <button disabled={!editorApi} onclick={saveFile}>
-        Сохранить
-      </button>
-      <button
-        aria-label="Переключить тему"
-        aria-pressed={theme === "dark"}
-        onclick={() => (theme = theme === "light" ? "dark" : "light")}
-      >
+      <button onclick={() => input.click()}>Открыть</button>
+      <button onclick={saveFile}>Сохранить</button>
+      <button onclick={() => (theme = theme === "light" ? "dark" : "light")}>
         {theme === "light" ? "Тёмная тема" : "Светлая тема"}
       </button>
+      <div class="mode-buttons" role="group" aria-label="Выбор редактора">
+        <button
+          class:chosen={mode === "native"}
+          aria-pressed={mode === "native"}
+          onclick={() => switchMode("native")}
+        >
+          Svelte
+        </button>
+        <button
+          class:chosen={mode === "full"}
+          aria-pressed={mode === "full"}
+          onclick={() => switchMode("full")}
+        >
+          Полный
+        </button>
+      </div>
     </div>
   </header>
 
   <main class="canvas-container">
-    <ExcalidrawEditor {theme} onReady={(instance) => (editorApi = instance)} />
+    {#if mode === "native"}
+      <NativeEditor
+        {scene}
+        {theme}
+        {documentEpoch}
+        onChange={sceneChanged}
+      />
+    {:else if FullEditor}
+      {#key documentEpoch}
+        <FullEditor
+          {theme}
+          initialScene={scene}
+          onSceneChange={sceneChanged}
+        />
+      {/key}
+    {:else}
+      <p class="loading">Загрузка полного редактора…</p>
+    {/if}
   </main>
 
-  {#if message}
-    <p class="status" role="status">{message}</p>
+  {#if status}
+    <p class="status" role="status">{status}</p>
   {/if}
 </div>

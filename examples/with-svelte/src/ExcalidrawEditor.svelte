@@ -2,47 +2,65 @@
   import { onMount } from "svelte";
   import { createElement } from "react";
   import { createRoot, type Root } from "react-dom/client";
-  import { Excalidraw } from "@excalidraw/excalidraw";
-  import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+  import { Excalidraw, serializeAsJSON } from "@excalidraw/excalidraw";
+  import type {
+    AppState,
+    BinaryFiles,
+    ExcalidrawInitialDataState,
+  } from "@excalidraw/excalidraw/types";
+  import type { ExcalidrawElement } from "@excalidraw/element/types";
+  import type { SceneFile } from "./native/scene";
+  import { parseScene } from "./native/scene";
 
   type Props = {
     theme: "light" | "dark";
-    onReady: (api: ExcalidrawImperativeAPI | null) => void;
+    initialScene: SceneFile;
+    onSceneChange: (scene: SceneFile) => void;
   };
 
-  let { theme, onReady }: Props = $props();
-
+  let { theme, initialScene, onSceneChange }: Props = $props();
   let container: HTMLDivElement;
   let reactRoot: Root | null = null;
 
-  function renderEditor(currentTheme: Props["theme"], callback: Props["onReady"]) {
-    reactRoot?.render(
-      createElement(Excalidraw, {
-        theme: currentTheme,
-        onExcalidrawAPI: callback,
-        langCode: "ru",
-      }),
-    );
+  // Initial data is only captured at mount; React's component keeps its own
+  // scene between theme updates. Changes flow back to Svelte as JSON snapshots.
+  const initialData = {
+    elements: initialScene.elements,
+    appState: initialScene.appState,
+    files: initialScene.files,
+  } as unknown as ExcalidrawInitialDataState;
+
+  function handleChange(
+    elements: readonly ExcalidrawElement[],
+    appState: AppState,
+    files: BinaryFiles,
+  ) {
+    const json = serializeAsJSON(elements, appState, files, "local");
+    onSceneChange(parseScene(json));
+  }
+
+  function renderEditor(currentTheme: Props["theme"]) {
+    reactRoot?.render(createElement(Excalidraw, {
+      initialData,
+      theme: currentTheme,
+      langCode: "ru",
+      onChange: handleChange,
+    }));
   }
 
   onMount(() => {
     reactRoot = createRoot(container);
-    renderEditor(theme, onReady);
-
+    renderEditor(theme);
     return () => {
       reactRoot?.unmount();
       reactRoot = null;
-      onReady(null);
     };
   });
 
-  // Only host props are reactive in Svelte. The React editor keeps its own
-  // scene, actions, history, and internal state across these renders.
   $effect(() => {
     const nextTheme = theme;
-    const callback = onReady;
     if (reactRoot) {
-      renderEditor(nextTheme, callback);
+      renderEditor(nextTheme);
     }
   });
 </script>

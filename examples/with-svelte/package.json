@@ -8,20 +8,24 @@
     "dev": "vite --port 3007",
     "build": "vite build",
     "preview": "vite preview --port 3008",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "*",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "svelte": "^5.0.0"
+    "svelte": "^5.0.0",
+    "@excalidraw/element": "0.18.0",
+    "roughjs": "4.6.4"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^3.1.2",
+    "@sveltejs/vite-plugin-svelte": "^4.0.4",
     "@types/react": "19.0.10",
     "@types/react-dom": "19.0.4",
     "svelte-check": "^4.0.0",
     "typescript": "5.9.3",
-    "vite": "5.0.12"
+    "vite": "5.0.12",
+    "vitest": "3.0.6"
   }
 }
