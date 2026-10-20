@@ -1,0 +1,27 @@
+{
+  "name": "with-svelte",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:packages": "yarn --cwd ../../ build:packages",
+    "dev": "vite --port 3007",
+    "build": "vite build",
+    "preview": "vite preview --port 3008",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "dependencies": {
+    "@excalidraw/excalidraw": "*",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^3.1.2",
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
+    "svelte-check": "^4.0.0",
+    "typescript": "5.9.3",
+    "vite": "5.0.12"
+  }
+}
