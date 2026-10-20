@@ -39,10 +39,7 @@ describe("native scene compatibility", () => {
   it("normalizes reverse drag and preserves arrow endpoints", () => {
     const arrow = createShape("arrow", { x: 90, y: 85 }, { x: 15, y: 25 });
     expect([arrow.x, arrow.y, arrow.width, arrow.height]).toEqual([
-      15,
-      25,
-      75,
-      60,
+      15, 25, 75, 60,
     ]);
     if (arrow.type === "arrow") {
       expect(arrow.points).toEqual([
