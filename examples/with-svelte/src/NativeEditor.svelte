@@ -31,6 +31,17 @@
     transformSelected,
     type Handle,
   } from "./native/transforms";
+  import {
+    endpointLocations,
+    pickEndpoint,
+    updateLineEndpoint,
+    type Endpoint,
+  } from "./native/lines";
+  import {
+    duplicateSelection,
+    elementsInMarquee,
+    rectangleBetween,
+  } from "./native/selection";
 
   type Props = {
     scene: SceneFile;
@@ -49,6 +60,7 @@
   let selectedIds = $state<string[]>([]);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
   let preview = $state.raw<ExcalidrawElement | null>(null);
+  let marquee = $state<{ start: Point; end: Point } | null>(null);
   let zoom = $state(1);
   let pan = $state<Point>({ x: 0, y: 0 });
   let viewSize = $state<Point>({ x: 0, y: 0 });
@@ -61,13 +73,15 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free" | "transform" | "select";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "select" | "endpoint";
     start: Point;
     original: SceneFile;
     initialPan: Point;
     id: string | null;
     ids: string[];
     handle: Handle | null;
+    endpoint: Endpoint | null;
+    initialSelection: string[];
     draft: ExcalidrawElement | null;
     changed: boolean;
     points: Point[];
@@ -80,6 +94,7 @@
     documentEpoch;
     history.clear();
     selectedIds = [];
+    marquee = null;
     undoAvailable = false;
     redoAvailable = false;
   });
@@ -93,6 +108,17 @@
     history.commit(previous);
     onChange(next);
     refreshHistory();
+  }
+
+  function duplicate() {
+    if (!selectedIds.length || textEditor || gesture) {
+      return;
+    }
+    const result = duplicateSelection(scene, selectedIds);
+    if (result.ids.length) {
+      commit(scene, result.scene);
+      selectedIds = result.ids;
+    }
   }
 
   function undo() {
@@ -381,6 +407,33 @@
         ctx.fill();
         ctx.stroke();
       }
+      if (selectedId === element.id) {
+        const locations = endpointLocations(element);
+        if (locations) {
+          ctx.save();
+          ctx.fillStyle = theme === "dark" ? "#282637" : "#fff";
+          ctx.strokeStyle = "#6965db";
+          ctx.lineWidth = 1.5 / zoom;
+          for (const p of [locations.start, locations.end]) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 5 / zoom, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+    }
+    if (marquee) {
+      const { x, y, width, height } = rectangleBetween(marquee.start, marquee.end);
+      ctx.save();
+      ctx.fillStyle = "rgba(105, 101, 219, 0.09)";
+      ctx.strokeStyle = "#6965db";
+      ctx.lineWidth = 1 / zoom;
+      ctx.setLineDash([6 / zoom, 4 / zoom]);
+      ctx.fillRect(x, y, width, height);
+      ctx.strokeRect(x, y, width, height);
+      ctx.restore();
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
@@ -391,6 +444,7 @@
     theme;
     preview;
     selectedIds;
+    marquee;
     zoom;
     pan;
     viewSize;
@@ -419,17 +473,27 @@
     let id: string | null = null;
     let ids: string[] = [];
     let handle: Handle | null = null;
+    let endpoint: Endpoint | null = null;
+    const initialSelection = [...selectedIds];
     let draft: ExcalidrawElement | null = null;
 
     if (action === "move") {
       const selected = scene.elements.find((element) => element.id === selectedId);
-      handle = selected ? pickHandle(selected, start, 9 / zoom) : null;
-      if (handle && selectedId) {
+      endpoint = !event.shiftKey && selected
+        ? pickEndpoint(selected, start, 9 / zoom) : null;
+      handle = !event.shiftKey && selected
+        ? pickHandle(selected, start, 9 / zoom) : null;
+      if (endpoint && selectedId) {
+        action = "endpoint";
+        id = selectedId;
+        ids = [selectedId];
+      } else if (handle && selectedId) {
         action = "transform";
         id = selectedId;
         ids = [selectedId];
       } else {
-        const hit = pickElement(scene.elements, start, 8 / zoom);
+        const target = pickElement(scene.elements, start, 8 / zoom);
+        const hit = target && canMove(target) ? target : null;
         if (event.shiftKey) {
           if (hit) {
             selectedIds = selectedIds.includes(hit.id)
@@ -462,6 +526,8 @@
       id,
       ids,
       handle,
+      endpoint,
+      initialSelection,
       draft,
       changed: false,
       points: [start],
@@ -502,6 +568,16 @@
         g.changed = true;
         onChange(transformSelected(g.original, g.id, g.handle, point));
       }
+    } else if (g.action === "endpoint" && g.id && g.endpoint) {
+      if (Math.hypot(dx, dy) > 0.2) {
+        g.changed = true;
+        onChange(updateLineEndpoint(g.original, g.id, g.endpoint, point));
+      }
+    } else if (g.action === "select") {
+      if (Math.hypot(dx, dy) > 4 / zoom) {
+        g.changed = true;
+        marquee = { start: g.start, end: point };
+      }
     } else if (g.action === "free" && g.draft) {
       const last = g.points[g.points.length - 1];
       if (Math.hypot(point.x - last.x, point.y - last.y) < 0.5 / zoom) {
@@ -535,10 +611,18 @@
     if (viewport.hasPointerCapture(event.pointerId)) {
       viewport.releasePointerCapture(event.pointerId);
     }
-    if ((g.action === "move" || g.action === "transform") && g.changed) {
+    if (
+      (g.action === "move" || g.action === "transform" || g.action === "endpoint") &&
+      g.changed
+    ) {
       // The move was previewed in-place; record the *original* scene once.
       history.commit(g.original);
       refreshHistory();
+    } else if (g.action === "select" && g.changed && marquee) {
+      const hits = elementsInMarquee(g.original, marquee.start, marquee.end);
+      selectedIds = event.shiftKey
+        ? [...new Set([...g.initialSelection, ...hits])]
+        : hits;
     } else if (g.action === "free" && preview) {
       if (g.points.length > 1) {
         commit(g.original, {
@@ -559,6 +643,7 @@
       }
     }
     preview = null;
+    marquee = null;
     gesture = null;
   }
 
@@ -567,10 +652,17 @@
     if (!g || event.pointerId !== g.pointerId) {
       return;
     }
-    if ((g.action === "move" || g.action === "transform") && g.changed) {
+    if (
+      (g.action === "move" || g.action === "transform" || g.action === "endpoint") &&
+      g.changed
+    ) {
       onChange(g.original);
     }
     pan = g.initialPan;
+    if (g.action === "select") {
+      selectedIds = g.initialSelection;
+    }
+    marquee = null;
     preview = null;
     gesture = null;
   }
@@ -589,6 +681,11 @@
     if (cmd && event.key.toLowerCase() === "y") {
       event.preventDefault();
       redo();
+      return;
+    }
+    if (cmd && event.key.toLowerCase() === "d") {
+      event.preventDefault();
+      duplicate();
       return;
     }
     if (cmd && event.key.toLowerCase() === "a") {
@@ -705,6 +802,7 @@
     <span class="separator"></span>
     <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
+    <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
     <span class="zoom">{Math.round(zoom * 100)}%</span>
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
