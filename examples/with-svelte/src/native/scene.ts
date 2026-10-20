@@ -140,7 +140,7 @@ export function createShape(
       ...(tool === "arrow" ? { elbowed: false } : { polygon: false }),
     } as unknown as ExcalidrawElement;
   }
-  return base as ExcalidrawElement;
+  return base as unknown as ExcalidrawElement;
 }
 
 export function moveElement(

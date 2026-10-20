@@ -34,13 +34,3 @@ jobs:
         run: yarn --cwd examples/with-svelte test
       - name: Production bundle
         run: yarn --cwd examples/with-svelte build
-      - name: Collect formatted files for review
-        if: always()
-        run: |
-          ./node_modules/.bin/prettier --write \
-            examples/with-svelte/index.html \
-            examples/with-svelte/README.md \
-            examples/with-svelte/src/app.css \
-            examples/with-svelte/tsconfig.json \
-            SVELTE_MIGRATION.md
-          node -e 'const fs=require("fs");for(const p of ["examples/with-svelte/index.html","examples/with-svelte/README.md","examples/with-svelte/src/app.css","examples/with-svelte/tsconfig.json","SVELTE_MIGRATION.md"]){console.log("FORMATTED_FILE:"+p+"::"+fs.readFileSync(p).toString("base64"))}'
