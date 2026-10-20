@@ -2,10 +2,13 @@
   import { onMount } from "svelte";
   import rough from "roughjs/bin/rough";
 
+  import { getFontString } from "@excalidraw/common";
+
   import type { ExcalidrawElement } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
   import {
     createShape,
+    createFreeDraw,
     deleteById,
     elementBounds,
     isNativeShape,
@@ -44,13 +47,15 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan";
+    action: "draw" | "move" | "pan" | "free";
     start: Point;
     original: SceneFile;
     initialPan: Point;
     id: string | null;
     draft: ExcalidrawElement | null;
     changed: boolean;
+    points: Point[];
+    pressures: number[];
   };
   let gesture: Gesture | null = null;
 
@@ -147,7 +152,15 @@
           : element.backgroundColor,
         fillStyle: element.fillStyle,
       };
+      ctx.save();
       ctx.globalAlpha = element.opacity / 100;
+      if (element.angle) {
+        const cx = x + width / 2;
+        const cy = y + height / 2;
+        ctx.translate(cx, cy);
+        ctx.rotate(element.angle);
+        ctx.translate(-cx, -cy);
+      }
 
       switch (element.type) {
         case "rectangle":
@@ -164,6 +177,37 @@
             [x, y + height / 2],
           ], opts);
           break;
+        case "text": {
+          ctx.fillStyle = element.strokeColor;
+          ctx.font = getFontString({
+            fontSize: element.fontSize,
+            fontFamily: element.fontFamily,
+          });
+          ctx.textBaseline = "top";
+          for (const [i, line] of element.text.split("\\n").entries()) {
+            ctx.fillText(line, x, y + i * element.fontSize * element.lineHeight);
+          }
+          break;
+        }
+        case "freedraw": {
+          const points = element.points.map((p) => [element.x + p[0], element.y + p[1]] as const);
+          if (points.length) {
+            ctx.beginPath();
+            ctx.strokeStyle = element.strokeColor;
+            ctx.lineWidth = element.strokeWidth * 2;
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+            ctx.moveTo(points[0][0], points[0][1]);
+            for (const point of points.slice(1)) {
+              ctx.lineTo(point[0], point[1]);
+            }
+            if (points.length === 1) {
+              ctx.lineTo(points[0][0] + 0.01, points[0][1]);
+            }
+            ctx.stroke();
+          }
+          break;
+        }
         case "line":
         case "arrow": {
           const pts = element.points.map((p) =>
@@ -193,7 +237,7 @@
           break;
         }
       }
-      ctx.globalAlpha = 1;
+      ctx.restore();
     };
 
     for (const element of scene.elements) {
@@ -209,6 +253,14 @@
     if (selected) {
       const { x, y, width, height } = elementBounds(selected);
       const padding = 5 / zoom;
+      ctx.save();
+      if (selected.angle) {
+        const cx = x + width / 2;
+        const cy = y + height / 2;
+        ctx.translate(cx, cy);
+        ctx.rotate(selected.angle);
+        ctx.translate(-cx, -cy);
+      }
       ctx.setLineDash([5 / zoom, 3 / zoom]);
       ctx.strokeStyle = "#6965db";
       ctx.lineWidth = 1.5 / zoom;
@@ -217,6 +269,7 @@
         width + padding * 2, height + padding * 2,
       );
       ctx.setLineDash([]);
+      ctx.restore();
     }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
@@ -242,7 +295,7 @@
     const start = getPoint(event);
     const action = tool === "hand" || event.button === 1
       ? "pan"
-      : tool === "selection" ? "move" : "draw";
+      : tool === "selection" ? "move" : tool === "freedraw" ? "free" : "draw";
     let id: string | null = null;
     let draft: ExcalidrawElement | null = null;
 
@@ -250,9 +303,11 @@
       const hit = pickElement(scene.elements, start, 8 / zoom);
       selectedId = hit?.id ?? null;
       id = hit?.id ?? null;
-    } else if (action === "draw") {
+    } else if (action === "draw" || action === "free") {
       selectedId = null;
-      draft = createShape(tool as NativeShape, start, start);
+      draft = action === "free"
+        ? createFreeDraw([start], [event.pressure || 0.5])
+        : createShape(tool as NativeShape, start, start);
       preview = draft;
     }
     gesture = {
@@ -264,6 +319,8 @@
       id,
       draft,
       changed: false,
+      points: [start],
+      pressures: [event.pressure || 0.5],
     };
   }
 
@@ -292,6 +349,20 @@
         g.changed = true;
         onChange(moveById(g.original, g.id, dx, dy));
       }
+    } else if (g.action === "free" && g.draft) {
+      const last = g.points[g.points.length - 1];
+      if (Math.hypot(point.x - last.x, point.y - last.y) < 0.5 / zoom) {
+        return;
+      }
+      g.points.push(point);
+      g.pressures.push(event.pressure || 0.5);
+      const shape = createFreeDraw(g.points, g.pressures);
+      preview = {
+        ...shape,
+        id: g.draft.id,
+        seed: g.draft.seed,
+        versionNonce: g.draft.versionNonce,
+      };
     } else if (g.action === "draw" && g.draft) {
       const shape = createShape(tool as NativeShape, g.start, point);
       preview = {
@@ -315,6 +386,15 @@
       // The move was previewed in-place; record the *original* scene once.
       history.commit(g.original);
       refreshHistory();
+    } else if (g.action === "free" && preview) {
+      if (g.points.length > 1) {
+        commit(g.original, {
+          ...g.original,
+          elements: [...g.original.elements, preview],
+        });
+        selectedId = preview.id;
+        tool = "selection";
+      }
     } else if (g.action === "draw" && preview) {
       if (Math.max(preview.width, preview.height) >= 3 / zoom) {
         commit(g.original, {
@@ -415,6 +495,7 @@
       ["diamond", "Ромб"],
       ["line", "Линия"],
       ["arrow", "Стрелка"],
+      ["freedraw", "Карандаш"],
       ["hand", "Рука"],
     ] as item}
       <button
