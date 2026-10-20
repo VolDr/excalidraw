@@ -34,3 +34,8 @@ jobs:
         run: yarn --cwd examples/with-svelte test
       - name: Production bundle
         run: yarn --cwd examples/with-svelte build
+      - name: Print formatted group migration sources
+        if: always()
+        run: |
+          ./node_modules/.bin/prettier --write examples/with-svelte/src/native/groups.ts examples/with-svelte/src/native/groups.test.ts examples/with-svelte/src/native/selection.ts examples/with-svelte/src/native/selection.test.ts
+          node -e 'const fs = require("fs"); for (const p of ["examples/with-svelte/src/native/groups.ts","examples/with-svelte/src/native/groups.test.ts","examples/with-svelte/src/native/selection.ts","examples/with-svelte/src/native/selection.test.ts"]) console.log("GROUP_FORMAT_FILE:"+p+"::"+fs.readFileSync(p).toString("base64"))'

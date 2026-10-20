@@ -1,6 +1,7 @@
+import type { ExcalidrawElement } from "@excalidraw/element/types";
+
 import { isNativeShape } from "./scene";
 
-import type { ExcalidrawElement } from "@excalidraw/element/types";
 import type { SceneFile } from "./scene";
 
 /**
