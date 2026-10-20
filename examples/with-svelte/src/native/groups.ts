@@ -9,8 +9,12 @@ import type { SceneFile } from "./scene";
  * Existing nested, bound or framed groups remain intact for React editing.
  */
 const isIndependent = (element: ExcalidrawElement): boolean => {
-  if (!isNativeShape(element) || element.locked || element.frameId ||
-      element.boundElements?.length) {
+  if (
+    !isNativeShape(element) ||
+    element.locked ||
+    element.frameId ||
+    element.boundElements?.length
+  ) {
     return false;
   }
   if (element.type === "line" || element.type === "arrow") {
@@ -26,10 +30,14 @@ export function safeGroupMembers(
   scene: SceneFile,
   id: string,
 ): ExcalidrawElement[] {
-  const members = scene.elements.filter((element) => element.groupIds.includes(id));
+  const members = scene.elements.filter((element) =>
+    element.groupIds.includes(id),
+  );
   if (
     members.length < 2 ||
-    members.some((element) => element.groupIds.length !== 1 || !isIndependent(element))
+    members.some(
+      (element) => element.groupIds.length !== 1 || !isIndependent(element),
+    )
   ) {
     return [];
   }
@@ -52,28 +60,38 @@ export function selectionUnit(scene: SceneFile, id: string): string[] {
 }
 
 /** Canonicalize independent elements and whole safe groups in scene order. */
-export function editableSelection(scene: SceneFile, ids: readonly string[]): string[] {
+export function editableSelection(
+  scene: SceneFile,
+  ids: readonly string[],
+): string[] {
   const selected = new Set(ids);
   const groupIds = new Set<string>();
   for (const element of scene.elements) {
     if (selected.has(element.id) && element.groupIds.length === 1) {
       const groupId = element.groupIds[0];
       const members = safeGroupMembers(scene, groupId);
-      if (members.length && members.every((member) => selected.has(member.id))) {
+      if (
+        members.length &&
+        members.every((member) => selected.has(member.id))
+      ) {
         groupIds.add(groupId);
       }
     }
   }
   return scene.elements
-    .filter((element) =>
-      selected.has(element.id) &&
-      (canEditIndependently(element) ||
-        (element.groupIds.length === 1 && groupIds.has(element.groupIds[0]))),
+    .filter(
+      (element) =>
+        selected.has(element.id) &&
+        (canEditIndependently(element) ||
+          (element.groupIds.length === 1 && groupIds.has(element.groupIds[0]))),
     )
     .map((element) => element.id);
 }
 
-const touch = <T extends ExcalidrawElement>(element: T, change: Partial<T>): T => ({
+const touch = <T extends ExcalidrawElement>(
+  element: T,
+  change: Partial<T>,
+): T => ({
   ...element,
   ...change,
   version: element.version + 1,
@@ -88,7 +106,10 @@ export function groupSelection(
 ): { scene: SceneFile; ids: string[]; groupId: string | null } {
   const selected = new Set(ids);
   const eligible = scene.elements.filter((element) => selected.has(element.id));
-  if (eligible.length < 2 || eligible.some((element) => !canEditIndependently(element))) {
+  if (
+    eligible.length < 2 ||
+    eligible.some((element) => !canEditIndependently(element))
+  ) {
     return { scene, ids: [], groupId: null };
   }
   const groupId = crypto.randomUUID();
@@ -114,13 +135,18 @@ export function ungroupSelection(
   const selected = new Set(ids);
   const groupIds = new Set(
     scene.elements
-      .filter((element) => selected.has(element.id) && element.groupIds.length === 1)
+      .filter(
+        (element) => selected.has(element.id) && element.groupIds.length === 1,
+      )
       .map((element) => element.groupIds[0]),
   );
   const allowed = new Set<string>();
   for (const groupId of groupIds) {
     const members = safeGroupMembers(scene, groupId);
-    if (members.length && members.every((element) => selected.has(element.id))) {
+    if (
+      members.length &&
+      members.every((element) => selected.has(element.id))
+    ) {
       allowed.add(groupId);
     }
   }
@@ -128,7 +154,8 @@ export function ungroupSelection(
     return { scene, ids: [] };
   }
   const affected = scene.elements.filter(
-    (element) => element.groupIds.length === 1 && allowed.has(element.groupIds[0]),
+    (element) =>
+      element.groupIds.length === 1 && allowed.has(element.groupIds[0]),
   );
   return {
     scene: {

@@ -25,7 +25,6 @@ describe("flat Svelte groups", () => {
     expect(deleted.elements.map((e) => e.isDeleted)).toEqual([true, true]);
   });
 
-
   it("groups two independent shapes, selects whole group, moves and ungroups safely", () => {
     const a = createShape("rectangle", { x: 0, y: 0 }, { x: 30, y: 40 });
     const b = createShape("ellipse", { x: 50, y: 60 }, { x: 90, y: 90 });
@@ -36,9 +35,14 @@ describe("flat Svelte groups", () => {
     expect(grouped.scene.elements[1].groupIds).toEqual([grouped.groupId]);
     expect(selectionUnit(grouped.scene, b.id)).toEqual([a.id, b.id]);
     expect(editableSelection(grouped.scene, [a.id])).toEqual([]);
-    expect(editableSelection(grouped.scene, [a.id, b.id])).toEqual([a.id, b.id]);
+    expect(editableSelection(grouped.scene, [a.id, b.id])).toEqual([
+      a.id,
+      b.id,
+    ]);
     const ungrouped = ungroupSelection(grouped.scene, [a.id, b.id]);
-    expect(ungrouped.scene.elements.every((element) => !element.groupIds.length)).toBe(true);
+    expect(
+      ungrouped.scene.elements.every((element) => !element.groupIds.length),
+    ).toBe(true);
     expect(scene.elements[0].groupIds).toEqual([]);
   });
 

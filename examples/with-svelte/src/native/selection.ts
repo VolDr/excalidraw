@@ -1,9 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import {
-  editableSelection,
-  selectionUnit,
-} from "./groups";
+import { editableSelection, selectionUnit } from "./groups";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -85,7 +82,9 @@ export function elementsInMarquee(
       unit.forEach((id) => result.add(id));
     }
   }
-  return scene.elements.filter((element) => result.has(element.id)).map((element) => element.id);
+  return scene.elements
+    .filter((element) => result.has(element.id))
+    .map((element) => element.id);
 }
 
 /**
