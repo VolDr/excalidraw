@@ -34,8 +34,3 @@ jobs:
         run: yarn --cwd examples/with-svelte test
       - name: Production bundle
         run: yarn --cwd examples/with-svelte build
-      - name: Capture image module formatting
-        if: always()
-        run: |
-          ./node_modules/.bin/prettier --write examples/with-svelte/src/native/images.ts examples/with-svelte/src/native/images.test.ts examples/with-svelte/src/native/scene.ts
-          node -e 'const fs=require("fs");for(const p of ["examples/with-svelte/src/native/images.ts","examples/with-svelte/src/native/images.test.ts","examples/with-svelte/src/native/scene.ts"])console.log("IMAGE_FORMAT_FILE:"+p+"::"+fs.readFileSync(p).toString("base64"))'

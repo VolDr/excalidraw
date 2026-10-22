@@ -15,7 +15,7 @@ export const NATIVE_IMAGE_TYPES = [
   "image/gif",
 ] as const;
 
-type ImageMime = (typeof NATIVE_IMAGE_TYPES)[number];
+type ImageMime = typeof NATIVE_IMAGE_TYPES[number];
 type ImageFile = { id: string; mimeType: ImageMime; dataURL: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -36,13 +36,18 @@ export function nativeImageSource(
     return null;
   }
   const record: unknown = scene.files[element.fileId];
-  if (!isRecord(record) || !isMime(record.mimeType) ||
-      typeof record.dataURL !== "string") {
+  if (
+    !isRecord(record) ||
+    !isMime(record.mimeType) ||
+    typeof record.dataURL !== "string"
+  ) {
     return null;
   }
   const prefix = `data:${record.mimeType};base64,`;
-  if (!record.dataURL.startsWith(prefix) ||
-      record.dataURL.length <= prefix.length) {
+  if (
+    !record.dataURL.startsWith(prefix) ||
+    record.dataURL.length <= prefix.length
+  ) {
     return null;
   }
   return {
@@ -58,14 +63,20 @@ export function addNativeImage(
   dimensions: { width: number; height: number },
   center: Point,
 ): { scene: SceneFile; element: ExcalidrawImageElement } {
-  if (!isMime(file.mimeType) ||
-      !file.dataURL.startsWith(`data:${file.mimeType};base64,`) ||
-      !Number.isFinite(dimensions.width) ||
-      !Number.isFinite(dimensions.height) ||
-      dimensions.width <= 0 || dimensions.height <= 0) {
+  if (
+    !isMime(file.mimeType) ||
+    !file.dataURL.startsWith(`data:${file.mimeType};base64,`) ||
+    !Number.isFinite(dimensions.width) ||
+    !Number.isFinite(dimensions.height) ||
+    dimensions.width <= 0 ||
+    dimensions.height <= 0
+  ) {
     throw new Error("Неподдерживаемое или некорректное изображение.");
   }
-  const scale = Math.min(1, 520 / Math.max(dimensions.width, dimensions.height));
+  const scale = Math.min(
+    1,
+    520 / Math.max(dimensions.width, dimensions.height),
+  );
   const width = Math.max(1, dimensions.width * scale);
   const height = Math.max(1, dimensions.height * scale);
   const fileId = crypto.randomUUID() as FileId;
@@ -109,13 +120,19 @@ export function imageSourceRect(
   if (!c) {
     return { sx: 0, sy: 0, sw: naturalWidth, sh: naturalHeight };
   }
-  if (![c.x, c.y, c.width, c.height, c.naturalWidth, c.naturalHeight].every(
-    (value) => Number.isFinite(value),
-  ) || c.width <= 0 || c.height <= 0 ||
-    c.naturalWidth <= 0 || c.naturalHeight <= 0 ||
-    c.x < 0 || c.y < 0 ||
+  if (
+    ![c.x, c.y, c.width, c.height, c.naturalWidth, c.naturalHeight].every(
+      (value) => Number.isFinite(value),
+    ) ||
+    c.width <= 0 ||
+    c.height <= 0 ||
+    c.naturalWidth <= 0 ||
+    c.naturalHeight <= 0 ||
+    c.x < 0 ||
+    c.y < 0 ||
     c.x + c.width > c.naturalWidth ||
-    c.y + c.height > c.naturalHeight) {
+    c.y + c.height > c.naturalHeight
+  ) {
     return null;
   }
   return {
@@ -131,10 +148,19 @@ export function paintNativeImage(
   element: ExcalidrawImageElement,
   image: HTMLImageElement | null,
 ): boolean {
-  if (!image || element.isDeleted || element.width <= 0 || element.height <= 0) {
+  if (
+    !image ||
+    element.isDeleted ||
+    element.width <= 0 ||
+    element.height <= 0
+  ) {
     return false;
   }
-  const rect = imageSourceRect(element, image.naturalWidth, image.naturalHeight);
+  const rect = imageSourceRect(
+    element,
+    image.naturalWidth,
+    image.naturalHeight,
+  );
   if (!rect) {
     return false;
   }
@@ -142,12 +168,20 @@ export function paintNativeImage(
   ctx.globalAlpha = element.opacity / 100;
   ctx.translate(element.x + element.width / 2, element.y + element.height / 2);
   ctx.rotate(element.angle);
-  ctx.scale(element.scale?.[0] === -1 ? -1 : 1, element.scale?.[1] === -1 ? -1 : 1);
+  ctx.scale(
+    element.scale?.[0] === -1 ? -1 : 1,
+    element.scale?.[1] === -1 ? -1 : 1,
+  );
   ctx.drawImage(
     image,
-    rect.sx, rect.sy, rect.sw, rect.sh,
-    -element.width / 2, -element.height / 2,
-    element.width, element.height,
+    rect.sx,
+    rect.sy,
+    rect.sw,
+    rect.sh,
+    -element.width / 2,
+    -element.height / 2,
+    element.width,
+    element.height,
   );
   ctx.restore();
   return true;
