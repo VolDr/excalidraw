@@ -1,14 +1,13 @@
 import { newFreeDrawElement, newTextElement } from "@excalidraw/element";
 import { pointFrom } from "@excalidraw/math";
 
-import type { LocalPoint } from "@excalidraw/math";
-
-import { nativeImageSource } from "./images";
-
 import type {
   ExcalidrawElement,
   ExcalidrawTextElement,
 } from "@excalidraw/element/types";
+import type { LocalPoint } from "@excalidraw/math";
+
+import { nativeImageSource } from "./images";
 
 /**
  * A serializable scene boundary shared by the native Svelte editor and
