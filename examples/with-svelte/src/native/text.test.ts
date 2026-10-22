@@ -35,7 +35,7 @@ describe("native text parity", () => {
     }> = [];
     const draw = vi.spyOn(ctx, "fillText").mockImplementation(() => {
       state.push({
-        font: ctx.font,
+        font: ctx.font.replace(/"/g, ""),
         align: ctx.textAlign,
         baseline: ctx.textBaseline,
         alpha: ctx.globalAlpha,
