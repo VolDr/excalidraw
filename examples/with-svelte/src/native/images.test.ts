@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ExcalidrawImageElement } from "@excalidraw/element/types";
+
 import {
   addNativeImage,
   imageSourceRect,
@@ -16,7 +17,6 @@ import {
 } from "./scene";
 import { deleteSelection, moveSelection } from "./transforms";
 import { duplicateSelection } from "./selection";
-
 
 const sample = "data:image/png;base64,AAAA";
 const setup = () =>
