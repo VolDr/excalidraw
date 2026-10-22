@@ -81,6 +81,51 @@ try {
   assert.equal(texts[0].text, "Hello\nWorld");
   assert.ok(texts[0].height > texts[0].fontSize);
   assert.ok(texts[0].width > 0);
+  const originalText = texts[0];
+
+  // Edit the existing text rather than creating another text element.
+  await page.mouse.dblclick(x + 289, y + 184);
+  await input.waitFor();
+  assert.equal(await input.inputValue(), "Hello\\nWorld");
+  await input.fill("Edited text\\nSecond line");
+  await input.press("Control+Enter");
+  await input.waitFor({ state: "hidden" });
+
+  scene = await saveScene();
+  const edited = scene.elements.find((e) => e.id === originalText.id);
+  assert.ok(edited);
+  assert.equal(edited.text, "Edited text\\nSecond line");
+  assert.equal(edited.originalText, "Edited text\\nSecond line");
+  assert.equal(edited.version, originalText.version + 1);
+  assert.equal(scene.elements.filter((e) => !e.isDeleted && e.type === "text").length, 1);
+
+  // Reopening and committing unchanged text must not produce a new revision.
+  await page.mouse.dblclick(x + 289, y + 184);
+  await input.waitFor();
+  await input.press("Control+Enter");
+  await input.waitFor({ state: "hidden" });
+  scene = await saveScene();
+  assert.equal(scene.elements.find((e) => e.id === edited.id).version, edited.version);
+
+  // Text edits form one undo/redo transaction.
+  await page.locator(".native-viewport").press("Control+z");
+  scene = await saveScene();
+  assert.equal(scene.elements.find((e) => e.id === edited.id).text, "Hello\\nWorld");
+  await page.locator(".native-viewport").press("Control+y");
+  scene = await saveScene();
+  assert.equal(scene.elements.find((e) => e.id === edited.id).text, edited.text);
+
+  // Roundtrip via the real file-import UI, preserving metadata and identities.
+  const exported = structuredClone(scene);
+  await page.locator(".toolbar input[type=file]").setInputFiles({
+    name: "roundtrip.excalidraw",
+    mimeType: "application/vnd.excalidraw+json",
+    buffer: Buffer.from(JSON.stringify(exported)),
+  });
+  await page.getByText("Открыт файл: roundtrip.excalidraw").waitFor();
+  const imported = await saveScene();
+  assert.deepEqual(imported, exported);
+  assert.deepEqual(errors, []);
 
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
