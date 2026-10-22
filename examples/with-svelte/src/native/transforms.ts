@@ -7,6 +7,7 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { canEditIndependently, editableSelection } from "./groups";
+import { nativeImageSource } from "./images";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -34,7 +35,10 @@ export function isBoxTransformable(
   return (
     (element.type === "rectangle" ||
       element.type === "ellipse" ||
-      element.type === "diamond") &&
+      element.type === "diamond" ||
+      (element.type === "image" &&
+        !!scene &&
+        !!nativeImageSource(scene, element))) &&
     !element.isDeleted &&
     !element.locked &&
     !element.frameId &&
@@ -110,8 +114,25 @@ export function resizeElement(
   const sin = Math.sin(element.angle);
   const horizontalSign = corner.endsWith("e") ? 1 : -1;
   const verticalSign = corner.startsWith("s") ? 1 : -1;
-  const width = Math.max(MIN_SIZE, horizontalSign * (dx * cos + dy * sin));
-  const height = Math.max(MIN_SIZE, verticalSign * (-dx * sin + dy * cos));
+  const projectedWidth = horizontalSign * (dx * cos + dy * sin);
+  const projectedHeight = verticalSign * (-dx * sin + dy * cos);
+  // Image resize keeps the existing crop and flipped axes while preserving
+  // the displayed aspect ratio. Shapes retain independent width and height.
+  const ratio = element.width / element.height;
+  const imageHeight =
+    element.type === "image" && Number.isFinite(ratio) && ratio > 0
+      ? Math.max(
+          MIN_SIZE,
+          MIN_SIZE / ratio,
+          (ratio * projectedWidth + projectedHeight) / (ratio * ratio + 1),
+        )
+      : null;
+  const width =
+    imageHeight === null
+      ? Math.max(MIN_SIZE, projectedWidth)
+      : ratio * imageHeight;
+  const height =
+    imageHeight === null ? Math.max(MIN_SIZE, projectedHeight) : imageHeight;
   const centerOffset = {
     x: (horizontalSign * width) / 2,
     y: (verticalSign * height) / 2,
@@ -232,4 +253,37 @@ export function transformSelected(
         : resizeElement(element, handle, point, scene),
     ),
   });
+}
+
+/** Flip a supported raster image without rewriting its file or crop data. */
+export function flipNativeImage(
+  scene: SceneFile,
+  id: string,
+  axis: "horizontal" | "vertical",
+): SceneFile {
+  const element = scene.elements.find((item) => item.id === id);
+  if (!element || element.type !== "image" ||
+      !isBoxTransformable(element, scene)) {
+    return scene;
+  }
+  const nextScale: [number, number] = [
+    element.scale[0] === -1 ? -1 : 1,
+    element.scale[1] === -1 ? -1 : 1,
+  ];
+  const index = axis === "horizontal" ? 0 : 1;
+  nextScale[index] = -nextScale[index];
+  return {
+    ...scene,
+    elements: scene.elements.map((item) =>
+      item.id === id
+        ? {
+            ...element,
+            scale: nextScale,
+            version: element.version + 1,
+            versionNonce: Math.floor(Math.random() * 2 ** 31),
+            updated: Date.now(),
+          }
+        : item,
+    ),
+  };
 }
