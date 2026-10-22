@@ -86,16 +86,16 @@ try {
   // Edit the existing text rather than creating another text element.
   await page.mouse.dblclick(x + 289, y + 184);
   await input.waitFor();
-  assert.equal(await input.inputValue(), "Hello\\nWorld");
-  await input.fill("Edited text\\nSecond line");
+  assert.equal(await input.inputValue(), "Hello\nWorld");
+  await input.fill("Edited text\nSecond line");
   await input.press("Control+Enter");
   await input.waitFor({ state: "hidden" });
 
   scene = await saveScene();
   const edited = scene.elements.find((e) => e.id === originalText.id);
   assert.ok(edited);
-  assert.equal(edited.text, "Edited text\\nSecond line");
-  assert.equal(edited.originalText, "Edited text\\nSecond line");
+  assert.equal(edited.text, "Edited text\nSecond line");
+  assert.equal(edited.originalText, "Edited text\nSecond line");
   assert.equal(edited.version, originalText.version + 1);
   assert.equal(scene.elements.filter((e) => !e.isDeleted && e.type === "text").length, 1);
 
@@ -110,7 +110,7 @@ try {
   // Text edits form one undo/redo transaction.
   await page.locator(".native-viewport").press("Control+z");
   scene = await saveScene();
-  assert.equal(scene.elements.find((e) => e.id === edited.id).text, "Hello\\nWorld");
+  assert.equal(scene.elements.find((e) => e.id === edited.id).text, "Hello\nWorld");
   await page.locator(".native-viewport").press("Control+y");
   scene = await saveScene();
   assert.equal(scene.elements.find((e) => e.id === edited.id).text, edited.text);
