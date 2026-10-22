@@ -1,4 +1,12 @@
-import { newFreeDrawElement, newTextElement } from "@excalidraw/element";
+import {
+  getTextAnchorRatios,
+  measureText,
+  newFreeDrawElement,
+  newTextElement,
+  normalizeText,
+  wrapText,
+} from "@excalidraw/element";
+import { getFontString } from "@excalidraw/common";
 import { pointFrom } from "@excalidraw/math";
 
 import type {
@@ -197,21 +205,22 @@ export function replaceText(
       ) {
         return element;
       }
-      const measured = newTextElement({
-        x: element.x,
-        y: element.y,
-        text: value,
-        fontSize: element.fontSize,
-        fontFamily: element.fontFamily,
-        textAlign: "left",
-        verticalAlign: "top",
-      });
+      const originalText = normalizeText(value);
+      const font = getFontString(element);
+      const text = element.autoResize
+        ? originalText
+        : wrapText(originalText, font, Math.max(1, element.width));
+      const metrics = measureText(text, font, element.lineHeight);
+      const nextWidth = element.autoResize ? metrics.width : element.width;
+      const { x: ax, y: ay } = getTextAnchorRatios(element);
       return {
         ...element,
-        text: measured.text,
-        originalText: measured.originalText,
-        width: measured.width,
-        height: measured.height,
+        text,
+        originalText,
+        x: element.x + (element.width - nextWidth) * ax,
+        y: element.y + (element.height - metrics.height) * ay,
+        width: nextWidth,
+        height: metrics.height,
         version: element.version + 1,
         versionNonce: versionNonce(),
         updated: Date.now(),

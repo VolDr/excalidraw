@@ -49,7 +49,6 @@ export function paintNativeText(
   ctx.save();
   ctx.font = getFontString(element);
   ctx.fillStyle = color;
-  ctx.globalAlpha *= element.opacity / 100;
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = element.textAlign;
   ctx.direction = isRTL(element.text) ? "rtl" : "ltr";
