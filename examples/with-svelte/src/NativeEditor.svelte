@@ -937,7 +937,7 @@
       aria-label="Выбрать изображение"
     />
     <button onclick={() => imageInput.click()}>Изображение</button>
-    <button disabled={!undoAvailable> onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
+    <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
     <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
