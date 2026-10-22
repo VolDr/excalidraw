@@ -27,14 +27,39 @@ describe("native text parity", () => {
     ]);
 
     const ctx = document.createElement("canvas").getContext("2d")!;
-    const draw = vi.spyOn(ctx, "fillText");
+    const state: Array<{
+      font: string;
+      align: string;
+      baseline: string;
+      alpha: number;
+    }> = [];
+    const draw = vi.spyOn(ctx, "fillText").mockImplementation(() => {
+      state.push({
+        font: ctx.font,
+        align: ctx.textAlign,
+        baseline: ctx.textBaseline,
+        alpha: ctx.globalAlpha,
+      });
+    });
     const save = vi.spyOn(ctx, "save");
     const restore = vi.spyOn(ctx, "restore");
     paintNativeText(ctx, text, "#123456");
     expect(draw).toHaveBeenNthCalledWith(1, "Hello", 130, 40 + offset);
     expect(draw).toHaveBeenNthCalledWith(2, "World", 130, 70 + offset);
-    expect(ctx.font).toBe(getFontString(text));
-    expect(ctx.textAlign).toBe("left");
+    expect(state).toEqual([
+      {
+        font: getFontString(text),
+        align: "center",
+        baseline: "alphabetic",
+        alpha: 1,
+      },
+      {
+        font: getFontString(text),
+        align: "center",
+        baseline: "alphabetic",
+        alpha: 1,
+      },
+    ]);
     expect(save).toHaveBeenCalledTimes(1);
     expect(restore).toHaveBeenCalledTimes(1);
   });
