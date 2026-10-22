@@ -90,7 +90,11 @@ describe("native text parity", () => {
       verticalAlign: "middle" as const,
     };
     const scene = { ...blankScene(), elements: [centered] };
-    const updated = replaceText(scene, centered.id, "A much longer string\nwith two lines");
+    const updated = replaceText(
+      scene,
+      centered.id,
+      "A much longer string\nwith two lines",
+    );
     const text = updated.elements[0];
     expect(text.type).toBe("text");
     if (text.type !== "text") {

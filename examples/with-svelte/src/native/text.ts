@@ -14,9 +14,7 @@ export type TextDraw = {
  * because the main canvas already applies scene transforms and rotation.
  * Bound text remains handled by the React fallback.
  */
-export function textDrawLines(
-  element: ExcalidrawTextElement,
-): TextDraw[] {
+export function textDrawLines(element: ExcalidrawTextElement): TextDraw[] {
   const lineHeightPx = element.fontSize * element.lineHeight;
   const y = getVerticalOffset(
     element.fontFamily,
@@ -27,15 +25,16 @@ export function textDrawLines(
     element.textAlign === "center"
       ? element.width / 2
       : element.textAlign === "right"
-        ? element.width
-        : 0;
-  return element.text.replace(/\r\n?/g, "\n").split("\n").map(
-    (text, index) => ({
+      ? element.width
+      : 0;
+  return element.text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((text, index) => ({
       text,
       x,
       y: y + index * lineHeightPx,
-    }),
-  );
+    }));
 }
 
 export function paintNativeText(
@@ -50,7 +49,7 @@ export function paintNativeText(
   ctx.font = getFontString(element);
   ctx.fillStyle = color;
   ctx.textBaseline = "alphabetic";
-  ctx.textAlign = element.textAlign;
+  ctx.textAlign = element.textAlign as CanvasTextAlign;
   ctx.direction = isRTL(element.text) ? "rtl" : "ltr";
   // Canvas mirrors Excalidraw's layout without editing the text record.
   for (const line of textDrawLines(element)) {
