@@ -71,14 +71,14 @@ try {
   await page.mouse.click(x + 275, y + 175);
   const input = page.getByRole("textbox", { name: "Редактировать текст" });
   await input.waitFor();
-  await input.fill("Hello\\nWorld");
+  await input.fill("Hello\nWorld");
   await input.press("Control+Enter");
   await input.waitFor({ state: "hidden" });
 
   scene = await saveScene();
   const texts = scene.elements.filter((e) => !e.isDeleted && e.type === "text");
   assert.equal(texts.length, 1);
-  assert.equal(texts[0].text, "Hello\\nWorld");
+  assert.equal(texts[0].text, "Hello\nWorld");
   assert.ok(texts[0].height > texts[0].fontSize);
   assert.ok(texts[0].width > 0);
 
