@@ -37,7 +37,7 @@ describe("native scene compatibility", () => {
     original.appState = { viewBackgroundColor: "#fdfaf3", gridSize: 20 };
     const restored = parseScene(serializeScene(original));
     expect(restored).toEqual(original);
-    expect(unsupportedCount(restored)).toBe(1);
+    expect(unsupportedCount(restored)).toBe(0);
   });
 
   it("normalizes reverse drag and preserves arrow endpoints", () => {
