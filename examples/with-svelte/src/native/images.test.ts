@@ -220,12 +220,12 @@ describe("native Excalidraw raster images", () => {
       files: { [element.fileId!]: { mimeType: "image/svg+xml", dataURL: "" } },
     };
     expect(isBoxTransformable(element, unsupported)).toBe(false);
-    expect(
-      rotateElement(element, { x: 100, y: 100 }, unsupported),
-    ).toBe(element);
-    expect(
-      flipNativeImage(unsupported, element.id, "vertical"),
-    ).toBe(unsupported);
+    expect(rotateElement(element, { x: 100, y: 100 }, unsupported)).toBe(
+      element,
+    );
+    expect(flipNativeImage(unsupported, element.id, "vertical")).toBe(
+      unsupported,
+    );
   });
 
   it("converts crop coordinates from the saved natural dimensions", () => {
