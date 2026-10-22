@@ -27,6 +27,7 @@ Open http://localhost:3007.
 - New straight two-point arrows attach to independent rectangles/ellipses/diamonds, follow their movement, rotation and resizing, and can be reconnected or detached by dragging an endpoint. Reciprocal Excalidraw bindings are preserved. Removing a linked arrow or its target cleans the references.
 - Drag end handles to edit simple unbound, two-point lines and arrows. Use keyboard: V (selection), R (rectangle), Delete, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
 - Import/export `.excalidraw` JSON and embed raster PNG/JPEG/GIF/WebP; preserve crop, rotation, reflection and opacity. Select and drag corner/rotation handles to resize proportionally and rotate images; use horizontal/vertical flip toolbar buttons. Move, delete, duplicate and save image elements without altering embedded image data. Unsupported formats remain in the file.
+- Text drawing now uses Excalidraw font baseline/line-height and left/center/right alignment. Existing non-bound text editing preserves alignment anchors; fixed-width text is rewrapped while preserving original text. The CI smoke test exercises drawing, duplication, undo, text and JSON export in headless Chrome.
 - Toggle Svelte/React editing modes while carrying scene JSON between them.
 - Svelte theme and file toolbar; React chunk loads only when requested.
 
