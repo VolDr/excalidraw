@@ -3,6 +3,8 @@ import { pointFrom } from "@excalidraw/math";
 
 import type { LocalPoint } from "@excalidraw/math";
 
+import { nativeImageSource } from "./images";
+
 import type {
   ExcalidrawElement,
   ExcalidrawTextElement,
@@ -48,6 +50,7 @@ const SUPPORTED_TYPES = new Set<string>([
   "arrow",
   "text",
   "freedraw",
+  "image",
 ]);
 
 export const blankScene = (): SceneFile => ({
@@ -100,7 +103,10 @@ export const serializeScene = (scene: SceneFile): string =>
 
 export const unsupportedCount = (scene: SceneFile): number =>
   scene.elements.filter(
-    (element) => !element.isDeleted && !isNativeShape(element),
+    (element) =>
+      !element.isDeleted &&
+      (!isNativeShape(element) ||
+        (element.type === "image" && !nativeImageSource(scene, element))),
   ).length;
 
 const versionNonce = () => Math.floor(Math.random() * 2 ** 31);

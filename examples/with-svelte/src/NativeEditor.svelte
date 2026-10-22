@@ -7,6 +7,13 @@
   import type { ExcalidrawElement } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
   import {
+    addNativeImage,
+    NativeImageCache,
+    paintNativeImage,
+    nativeImageSource,
+    NATIVE_IMAGE_TYPES,
+  } from "./native/images";
+  import {
     appendNativeArrow,
     isNativeLinkedArrow,
     nativeLinkedEndpoints,
@@ -67,6 +74,7 @@
   let canvas: HTMLCanvasElement;
   let viewport: HTMLDivElement;
   let textInput = $state<HTMLTextAreaElement>();
+  let imageInput: HTMLInputElement;
 
   let tool = $state<NativeTool>("selection");
   let selectedIds = $state<string[]>([]);
@@ -78,10 +86,61 @@
   let viewSize = $state<Point>({ x: 0, y: 0 });
   let undoAvailable = $state(false);
   let redoAvailable = $state(false);
+  let imageError = $state("");
   let unsupported = $derived(unsupportedCount(scene));
   let textEditor = $state<{ id: string | null; at: Point; value: string } | null>(null);
 
   const history = new SceneHistory();
+  const imageCache = new NativeImageCache();
+
+  // Imported and newly inserted files are decoded lazily and cached by fileId.
+  $effect(() => {
+    imageCache.sync(scene, redraw);
+  });
+
+  async function importImage(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) {
+      return;
+    }
+    imageError = "";
+    if (!NATIVE_IMAGE_TYPES.some((type) => type === file.type) ||
+        file.size > 12 * 1024 * 1024) {
+      imageError = "Допустимы PNG, JPEG, GIF и WebP размером до 12 МБ.";
+      return;
+    }
+    try {
+      const dataURL = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("Не удалось прочитать изображение."));
+        reader.onload = () => resolve(String(reader.result));
+        reader.readAsDataURL(file);
+      });
+      const decoded = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("Не удалось открыть изображение."));
+        image.src = dataURL;
+      });
+      const center = {
+        x: (viewSize.x / 2 - pan.x) / zoom,
+        y: (viewSize.y / 2 - pan.y) / zoom,
+      };
+      const result = addNativeImage(
+        scene,
+        { mimeType: file.type, dataURL },
+        { width: decoded.naturalWidth, height: decoded.naturalHeight },
+        center,
+      );
+      commit(scene, result.scene);
+      selectedIds = [result.element.id];
+      tool = "selection";
+    } catch (error) {
+      imageError = error instanceof Error ? error.message : "Ошибка загрузки изображения.";
+    }
+  }
 
   type Gesture = {
     pointerId: number;
@@ -281,6 +340,27 @@
 
     const draw = (element: ExcalidrawElement) => {
       if (!isNativeShape(element)) {
+        return;
+      }
+      if (element.type === "image") {
+        const file = nativeImageSource(scene, element);
+        const image = file ? imageCache.get(file.id) : null;
+        if (paintNativeImage(ctx, element, image)) {
+          return;
+        }
+        // Keep unloaded/missing raster elements visible without mutating data.
+        ctx.save();
+        ctx.strokeStyle = theme === "dark" ? "#9494a8" : "#9c9cad";
+        ctx.lineWidth = 1 / zoom;
+        ctx.setLineDash([4 / zoom, 4 / zoom]);
+        ctx.strokeRect(element.x, element.y, element.width, element.height);
+        ctx.beginPath();
+        ctx.moveTo(element.x, element.y);
+        ctx.lineTo(element.x + element.width, element.y + element.height);
+        ctx.moveTo(element.x + element.width, element.y);
+        ctx.lineTo(element.x, element.y + element.height);
+        ctx.stroke();
+        ctx.restore();
         return;
       }
       const { x, y, width, height } = elementBounds(element);
@@ -848,7 +928,16 @@
       </button>
     {/each}
     <span class="separator"></span>
-    <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
+    <input
+      class="file-input"
+      type="file"
+      accept={NATIVE_IMAGE_TYPES.join(",")}
+      bind:this={imageInput}
+      onchange={importImage}
+      aria-label="Выбрать изображение"
+    />
+    <button onclick={() => imageInput.click()}>Изображение</button>
+    <button disabled={!undoAvailable> onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
     <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
@@ -858,6 +947,9 @@
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
   </div>
 
+  {#if imageError}
+    <div class="warning" role="alert">{imageError}</div>
+  {/if}
   {#if unsupported > 0}
     <div class="warning" role="status">
       В нативном режиме не отображается элементов: {unsupported}.
@@ -911,6 +1003,7 @@
   }
   .native-toolbar button.active { background: #e8e7fa; border-color: #7771d0; }
   .native-toolbar button:disabled { opacity: 0.45; cursor: default; }
+  .file-input { display: none; }
   .separator { height: 22px; width: 1px; background: #dadae2; margin: 0 3px; }
   .zoom { font-size: 12px; white-space: nowrap; }
   .warning {
