@@ -584,6 +584,9 @@
     viewport.focus({ preventScroll: true });
     const start = getPoint(event);
     if (tool === "text" && event.button === 0) {
+      // A click normally shifts focus back to the viewport after pointerdown,
+      // immediately blurring (and committing) the newly mounted textarea.
+      event.preventDefault();
       void beginText(start);
       return;
     }

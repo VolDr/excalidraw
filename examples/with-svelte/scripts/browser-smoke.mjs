@@ -89,6 +89,12 @@ try {
 } catch (error) {
   await page.screenshot({ path: "/tmp/svelte-smoke-failure.png" }).catch(() => {});
   console.error("Browser smoke failed:", error);
+  console.error("DOM state:", await page.evaluate(() => ({
+    active: document.activeElement?.tagName,
+    textInputs: document.querySelectorAll(".text-input").length,
+    toolButtons: [...document.querySelectorAll(".native-toolbar button.active")]
+      .map((button) => button.textContent?.trim()),
+  })).catch(() => ({})));
   if (errors.length) {
     console.error("Browser page errors:", errors);
   }
