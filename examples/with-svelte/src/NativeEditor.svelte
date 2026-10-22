@@ -2,10 +2,11 @@
   import { onMount, tick } from "svelte";
   import rough from "roughjs/bin/rough";
 
-  import { applyDarkModeFilter, getFontString } from "@excalidraw/common";
+  import { applyDarkModeFilter } from "@excalidraw/common";
 
   import type { ExcalidrawElement } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
+  import { paintNativeText } from "./native/text";
   import {
     addNativeImage,
     NativeImageCache,
@@ -425,15 +426,7 @@
           ], opts);
           break;
         case "text": {
-          ctx.fillStyle = stroke;
-          ctx.font = getFontString({
-            fontSize: element.fontSize,
-            fontFamily: element.fontFamily,
-          });
-          ctx.textBaseline = "top";
-          for (const [i, line] of element.text.split("\n").entries()) {
-            ctx.fillText(line, x, y + i * element.fontSize * element.lineHeight);
-          }
+          paintNativeText(ctx, element, stroke);
           break;
         }
         case "freedraw": {
