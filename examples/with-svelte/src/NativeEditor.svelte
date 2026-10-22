@@ -4,7 +4,7 @@
 
   import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
-  import type { ExcalidrawElement, FontFamilyValues } from "@excalidraw/element/types";
+  import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
   import { paintNativeText } from "./native/text";
   import {
@@ -106,7 +106,7 @@
     fontSize: number;
     fontFamily: FontFamilyValues;
     lineHeight: number;
-    textAlign: "left" | "center" | "right";
+    textAlign: ExcalidrawTextElement["textAlign"];
   } | null>(null);
 
   const history = new SceneHistory();
