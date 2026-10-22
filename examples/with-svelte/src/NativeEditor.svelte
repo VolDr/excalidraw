@@ -2,9 +2,9 @@
   import { onMount, tick } from "svelte";
   import rough from "roughjs/bin/rough";
 
-  import { applyDarkModeFilter } from "@excalidraw/common";
+  import { applyDarkModeFilter, getFontFamilyString } from "@excalidraw/common";
 
-  import type { ExcalidrawElement } from "@excalidraw/element/types";
+  import type { ExcalidrawElement, FontFamilyValues } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
   import { paintNativeText } from "./native/text";
   import {
@@ -98,7 +98,16 @@
   let redoAvailable = $state(false);
   let imageError = $state("");
   let unsupported = $derived(unsupportedCount(scene));
-  let textEditor = $state<{ id: string | null; at: Point; value: string } | null>(null);
+  let textEditor = $state<{
+    id: string | null;
+    at: Point;
+    value: string;
+    width: number | null;
+    fontSize: number;
+    fontFamily: FontFamilyValues;
+    lineHeight: number;
+    textAlign: "left" | "center" | "right";
+  } | null>(null);
 
   const history = new SceneHistory();
   const imageCache = new NativeImageCache();
@@ -252,7 +261,14 @@
 
 
   async function beginText(at: Point, existing?: ExcalidrawElement) {
-    if (existing && existing.type !== "text") {
+    if (
+      existing &&
+      (existing.type !== "text" ||
+        existing.containerId !== null ||
+        existing.locked ||
+        existing.isDeleted ||
+        existing.angle !== 0)
+    ) {
       return;
     }
     if (textEditor) {
@@ -261,7 +277,17 @@
     textEditor = {
       id: existing?.id ?? null,
       at: existing ? { x: existing.x, y: existing.y } : at,
-      value: existing?.type === "text" ? existing.text : "",
+      value:
+        existing?.type === "text"
+          ? (existing.originalText ?? existing.text)
+          : "",
+      width: existing?.type === "text" && !existing.autoResize
+        ? existing.width
+        : null,
+      fontSize: existing?.type === "text" ? existing.fontSize : 20,
+      fontFamily: existing?.type === "text" ? existing.fontFamily : 5,
+      lineHeight: existing?.type === "text" ? existing.lineHeight : 1.25,
+      textAlign: existing?.type === "text" ? existing.textAlign : "left",
     };
     await tick();
     textInput?.focus();
@@ -281,7 +307,12 @@
       }
     } else if (editor.id) {
       const existing = scene.elements.find((element) => element.id === editor.id);
-      if (existing?.type === "text" && value !== existing.text) {
+      if (
+        existing?.type === "text" &&
+        !existing.locked &&
+        existing.containerId === null &&
+        value !== (existing.originalText ?? existing.text)
+      ) {
         commit(scene, replaceText(scene, editor.id, value));
         selectedIds = [editor.id];
       }
@@ -311,7 +342,7 @@
       return;
     }
     const hit = pickElement(scene.elements, getPoint(event), 8 / zoom);
-    if (hit?.type === "text" && hit.containerId === null) {
+    if (hit?.type === "text" && hit.containerId === null && !hit.locked && hit.angle === 0) {
       void beginText({ x: hit.x, y: hit.y }, hit);
     }
   }
@@ -1001,7 +1032,11 @@
         placeholder="Введите текст…"
         style:left={(textEditor.at.x * zoom + pan.x) + "px"}
         style:top={(textEditor.at.y * zoom + pan.y) + "px"}
-        style:font-size={(20 * zoom) + "px"}
+        style:font-size={(textEditor.fontSize * zoom) + "px"}
+        style:font-family={getFontFamilyString({ fontFamily: textEditor.fontFamily })}
+        style:line-height={String(textEditor.lineHeight)}
+        style:text-align={textEditor.textAlign}
+        style:width={textEditor.width === null ? undefined : (Math.max(180, textEditor.width * zoom + 8) + "px")}
         onpointerdown={(event) => event.stopPropagation()}
         onkeydown={textKeyDown}
         onblur={finishText}
