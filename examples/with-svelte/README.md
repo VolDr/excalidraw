@@ -26,13 +26,13 @@ Open http://localhost:3007.
 - Shift-click or drag a selection marquee to select multiple independent objects; left-to-right marquee intersects, right-to-left fully encloses. Drag, delete or use arrow keys to move the selection (Shift+arrows moves by 10). Ctrl+A selects all safely movable objects. Ctrl+D duplicates the selection.
 - New straight two-point arrows attach to independent rectangles/ellipses/diamonds, follow their movement, rotation and resizing, and can be reconnected or detached by dragging an endpoint. Reciprocal Excalidraw bindings are preserved. Removing a linked arrow or its target cleans the references.
 - Drag end handles to edit simple unbound, two-point lines and arrows. Use keyboard: V (selection), R (rectangle), Delete, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
-- Import and export native `.excalidraw` JSON. Render embedded raster PNG/JPEG/GIF/WebP images (rotation, flipping, crop and opacity), and insert new raster images in native mode. Keep image data intact when moving, deleting, duplicating or saving. Unsupported formats remain in the file.
+- Import/export `.excalidraw` JSON and embed raster PNG/JPEG/GIF/WebP; preserve crop, rotation, reflection and opacity. Select and drag corner/rotation handles to resize proportionally and rotate images; use horizontal/vertical flip toolbar buttons. Move, delete, duplicate and save image elements without altering embedded image data. Unsupported formats remain in the file.
 - Toggle Svelte/React editing modes while carrying scene JSON between them.
 - Svelte theme and file toolbar; React chunk loads only when requested.
 
 ## Known limitations
 
-- Native mode still does not render SVG images, frames, advanced bound text, advanced bindings, labels or complex multi-point and elbow arrow geometry yet. It shows an explicit warning for unsupported element types, preserves their data, and provides a full React-editor fallback. Supported elements with complex geometry/rotation may be drawn approximately.
+- Native mode still does not render SVG images, frames, advanced bound text, advanced bindings, labels or complex multi-point and elbow arrow geometry yet. Crop editing is not yet available; resizing images retains the existing aspect ratio and crop. It shows an explicit warning for unsupported element types, preserves their data, and provides a full React-editor fallback. Supported elements with complex geometry/rotation may be drawn approximately.
 - It does not have the original editor's collaboration, PWA, persistence, full keyboard shortcuts, tool and selection semantics, PNG/SVG export, or touch gesture parity. History remains separate across mode switches.
 - The React fallback is **not** a migrated component; the application still declares React dependencies and shares the `@excalidraw/excalidraw` package.
 - Embedded scene data in PNG/SVG is not supported by this file importer.

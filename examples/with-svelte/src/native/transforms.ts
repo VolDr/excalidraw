@@ -37,6 +37,8 @@ export function isBoxTransformable(
       element.type === "ellipse" ||
       element.type === "diamond" ||
       (element.type === "image" &&
+        element.width > 0 &&
+        element.height > 0 &&
         !!scene &&
         !!nativeImageSource(scene, element))) &&
     !element.isDeleted &&
