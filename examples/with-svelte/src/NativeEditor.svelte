@@ -37,6 +37,7 @@
   } from "./native/scene";
   import {
     deleteSelection,
+    flipNativeImage,
     handleLocations,
     isBoxTransformable,
     moveSelection,
@@ -79,6 +80,14 @@
   let tool = $state<NativeTool>("selection");
   let selectedIds = $state<string[]>([]);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
+  let selectedRaster = $derived(
+    scene.elements.find(
+      (element) =>
+        element.id === selectedId &&
+        element.type === "image" &&
+        isBoxTransformable(element, scene),
+    ),
+  );
   let preview = $state.raw<ExcalidrawElement | null>(null);
   let marquee = $state<{ start: Point; end: Point } | null>(null);
   let zoom = $state(1);
@@ -189,6 +198,16 @@
     if (result.ids.length) {
       commit(scene, result.scene);
       selectedIds = result.ids;
+    }
+  }
+
+  function flipSelectedImage(axis: "horizontal" | "vertical") {
+    if (!selectedId || !selectedRaster || gesture || textEditor) {
+      return;
+    }
+    const next = flipNativeImage(scene, selectedId, axis);
+    if (next !== scene) {
+      commit(scene, next);
     }
   }
 
@@ -937,6 +956,10 @@
       aria-label="Выбрать изображение"
     />
     <button onclick={() => imageInput.click()}>Изображение</button>
+    {#if selectedRaster}
+      <button onclick={() => flipSelectedImage("horizontal")} title="Отразить выбранное изображение по горизонтали">↔ Отразить</button>
+      <button onclick={() => flipSelectedImage("vertical")} title="Отразить выбранное изображение по вертикали">↕ Отразить</button>
+    {/if}
     <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
