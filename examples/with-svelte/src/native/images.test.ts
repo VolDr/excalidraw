@@ -170,10 +170,15 @@ describe("native Excalidraw raster images", () => {
     expect(rotated.angle).toBeCloseTo(Math.PI / 2);
     const input = { ...scene, elements: [rotated] };
     const handles = handleLocations(rotated);
-    const resized = resizeElement(rotated, "se", {
-      x: handles.se.x - 40,
-      y: handles.se.y + 80,
-    }, input);
+    const resized = resizeElement(
+      rotated,
+      "se",
+      {
+        x: handles.se.x - 40,
+        y: handles.se.y + 80,
+      },
+      input,
+    );
     expect(handleLocations(resized).nw.x).toBeCloseTo(handles.nw.x);
     expect(handleLocations(resized).nw.y).toBeCloseTo(handles.nw.y);
     expect(resized.width / resized.height).toBeCloseTo(2);
@@ -203,8 +208,9 @@ describe("native Excalidraw raster images", () => {
     const locked = { ...scene, elements: [{ ...element, locked: true }] };
     expect(flipNativeImage(locked, element.id, "horizontal")).toBe(locked);
     const grouped = { ...scene, elements: [{ ...element, groupIds: ["g"] }] };
-    expect(resizeElement(grouped.elements[0], "se", { x: 500, y: 300 }, grouped))
-      .toBe(grouped.elements[0]);
+    expect(
+      resizeElement(grouped.elements[0], "se", { x: 500, y: 300 }, grouped),
+    ).toBe(grouped.elements[0]);
   });
 
   it("refuses transforms when the image file is unsupported", () => {
@@ -214,8 +220,12 @@ describe("native Excalidraw raster images", () => {
       files: { [element.fileId!]: { mimeType: "image/svg+xml", dataURL: "" } },
     };
     expect(isBoxTransformable(element, unsupported)).toBe(false);
-    expect(rotateElement(element, { x: 100, y: 100 }, unsupported)).toBe(element);
-    expect(flipNativeImage(unsupported, element.id, "vertical")).toBe(unsupported);
+    expect(
+      rotateElement(element, { x: 100, y: 100 }, unsupported),
+    ).toBe(element);
+    expect(
+      flipNativeImage(unsupported, element.id, "vertical"),
+    ).toBe(unsupported);
   });
 
   it("converts crop coordinates from the saved natural dimensions", () => {

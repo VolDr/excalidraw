@@ -264,8 +264,11 @@ export function flipNativeImage(
   axis: "horizontal" | "vertical",
 ): SceneFile {
   const element = scene.elements.find((item) => item.id === id);
-  if (!element || element.type !== "image" ||
-      !isBoxTransformable(element, scene)) {
+  if (
+    !element ||
+    element.type !== "image" ||
+    !isBoxTransformable(element, scene)
+  ) {
     return scene;
   }
   const nextScale: [number, number] = [
