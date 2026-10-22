@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import rough from "roughjs/bin/rough";
 
-  import { applyDarkModeFilter, getFontFamilyString } from "@excalidraw/common";
+  import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
   import type { ExcalidrawElement, FontFamilyValues } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
@@ -285,7 +285,7 @@
         ? existing.width
         : null,
       fontSize: existing?.type === "text" ? existing.fontSize : 20,
-      fontFamily: existing?.type === "text" ? existing.fontFamily : 5,
+      fontFamily: existing?.type === "text" ? existing.fontFamily : DEFAULT_FONT_FAMILY,
       lineHeight: existing?.type === "text" ? existing.lineHeight : 1.25,
       textAlign: existing?.type === "text" ? existing.textAlign : "left",
     };
