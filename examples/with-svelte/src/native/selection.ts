@@ -112,8 +112,7 @@ export function duplicateSelection(
     }
     if (
       canEditIndependently(element) ||
-      (element.groupIds.length === 1 &&
-        !element.boundElements?.length)
+      (element.groupIds.length === 1 && !element.boundElements?.length)
     ) {
       selected.add(element.id);
       copiedParents.add(element.id);
@@ -184,13 +183,9 @@ export function duplicateSelection(
 
   return {
     scene: { ...scene, elements: [...scene.elements, ...duplicates] },
-    // The user selects the copied box, not its separately bound label.
-    ids: duplicates
-      .filter((element) =>
-        [...copiedParents].some((originalId) =>
-          idsByOriginal.get(originalId) === element.id,
-        ),
-      )
-      .map((element) => element.id),
+    // Select copied boxes, not their separately bound text elements.
+    ids: scene.elements
+      .filter((element) => copiedParents.has(element.id))
+      .map((element) => idsByOriginal.get(element.id)!),
   };
 }
