@@ -2,7 +2,7 @@
 
 ## Current state (phase 2, partial)
 
-`examples/with-svelte` now boots a Svelte 5 application with a **native** Rough.js/Canvas 2D vertical slice for shapes, unbound text, freehand, selection, marquee, duplication, basic line endpoint editing, one-level safe grouping, rotation/resize, raster image rendering/insertion, proportional resizing and flipping, improved font-baseline/aligned text rendering, scene JSON handling, and undo history. The user can switch to the existing React editor for the unported functionality. The React editor loads lazily on demand.
+`examples/with-svelte` now boots a Svelte 5 application with a **native** Rough.js/Canvas 2D vertical slice for shapes, unbound text, freehand, selection, marquee, duplication, basic line endpoint editing, one-level safe grouping, rotation/resize, raster image rendering/insertion, proportional resizing and flipping, improved font-baseline/aligned text rendering, conservative reciprocal box-label display and transform syncing, scene JSON handling, and undo history. The user can switch to the existing React editor for the unported functionality. The React editor loads lazily on demand.
 
 Core Excalidraw remains a React/Jotai application and library. The new native editor is **not feature-complete** or an equivalent drop-in replacement.
 
