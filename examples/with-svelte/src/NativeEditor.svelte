@@ -274,7 +274,8 @@
     if (
       existing &&
       (existing.type !== "text" ||
-        existing.containerId !== null ||
+        (existing.containerId !== null &&
+          existing.containerId !== boxId) ||
         existing.locked ||
         existing.isDeleted ||
         existing.angle !== 0)
