@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { blankScene, createShape, createText, parseScene, serializeScene } from "./scene";
-import { nativeEditableLabel, nativeLabelBox, updateNativeBoxLabel } from "./boundText";
-import { deleteSelection } from "./transforms";
+import {
+  nativeEditableLabel,
+  nativeLabelBox,
+  updateNativeBoxLabel,
+} from "./boundText";
 import { groupSelection } from "./groups";
+import {
+  blankScene,
+  createShape,
+  createText,
+  parseScene,
+  serializeScene,
+} from "./scene";
 import {
   duplicateSelection,
   elementsInMarquee,
   rectangleBetween,
   visualBounds,
 } from "./selection";
+import { deleteSelection } from "./transforms";
 
 describe("native marquee and duplication", () => {
   it("duplicates a bound box and its label with fresh reciprocal IDs", () => {
@@ -17,7 +27,7 @@ describe("native marquee and duplication", () => {
     const scene = updateNativeBoxLabel(
       { ...blankScene(), elements: [box] },
       box.id,
-      "Linked\\ntext",
+      "Linked\ntext",
     );
     const sourceLabel = scene.elements[1];
     const result = duplicateSelection(scene, [box.id]);
@@ -34,11 +44,13 @@ describe("native marquee and duplication", () => {
       return;
     }
     expect(copiedLabel.containerId).toBe(copiedBox.id);
-    expect(copiedLabel.originalText).toBe("Linked\\ntext");
+    expect(copiedLabel.originalText).toBe("Linked\ntext");
     expect(copiedLabel.x - sourceLabel.x).toBe(24);
     expect(copiedLabel.y - sourceLabel.y).toBe(24);
     expect(nativeLabelBox(result.scene, copiedLabel)?.id).toBe(copiedBox.id);
-    expect(nativeEditableLabel(result.scene, copiedBox)?.id).toBe(copiedLabel.id);
+    expect(nativeEditableLabel(result.scene, copiedBox)?.id).toBe(
+      copiedLabel.id,
+    );
     expect(result.ids).toEqual([copiedBox.id]);
     expect(parseScene(serializeScene(result.scene))).toEqual(result.scene);
     expect(scene.elements[0].boundElements?.[0].id).toBe(sourceLabel.id);
@@ -60,12 +72,27 @@ describe("native marquee and duplication", () => {
     );
     const label = scene.elements[1];
     const invalid = [
-      { ...scene, elements: [{ ...scene.elements[0], boundElements: [
-        { id: label.id, type: "text" as const },
-        { id: "arrow-id", type: "arrow" as const },
-      ] }, label] },
-      { ...scene, elements: [scene.elements[0], { ...label, locked: true }] },
-      { ...scene, elements: [scene.elements[0], { ...label, groupIds: ["g"] }] },
+      {
+        ...scene,
+        elements: [
+          {
+            ...scene.elements[0],
+            boundElements: [
+              { id: label.id, type: "text" as const },
+              { id: "arrow-id", type: "arrow" as const },
+            ],
+          },
+          label,
+        ],
+      },
+      {
+        ...scene,
+        elements: [scene.elements[0], { ...label, locked: true }],
+      },
+      {
+        ...scene,
+        elements: [scene.elements[0], { ...label, groupIds: ["g"] }],
+      },
     ];
     for (const imported of invalid) {
       const result = duplicateSelection(imported, [box.id]);
@@ -76,7 +103,11 @@ describe("native marquee and duplication", () => {
 
   it("duplicates multiple labeled and standalone shapes in document order", () => {
     const box = createShape("diamond", { x: 20, y: 20 }, { x: 220, y: 180 });
-    const other = createShape("rectangle", { x: 300, y: 20 }, { x: 380, y: 110 });
+    const other = createShape(
+      "rectangle",
+      { x: 300, y: 20 },
+      { x: 380, y: 110 },
+    );
     const linked = updateNativeBoxLabel(
       { ...blankScene(), elements: [box, other] },
       box.id,
