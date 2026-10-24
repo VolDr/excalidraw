@@ -179,10 +179,14 @@ export function nativeEditableLabel(
   const label = scene.elements.find(
     (element) => element.id === box.boundElements?.[0].id,
   );
-  return label && nativeLabelBox(scene, label)?.id === box.id &&
-    label.type === "text"
-    ? label
-    : undefined;
+  if (
+    !label ||
+    label.type !== "text" ||
+    nativeLabelBox(scene, label)?.id !== box.id
+  ) {
+    return undefined;
+  }
+  return label;
 }
 
 /**
@@ -254,10 +258,7 @@ export function updateNativeBoxLabel(
     strokeColor: container.strokeColor,
   };
   const font = getFontString(label);
-  const originalMaxWidth = Math.max(
-    1,
-    getBoundTextMaxWidth(container, label),
-  );
+  const originalMaxWidth = Math.max(1, getBoundTextMaxWidth(container, label));
   let wrapped = wrapText(originalText, font, originalMaxWidth);
   let metrics = measureText(wrapped, font, label.lineHeight);
   let width = container.width;
@@ -266,10 +267,7 @@ export function updateNativeBoxLabel(
   if (metrics.width > originalMaxWidth) {
     width = Math.max(
       width,
-      computeContainerDimensionForBoundText(
-        metrics.width,
-        container.type,
-      ),
+      computeContainerDimensionForBoundText(metrics.width, container.type),
     );
     wrapped = wrapText(
       originalText,
@@ -287,10 +285,7 @@ export function updateNativeBoxLabel(
   ) {
     height = Math.max(
       height,
-      computeContainerDimensionForBoundText(
-        metrics.height,
-        container.type,
-      ),
+      computeContainerDimensionForBoundText(metrics.height, container.type),
     );
   }
 
@@ -305,15 +300,19 @@ export function updateNativeBoxLabel(
   };
   const elements = scene.elements.map((element) => {
     if (element.id === boxId) {
-      return existing && width === container.width &&
+      if (
+        existing &&
+        width === container.width &&
         height === container.height
-        ? element
-        : {
-            ...touch(element),
-            width,
-            height,
-            boundElements: [{ id: label.id, type: "text" as const }],
-          };
+      ) {
+        return element;
+      }
+      return {
+        ...touch(element),
+        width,
+        height,
+        boundElements: [{ id: label.id, type: "text" as const }],
+      };
     }
     if (element.id === label.id) {
       return nextLabel;
