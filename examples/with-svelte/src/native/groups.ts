@@ -45,10 +45,13 @@ const isSupportedRoot = (
     ) {
       // An orphan may still point at this apparently unbound box.
       return !scene.elements.some(
-        (label) =>
-          label.type === "text" &&
-          !label.isDeleted &&
-          label.containerId === element.id,
+        (dependent) =>
+          !dependent.isDeleted &&
+          ((dependent.type === "text" &&
+            dependent.containerId === element.id) ||
+            (dependent.type === "arrow" &&
+              (dependent.startBinding?.elementId === element.id ||
+                dependent.endBinding?.elementId === element.id))),
       );
     }
     return true;
