@@ -6,6 +6,7 @@ import type {
 } from "@excalidraw/element/types";
 import type { LocalPoint } from "@excalidraw/math";
 
+import { nativeLabelBox } from "./boundText";
 import { hitTest } from "./scene";
 
 import type { Point, SceneFile } from "./scene";
@@ -60,6 +61,9 @@ export function isSafeBoundBox(
   }
   return (el.boundElements ?? []).every((ref) => {
     const arrow = scene.elements.find((item) => item.id === ref.id);
+    if (ref.type === "text") {
+      return !!arrow && nativeLabelBox(scene, arrow)?.id === el.id;
+    }
     return (
       ref.type === "arrow" &&
       !!arrow &&

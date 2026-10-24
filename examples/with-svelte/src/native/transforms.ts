@@ -7,6 +7,7 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { canEditIndependently, editableSelection } from "./groups";
+import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { nativeImageSource } from "./images";
 
 import type { Point, SceneFile } from "./scene";
@@ -191,7 +192,7 @@ export function moveSelection(
   if (!selected.size) {
     return scene;
   }
-  return syncNativeBindings({
+  return syncNativeBoundLabels(syncNativeBindings({
     ...scene,
     elements: scene.elements.map((element) =>
       selected.has(element.id)
@@ -205,7 +206,7 @@ export function moveSelection(
           }
         : element,
     ),
-  });
+  }));
 }
 
 export function deleteSelection(
@@ -221,6 +222,12 @@ export function deleteSelection(
   }
   if (!selected.size) {
     return scene;
+  }
+  for (const element of scene.elements) {
+    const box = nativeLabelBox(scene, element);
+    if (box && selected.has(box.id)) {
+      selected.add(element.id);
+    }
   }
   const unlinked = detachDeletedNativeBindings(scene, selected);
   return {
@@ -245,7 +252,7 @@ export function transformSelected(
   handle: Handle,
   point: Point,
 ): SceneFile {
-  return syncNativeBindings({
+  return syncNativeBoundLabels(syncNativeBindings({
     ...scene,
     elements: scene.elements.map((element) =>
       element.id !== id
@@ -254,7 +261,7 @@ export function transformSelected(
         ? rotateElement(element, point, scene)
         : resizeElement(element, handle, point, scene),
     ),
-  });
+  }));
 }
 
 /** Flip a supported raster image without rewriting its file or crop data. */

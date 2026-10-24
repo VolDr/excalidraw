@@ -16,6 +16,7 @@ import type {
 import type { LocalPoint } from "@excalidraw/math";
 
 import { nativeImageSource } from "./images";
+import { nativeLabelBox } from "./boundText";
 
 /**
  * A serializable scene boundary shared by the native Svelte editor and
@@ -112,7 +113,7 @@ export const unsupportedCount = (scene: SceneFile): number =>
   scene.elements.filter(
     (element) =>
       !element.isDeleted &&
-      (!isNativeShape(element) ||
+      ((!isNativeShape(element) && !nativeLabelBox(scene, element)) ||
         (element.type === "image" && !nativeImageSource(scene, element))),
   ).length;
 

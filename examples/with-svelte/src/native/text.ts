@@ -41,8 +41,9 @@ export function paintNativeText(
   ctx: CanvasRenderingContext2D,
   element: ExcalidrawTextElement,
   color: string,
+  allowBound = false,
 ): void {
-  if (element.isDeleted || element.containerId !== null) {
+  if (element.isDeleted || (element.containerId !== null && !allowBound)) {
     return;
   }
   ctx.save();

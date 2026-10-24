@@ -7,6 +7,7 @@
   import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
   import { paintNativeText } from "./native/text";
+  import { nativeBoundLabelLayout } from "./native/boundText";
   import {
     addNativeImage,
     NativeImageCache,
@@ -390,6 +391,22 @@
     const sketch = rough.canvas(canvas);
 
     const draw = (element: ExcalidrawElement) => {
+      const label = nativeBoundLabelLayout(scene, element);
+      if (label) {
+        const color = theme === "dark"
+          ? applyDarkModeFilter(label.strokeColor)
+          : label.strokeColor;
+        const cx = label.x + label.width / 2;
+        const cy = label.y + label.height / 2;
+        ctx.save();
+        ctx.globalAlpha = label.opacity / 100;
+        ctx.translate(cx, cy);
+        ctx.rotate(label.angle);
+        ctx.translate(-cx, -cy);
+        paintNativeText(ctx, label, color, true);
+        ctx.restore();
+        return;
+      }
       if (!isNativeShape(element)) {
         return;
       }
