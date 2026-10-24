@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   nativeBoundLabelLayout,
+  nativeEditableLabel,
   nativeLabelBox,
   syncNativeBoundLabels,
+  updateNativeBoxLabel,
 } from "./boundText";
 import { blankScene, createShape, createText, parseScene, serializeScene, unsupportedCount } from "./scene";
 import { deleteSelection, moveSelection, transformSelected } from "./transforms";
@@ -26,6 +28,98 @@ const makeScene = () => {
 };
 
 describe("native flat box labels", () => {
+  it("creates an Excalidraw label with reciprocal IDs and undoable JSON metadata", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 240, y: 150 });
+    const scene = { ...blankScene(), elements: [box] };
+    expect(nativeEditableLabel(scene, box)).toBeNull();
+    const created = updateNativeBoxLabel(scene, box.id, "Hello\\nWorld");
+    expect(created.elements).toHaveLength(2);
+    const shape = created.elements[0];
+    const label = created.elements[1];
+    expect(shape.boundElements).toEqual([{ id: label.id, type: "text" }]);
+    expect(label.type).toBe("text");
+    if (label.type !== "text") {
+      return;
+    }
+    expect(label.containerId).toBe(shape.id);
+    expect(label.originalText).toBe("Hello\\nWorld");
+    expect(label.textAlign).toBe("center");
+    expect(label.verticalAlign).toBe("middle");
+    expect(nativeLabelBox(created, label)?.id).toBe(shape.id);
+    expect(unsupportedCount(created)).toBe(0);
+    expect(parseScene(serializeScene(created))).toEqual(created);
+    expect(scene.elements).toEqual([box]);
+  });
+
+  it("edits a bound label once while preserving its identity and original data", () => {
+    const { box, scene } = makeScene();
+    const original = syncNativeBoundLabels(scene);
+    const previous = original.elements[1];
+    const next = updateNativeBoxLabel(
+      original,
+      box.id,
+      "Updated label\\nAnother line",
+    );
+    const label = next.elements[1];
+    expect(label.id).toBe(previous.id);
+    expect(label.type).toBe("text");
+    if (label.type !== "text") {
+      return;
+    }
+    expect(label.version).toBe(previous.version + 1);
+    expect(label.originalText).toBe("Updated label\\nAnother line");
+    expect(label.containerId).toBe(box.id);
+    expect(next.elements[0].boundElements).toEqual([
+      { id: label.id, type: "text" },
+    ]);
+    expect(updateNativeBoxLabel(next, box.id, label.originalText)).toBe(next);
+  });
+
+  it("grows a box if the label's measured height exceeds its interior", () => {
+    const box = createShape("rectangle", { x: 5, y: 5 }, { x: 100, y: 55 });
+    const scene = { ...blankScene(), elements: [box] };
+    const text = "First\\nSecond\\nThird\\nFourth\\nFifth";
+    const updated = updateNativeBoxLabel(scene, box.id, text);
+    expect(updated.elements[0].height).toBeGreaterThan(box.height);
+    const label = updated.elements[1];
+    expect(label.type).toBe("text");
+    if (label.type !== "text") {
+      return;
+    }
+    expect(label.originalText).toBe(text);
+    expect(label.y).toBeGreaterThanOrEqual(box.y);
+    expect(nativeBoundLabelLayout(updated, label)).not.toBeNull();
+  });
+
+  it("clears a label without deleting its container or keeping a dangling link", () => {
+    const { box, scene } = makeScene();
+    const deleted = updateNativeBoxLabel(scene, box.id, "");
+    expect(deleted.elements[0].isDeleted).toBe(false);
+    expect(deleted.elements[0].boundElements).toBeNull();
+    expect(deleted.elements[1].isDeleted).toBe(true);
+    expect(nativeEditableLabel(deleted, deleted.elements[0])).toBeNull();
+    const created = updateNativeBoxLabel(deleted, box.id, "New label");
+    expect(created.elements[2].type).toBe("text");
+    expect(created.elements[0].boundElements?.[0].id).toBe(created.elements[2].id);
+  });
+
+  it("refuses to modify locked, grouped or inconsistently linked containers", () => {
+    const { box, scene } = makeScene();
+    const invalid = [
+      { ...scene, elements: [{ ...box, locked: true }, scene.elements[1]] },
+      { ...scene, elements: [{ ...box, groupIds: ["group"] }, scene.elements[1]] },
+      { ...scene, elements: [{ ...box, boundElements: null }, scene.elements[1]] },
+      { ...scene, elements: [{ ...box, boundElements: [
+        ...box.boundElements!,
+        { id: "other-arrow", type: "arrow" as const },
+      ] }, scene.elements[1]] },
+    ];
+    for (const item of invalid) {
+      expect(updateNativeBoxLabel(item, box.id, "Must not edit")).toBe(item);
+    }
+  });
+
+
   it("recognizes reciprocal labels and calculates official center alignment", () => {
     const { box, text, scene } = makeScene();
     expect(nativeLabelBox(scene, text)?.id).toBe(box.id);
