@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { blankScene, createShape, createText } from "./scene";
+import { blankScene, createShape, createText, parseScene, serializeScene } from "./scene";
+import { nativeEditableLabel, nativeLabelBox, updateNativeBoxLabel } from "./boundText";
+import { deleteSelection } from "./transforms";
 import { groupSelection } from "./groups";
 import {
   duplicateSelection,
@@ -10,6 +12,89 @@ import {
 } from "./selection";
 
 describe("native marquee and duplication", () => {
+  it("duplicates a bound box and its label with fresh reciprocal IDs", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 220, y: 120 });
+    const scene = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box] },
+      box.id,
+      "Linked\\ntext",
+    );
+    const sourceLabel = scene.elements[1];
+    const result = duplicateSelection(scene, [box.id]);
+    expect(result.ids).toHaveLength(1);
+    expect(result.scene.elements).toHaveLength(4);
+    const [copiedBox, copiedLabel] = result.scene.elements.slice(2);
+    expect(copiedBox.id).not.toBe(box.id);
+    expect(copiedLabel.id).not.toBe(sourceLabel.id);
+    expect(copiedBox.boundElements).toEqual([
+      { id: copiedLabel.id, type: "text" },
+    ]);
+    expect(copiedLabel.type).toBe("text");
+    if (copiedLabel.type !== "text") {
+      return;
+    }
+    expect(copiedLabel.containerId).toBe(copiedBox.id);
+    expect(copiedLabel.originalText).toBe("Linked\\ntext");
+    expect(copiedLabel.x - sourceLabel.x).toBe(24);
+    expect(copiedLabel.y - sourceLabel.y).toBe(24);
+    expect(nativeLabelBox(result.scene, copiedLabel)?.id).toBe(copiedBox.id);
+    expect(nativeEditableLabel(result.scene, copiedBox)?.id).toBe(copiedLabel.id);
+    expect(result.ids).toEqual([copiedBox.id]);
+    expect(parseScene(serializeScene(result.scene))).toEqual(result.scene);
+    expect(scene.elements[0].boundElements?.[0].id).toBe(sourceLabel.id);
+
+    const removed = deleteSelection(result.scene, result.ids);
+    expect(removed.elements[2].isDeleted).toBe(true);
+    expect(removed.elements[3].isDeleted).toBe(true);
+    expect(removed.elements[0].isDeleted).toBe(false);
+    expect(removed.elements[1].isDeleted).toBe(false);
+    expect(nativeLabelBox(removed, removed.elements[1])?.id).toBe(box.id);
+  });
+
+  it("does not duplicate malformed box bindings, mixed arrow links or locked labels", () => {
+    const box = createShape("ellipse", { x: 0, y: 0 }, { x: 180, y: 120 });
+    const scene = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box] },
+      box.id,
+      "Guarded label",
+    );
+    const label = scene.elements[1];
+    const invalid = [
+      { ...scene, elements: [{ ...scene.elements[0], boundElements: [
+        { id: label.id, type: "text" as const },
+        { id: "arrow-id", type: "arrow" as const },
+      ] }, label] },
+      { ...scene, elements: [scene.elements[0], { ...label, locked: true }] },
+      { ...scene, elements: [scene.elements[0], { ...label, groupIds: ["g"] }] },
+    ];
+    for (const imported of invalid) {
+      const result = duplicateSelection(imported, [box.id]);
+      expect(result.scene).toBe(imported);
+      expect(result.ids).toEqual([]);
+    }
+  });
+
+  it("duplicates multiple labeled and standalone shapes in document order", () => {
+    const box = createShape("diamond", { x: 20, y: 20 }, { x: 220, y: 180 });
+    const other = createShape("rectangle", { x: 300, y: 20 }, { x: 380, y: 110 });
+    const linked = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box, other] },
+      box.id,
+      "Text",
+    );
+    const result = duplicateSelection(linked, [other.id, box.id], 16);
+    expect(result.ids).toHaveLength(2);
+    expect(result.scene.elements).toHaveLength(6);
+    const [copyBox, copyOther, copyText] = result.scene.elements.slice(3);
+    expect(result.ids).toEqual([copyBox.id, copyOther.id]);
+    expect(copyBox.boundElements?.[0].id).toBe(copyText.id);
+    expect(copyText.type).toBe("text");
+    if (copyText.type === "text") {
+      expect(copyText.containerId).toBe(copyBox.id);
+    }
+    expect(copyOther.x).toBe(other.x + 16);
+  });
+
   it("marquee selects whole groups on intersection and requires full enclosure in reverse", () => {
     const a = createShape("rectangle", { x: 0, y: 0 }, { x: 20, y: 20 });
     const b = createShape("rectangle", { x: 100, y: 100 }, { x: 120, y: 120 });
