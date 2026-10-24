@@ -241,5 +241,28 @@ describe("atomic Svelte bound-text groups", () => {
     expect(moveSelection(orphan, [box.id], 8, 8)).toBe(orphan);
     expect(duplicateSelection(orphan, [box.id]).scene).toBe(orphan);
     expect(groupSelection(orphan, [box.id, other.id]).scene).toBe(orphan);
+
+    const arrow = createShape("arrow", { x: 450, y: 60 }, { x: 500, y: 100 });
+    if (arrow.type !== "arrow") {
+      throw new Error("Expected an arrow");
+    }
+    const hiddenArrow = {
+      ...scene,
+      elements: [
+        ...scene.elements,
+        {
+          ...arrow,
+          startBinding: {
+            elementId: box.id,
+            fixedPoint: [0.5, 0.5] as [number, number],
+            mode: "inside" as const,
+          },
+        },
+      ],
+    };
+    expect(nativeLabelBox(hiddenArrow, label)).toBeNull();
+    expect(groupSelection(hiddenArrow, [box.id, other.id]).scene).toBe(
+      hiddenArrow,
+    );
   });
 });
