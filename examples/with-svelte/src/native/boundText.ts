@@ -34,6 +34,8 @@ export function nativeLabelBox(
     !label.containerId ||
     label.isDeleted ||
     label.locked ||
+    !label.autoResize ||
+    label.boundElements?.length ||
     label.frameId ||
     label.groupIds.length
   ) {

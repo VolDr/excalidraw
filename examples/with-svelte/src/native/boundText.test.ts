@@ -94,6 +94,7 @@ describe("native flat box labels", () => {
         id: "missing", type: "arrow" as const,
       }] }, text] },
       { ...scene, elements: [box, { ...text, containerId: "other" }] },
+      { ...scene, elements: [box, { ...text, autoResize: false }] },
     ];
     for (const [index, input] of cases.entries()) {
       expect(nativeLabelBox(input, input.elements[1])).toBeNull();
