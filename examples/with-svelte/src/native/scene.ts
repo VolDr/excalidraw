@@ -97,6 +97,8 @@ export function parseScene(input: string): SceneFile {
     throw new Error("Файл содержит некорректные элементы.");
   }
   return {
+    // Preserve top-level extension fields from imported Excalidraw scenes.
+    ...data,
     type: "excalidraw",
     version: typeof data.version === "number" ? data.version : 2,
     source: typeof data.source === "string" ? data.source : SOURCE,
