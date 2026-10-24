@@ -192,21 +192,24 @@ export function moveSelection(
   if (!selected.size) {
     return scene;
   }
-  return syncNativeBoundLabels(syncNativeBindings({
-    ...scene,
-    elements: scene.elements.map((element) =>
-      selected.has(element.id)
-        ? {
-            ...element,
-            x: element.x + dx,
-            y: element.y + dy,
-            version: element.version + 1,
-            versionNonce: Math.floor(Math.random() * 2 ** 31),
-            updated: Date.now(),
-          }
-        : element,
-    ),
-  }), selected);
+  return syncNativeBoundLabels(
+    syncNativeBindings({
+      ...scene,
+      elements: scene.elements.map((element) =>
+        selected.has(element.id)
+          ? {
+              ...element,
+              x: element.x + dx,
+              y: element.y + dy,
+              version: element.version + 1,
+              versionNonce: Math.floor(Math.random() * 2 ** 31),
+              updated: Date.now(),
+            }
+          : element,
+      ),
+    }),
+    selected,
+  );
 }
 
 export function deleteSelection(
@@ -269,10 +272,7 @@ export function transformSelected(
       element.id === id ? transformed : element,
     ),
   };
-  return syncNativeBoundLabels(
-    syncNativeBindings(updated),
-    new Set([id]),
-  );
+  return syncNativeBoundLabels(syncNativeBindings(updated), new Set([id]));
 }
 
 /** Flip a supported raster image without rewriting its file or crop data. */
