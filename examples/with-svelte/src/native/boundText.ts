@@ -67,6 +67,13 @@ export function nativeLabelBox(
         !item.isDeleted &&
         item.containerId === box.id &&
         item.id !== label.id,
+    ) ||
+    scene.elements.some(
+      (item) =>
+        item.type === "arrow" &&
+        !item.isDeleted &&
+        (item.startBinding?.elementId === box.id ||
+          item.endBinding?.elementId === box.id),
     )
   ) {
     return null;
