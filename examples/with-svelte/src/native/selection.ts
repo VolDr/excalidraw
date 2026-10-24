@@ -1,5 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
+import { nativeEditableLabel } from "./boundText";
 import {
   canEditIndependently,
   editableSelection,
@@ -92,38 +93,66 @@ export function elementsInMarquee(
 }
 
 /**
- * Duplicate a safe, independent selection without remapping unsupported
- * Excalidraw bindings. The new elements are appended above originals.
+ * Duplicate independent elements and safe, reciprocal box/label pairs.
+ * Remap both sides before appending: no copy may refer to its original.
+ * Imported arrow bindings and complex grouped/frame content are untouched.
  */
 export function duplicateSelection(
   scene: SceneFile,
   ids: readonly string[],
   offset = 24,
 ): { scene: SceneFile; ids: string[] } {
-  // Linked targets may move but must not be copied without also remapping arrows.
-  const selected = new Set(
-    editableSelection(scene, ids).filter((id) => {
-      const element = scene.elements.find((item) => item.id === id);
-      return (
-        !!element &&
-        (canEditIndependently(element) || element.groupIds.length === 1)
-      );
-    }),
-  );
+  const requested = new Set(editableSelection(scene, ids));
+  const selected = new Set<string>();
+  const copiedParents = new Set<string>();
+
+  for (const element of scene.elements) {
+    if (!requested.has(element.id)) {
+      continue;
+    }
+    if (
+      canEditIndependently(element) ||
+      (element.groupIds.length === 1 &&
+        !element.boundElements?.length)
+    ) {
+      selected.add(element.id);
+      copiedParents.add(element.id);
+      continue;
+    }
+    const label = nativeEditableLabel(scene, element);
+    if (label) {
+      selected.add(element.id);
+      selected.add(label.id);
+      copiedParents.add(element.id);
+    }
+  }
+
+  if (!selected.size) {
+    return { scene, ids: [] };
+  }
+
   const now = Date.now();
+  const idsByOriginal = new Map<string, string>();
   const newGroupIds = new Map<string, string>();
+  for (const element of scene.elements) {
+    if (selected.has(element.id)) {
+      idsByOriginal.set(element.id, crypto.randomUUID());
+    }
+  }
+
   const duplicates = scene.elements
     .filter((element) => selected.has(element.id))
-    .map((element) => {
+    .map((element): ExcalidrawElement => {
       const groupIds = element.groupIds.map((id) => {
         if (!newGroupIds.has(id)) {
           newGroupIds.set(id, crypto.randomUUID());
         }
         return newGroupIds.get(id)!;
       });
-      return {
+      const id = idsByOriginal.get(element.id)!;
+      const copy = {
         ...structuredClone(element),
-        id: crypto.randomUUID(),
+        id,
         groupIds,
         x: element.x + offset,
         y: element.y + offset,
@@ -134,12 +163,34 @@ export function duplicateSelection(
         created: now,
         updated: now,
       };
-    }) as ExcalidrawElement[];
-  if (!duplicates.length) {
-    return { scene, ids: [] };
-  }
+
+      if (element.type === "text" && element.containerId) {
+        return {
+          ...copy,
+          containerId: idsByOriginal.get(element.containerId)!,
+        };
+      }
+      if (element.boundElements?.length) {
+        return {
+          ...copy,
+          boundElements: element.boundElements.map((ref) => ({
+            ...ref,
+            id: idsByOriginal.get(ref.id)!,
+          })),
+        };
+      }
+      return copy;
+    });
+
   return {
     scene: { ...scene, elements: [...scene.elements, ...duplicates] },
-    ids: duplicates.map((element) => element.id),
+    // The user selects the copied box, not its separately bound label.
+    ids: duplicates
+      .filter((element) =>
+        [...copiedParents].some((originalId) =>
+          idsByOriginal.get(originalId) === element.id,
+        ),
+      )
+      .map((element) => element.id),
   };
 }
