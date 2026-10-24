@@ -126,9 +126,20 @@ export function nativeBoundLabelLayout(
  * Move/rotate/rewrap the label together with its container. Both elements
  * remain valid Excalidraw elements in serialized scene and undo history.
  */
-export function syncNativeBoundLabels(scene: SceneFile): SceneFile {
+export function syncNativeBoundLabels(
+  scene: SceneFile,
+  changedContainers?: ReadonlySet<string>,
+): SceneFile {
   let changed = false;
   const elements = scene.elements.map((element) => {
+    if (
+      changedContainers &&
+      (element.type !== "text" ||
+        !element.containerId ||
+        !changedContainers.has(element.containerId))
+    ) {
+      return element;
+    }
     const layout = nativeBoundLabelLayout(scene, element);
     if (
       !layout ||
