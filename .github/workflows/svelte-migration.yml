@@ -9,6 +9,7 @@ on:
   push:
     branches:
       - feature/svelte-migration-phase-1
+      - "feat/svelte-**"
     paths:
       - "examples/with-svelte/**"
       - ".github/workflows/svelte-migration.yml"
