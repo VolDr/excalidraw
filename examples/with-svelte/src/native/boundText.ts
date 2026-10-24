@@ -187,7 +187,12 @@ export function updateNativeBoxLabel(
   value: string,
 ): SceneFile {
   const container = scene.elements.find((element) => element.id === boxId);
-  if (!container) {
+  if (
+    !container ||
+    (container.type !== "rectangle" &&
+      container.type !== "ellipse" &&
+      container.type !== "diamond")
+  ) {
     return scene;
   }
   const existing = nativeEditableLabel(scene, container);
@@ -302,12 +307,23 @@ export function updateNativeBoxLabel(
           };
     }
     if (element.id === label.id) {
-      return touch(nextLabel);
+      return nextLabel;
     }
     return element;
   });
   if (!existing) {
     elements.push(nextLabel);
   }
-  return syncNativeBoundLabels({ ...scene, elements });
+  const candidate = { ...scene, elements };
+  const positioned = nativeBoundLabelLayout(candidate, nextLabel);
+  if (!positioned) {
+    return scene;
+  }
+  const updatedLabel = existing ? touch(positioned) : positioned;
+  return {
+    ...candidate,
+    elements: elements.map((element) =>
+      element.id === label.id ? updatedLabel : element,
+    ),
+  };
 }
