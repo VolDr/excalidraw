@@ -198,6 +198,70 @@ try {
   const restored = await saveScene();
   assert.deepEqual(restored, withLabel);
 
+  // A native flat group must include the bound label as an internal member.
+  await page.getByRole("button", { name: "Эллипс" }).click();
+  await page.mouse.move(x + 370, y + 10);
+  await page.mouse.down();
+  await page.mouse.move(x + 455, y + 95, { steps: 5 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Выделение" }).click();
+  await page.locator(".native-viewport").press("Control+a");
+  await page.locator(".native-viewport").press("Control+g");
+  const groupedScene = await saveScene();
+  const originalGroupedBox = groupedScene.elements.find((e) => e.id === rect.id);
+  const originalGroupedLabel = groupedScene.elements.find((e) => e.id === boundId);
+  assert.ok(originalGroupedBox.groupIds.length === 1);
+  const groupId = originalGroupedBox.groupIds[0];
+  assert.deepEqual(originalGroupedLabel.groupIds, [groupId]);
+  assert.ok(
+    groupedScene.elements.filter((e) => !e.isDeleted && e.groupIds.includes(groupId)).length >= 3,
+  );
+
+  // Import/export a grouped scene without losing reciprocal links or group IDs.
+  await page.locator(".toolbar input[type=file]").setInputFiles({
+    name: "grouped.excalidraw",
+    mimeType: "application/vnd.excalidraw+json",
+    buffer: Buffer.from(JSON.stringify(groupedScene)),
+  });
+  await page.getByText("Открыт файл: grouped.excalidraw").waitFor();
+  assert.deepEqual(await saveScene(), groupedScene);
+
+  await page.mouse.click(cx, cy);
+  await page.locator(".native-viewport").press("Control+d");
+  const duplicatedGroup = await saveScene();
+  const groupCopy = duplicatedGroup.elements.find(
+    (e) => e.type === "rectangle" && e.id !== rect.id && !e.isDeleted,
+  );
+  assert.ok(groupCopy, "Whole-group duplication must copy the bound box");
+  assert.notEqual(groupCopy.groupIds[0], groupId);
+  const copiedGroupLabel = duplicatedGroup.elements.find(
+    (e) => e.id === groupCopy.boundElements?.[0]?.id,
+  );
+  assert.ok(copiedGroupLabel);
+  assert.equal(copiedGroupLabel.containerId, groupCopy.id);
+  assert.deepEqual(copiedGroupLabel.groupIds, groupCopy.groupIds);
+  assert.equal(
+    duplicatedGroup.elements.find((e) => e.id === rect.id).boundElements[0].id,
+    boundId,
+  );
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), groupedScene);
+
+  // After undo resets the selection, select the group and ungroup it.
+  await page.mouse.click(cx, cy);
+  await page.locator(".native-viewport").press("Control+Shift+g");
+  const ungroupedScene = await saveScene();
+  assert.ok(ungroupedScene.elements.every((e) => e.groupIds.length === 0));
+  assert.equal(
+    ungroupedScene.elements.find((e) => e.id === boundId).containerId,
+    rect.id,
+  );
+  assert.equal(
+    ungroupedScene.elements.find((e) => e.id === rect.id).boundElements[0].id,
+    boundId,
+  );
+  assert.deepEqual(errors, []);
+
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
