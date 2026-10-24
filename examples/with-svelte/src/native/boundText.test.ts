@@ -95,13 +95,20 @@ describe("native flat box labels", () => {
       }] }, text] },
       { ...scene, elements: [box, { ...text, containerId: "other" }] },
     ];
-    for (const input of cases) {
+    for (const [index, input] of cases.entries()) {
       expect(nativeLabelBox(input, input.elements[1])).toBeNull();
       expect(unsupportedCount(input)).toBe(1);
       const previous = JSON.stringify(input);
       expect(syncNativeBoundLabels(input)).toBe(input);
       expect(JSON.stringify(input)).toBe(previous);
-      expect(moveSelection(input, [input.elements[0].id], 10, 10)).toBe(input);
+      const moved = moveSelection(input, [input.elements[0].id], 10, 10);
+      // The first case is an unbound box next to orphaned text. Only the
+      // independent box may move; the malformed text must never be rewritten.
+      if (index === 0) {
+        expect(moved.elements[1]).toBe(input.elements[1]);
+      } else {
+        expect(moved).toBe(input);
+      }
     }
   });
 
