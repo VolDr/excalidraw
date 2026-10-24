@@ -190,6 +190,20 @@ describe("atomic Svelte bound-text groups", () => {
     expect(parseScene(serializeScene(rotated))).toEqual(rotated);
   });
 
+  it("does not silently normalize an unrelated imported label during a move", () => {
+    const { other, label, scene } = labeledPair();
+    const imported = {
+      ...scene,
+      elements: scene.elements.map((element) =>
+        element.id === label.id ? { ...element, x: 999 } : element,
+      ),
+    };
+    const moved = moveSelection(imported, [other.id], 10, 5);
+    expect(moved.elements[1].x).toBe(other.x + 10);
+    expect(moved.elements[2]).toBe(imported.elements[2]);
+    expect(moved.elements[2].x).toBe(999);
+  });
+
   it("refuses to change incompatible, partially grouped and foreign bindings", () => {
     const { box, other, label, scene } = labeledPair();
     const grouped = groupSelection(scene, [box.id, other.id]).scene;
