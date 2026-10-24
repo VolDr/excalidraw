@@ -38,8 +38,20 @@ const isSupportedRoot = (
     return false;
   }
   if (isIndependent(element)) {
-    // Orphaned labels can point at a box with a missing reverse reference.
-    return nativeEditableLabel(scene, element) !== undefined;
+    if (
+      element.type === "rectangle" ||
+      element.type === "ellipse" ||
+      element.type === "diamond"
+    ) {
+      // An orphan may still point at this apparently unbound box.
+      return !scene.elements.some(
+        (label) =>
+          label.type === "text" &&
+          !label.isDeleted &&
+          label.containerId === element.id,
+      );
+    }
+    return true;
   }
   return nativeEditableLabel(scene, element) != null;
 };
