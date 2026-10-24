@@ -7,11 +7,22 @@ import {
   syncNativeBoundLabels,
   updateNativeBoxLabel,
 } from "./boundText";
-import { blankScene, createShape, createText, parseScene, serializeScene, unsupportedCount } from "./scene";
+import {
+  blankScene,
+  createShape,
+  createText,
+  parseScene,
+  serializeScene,
+  unsupportedCount,
+} from "./scene";
 import { deleteSelection, moveSelection, transformSelected } from "./transforms";
 
 const makeScene = () => {
-  const rectangle = createShape("rectangle", { x: 10, y: 20 }, { x: 250, y: 150 });
+  const rectangle = createShape(
+    "rectangle",
+    { x: 10, y: 20 },
+    { x: 250, y: 150 },
+  );
   const label = createText({ x: 0, y: 0 }, "First line\nSecond line");
   const box = {
     ...rectangle,
@@ -29,7 +40,11 @@ const makeScene = () => {
 
 describe("native flat box labels", () => {
   it("creates an Excalidraw label with reciprocal IDs and undoable JSON metadata", () => {
-    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 240, y: 150 });
+    const box = createShape(
+      "rectangle",
+      { x: 10, y: 20 },
+      { x: 240, y: 150 },
+    );
     const scene = { ...blankScene(), elements: [box] };
     expect(nativeEditableLabel(scene, box)).toBeNull();
     const created = updateNativeBoxLabel(scene, box.id, "Hello\nWorld");
@@ -100,25 +115,41 @@ describe("native flat box labels", () => {
     expect(nativeEditableLabel(deleted, deleted.elements[0])).toBeNull();
     const created = updateNativeBoxLabel(deleted, box.id, "New label");
     expect(created.elements[2].type).toBe("text");
-    expect(created.elements[0].boundElements?.[0].id).toBe(created.elements[2].id);
+    expect(created.elements[0].boundElements?.[0].id).toBe(
+      created.elements[2].id,
+    );
   });
 
   it("refuses to modify locked, grouped or inconsistently linked containers", () => {
     const { box, scene } = makeScene();
     const invalid = [
       { ...scene, elements: [{ ...box, locked: true }, scene.elements[1]] },
-      { ...scene, elements: [{ ...box, groupIds: ["group"] }, scene.elements[1]] },
-      { ...scene, elements: [{ ...box, boundElements: null }, scene.elements[1]] },
-      { ...scene, elements: [{ ...box, boundElements: [
-        ...box.boundElements!,
-        { id: "other-arrow", type: "arrow" as const },
-      ] }, scene.elements[1]] },
+      {
+        ...scene,
+        elements: [{ ...box, groupIds: ["group"] }, scene.elements[1]],
+      },
+      {
+        ...scene,
+        elements: [{ ...box, boundElements: null }, scene.elements[1]],
+      },
+      {
+        ...scene,
+        elements: [
+          {
+            ...box,
+            boundElements: [
+              ...box.boundElements!,
+              { id: "other-arrow", type: "arrow" as const },
+            ],
+          },
+          scene.elements[1],
+        ],
+      },
     ];
     for (const item of invalid) {
       expect(updateNativeBoxLabel(item, box.id, "Must not edit")).toBe(item);
     }
   });
-
 
   it("recognizes reciprocal labels and calculates official center alignment", () => {
     const { box, text, scene } = makeScene();
@@ -170,8 +201,11 @@ describe("native flat box labels", () => {
       return;
     }
     expect(updated.containerId).toBe(box.id);
-    expect(updated.originalText).toBe(scene.elements[1].type === "text"
-      ? scene.elements[1].originalText : null);
+    expect(updated.originalText).toBe(
+      scene.elements[1].type === "text"
+        ? scene.elements[1].originalText
+        : null,
+    );
     expect(updated.width).toBeGreaterThan(0);
     expect(updated.height).toBeGreaterThan(0);
     const deleted = deleteSelection(smaller, [box.id]);
@@ -184,9 +218,19 @@ describe("native flat box labels", () => {
     const cases = [
       { ...scene, elements: [{ ...box, boundElements: null }, text] },
       { ...scene, elements: [box, { ...text, groupIds: ["nested"] }] },
-      { ...scene, elements: [{ ...box, boundElements: [...box.boundElements!, {
-        id: "missing", type: "arrow" as const,
-      }] }, text] },
+      {
+        ...scene,
+        elements: [
+          {
+            ...box,
+            boundElements: [
+              ...box.boundElements!,
+              { id: "missing", type: "arrow" as const },
+            ],
+          },
+          text,
+        ],
+      },
       { ...scene, elements: [box, { ...text, containerId: "other" }] },
       { ...scene, elements: [box, { ...text, autoResize: false }] },
     ];
