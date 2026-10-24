@@ -169,6 +169,35 @@ try {
     firstLabel.originalText,
   );
 
+  // Duplicating a labeled shape must clone and relink its label, not point
+  // the new container back to the original text.
+  await page.mouse.click(cx, cy);
+  await page.locator(".native-viewport").press("Control+d");
+  const withCopy = await saveScene();
+  const copiedBox = withCopy.elements.find(
+    (element) =>
+      element.type === "rectangle" &&
+      element.id !== rect.id &&
+      !element.isDeleted,
+  );
+  assert.ok(copiedBox, "Duplicated box must be saved");
+  assert.equal(copiedBox.boundElements?.length, 1);
+  const copiedLabel = withCopy.elements.find(
+    (element) => element.id === copiedBox.boundElements[0].id,
+  );
+  assert.ok(copiedLabel, "Duplicated label must be saved");
+  assert.notEqual(copiedLabel.id, boundId);
+  assert.equal(copiedLabel.containerId, copiedBox.id);
+  assert.equal(copiedLabel.originalText, firstLabel.originalText);
+  assert.equal(
+    withCopy.elements.find((element) => element.id === rect.id)
+      .boundElements[0].id,
+    boundId,
+  );
+  await page.locator(".native-viewport").press("Control+z");
+  const restored = await saveScene();
+  assert.deepEqual(restored, withLabel);
+
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
