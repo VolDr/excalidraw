@@ -35,8 +35,13 @@ describe("native scene compatibility", () => {
       img1: { mimeType: "image/png", dataURL: "data:image/png;base64,AAAA" },
     };
     original.appState = { viewBackgroundColor: "#fdfaf3", gridSize: 20 };
-    const restored = parseScene(serializeScene(original));
-    expect(restored).toEqual(original);
+    const withExtensions = {
+      ...original,
+      customSceneMetadata: { owner: "external", revision: 42 },
+    };
+    const restored = parseScene(serializeScene(withExtensions));
+    expect(restored).toEqual(withExtensions);
+    expect(restored.elements).toEqual(original.elements);
     expect(unsupportedCount(restored)).toBe(0);
   });
 
