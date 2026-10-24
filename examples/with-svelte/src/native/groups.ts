@@ -126,7 +126,9 @@ export function selectionUnit(scene: SceneFile, id: string): string[] {
   ) {
     return [id];
   }
-  return isIndependent(element) ? [id] : [];
+  return isIndependent(element) && isSupportedRoot(scene, element)
+    ? [id]
+    : [];
 }
 
 /** Accept only whole groups and roots of valid reciprocal label pairs. */
@@ -153,7 +155,7 @@ export function editableSelection(
       (element) =>
         selected.has(element.id) &&
         !isBoundLabel(element) &&
-        (canEditIndependently(element) ||
+        ((canEditIndependently(element) && isSupportedRoot(scene, element)) ||
           (isSafeBoundBox(scene, element) && !!element.boundElements?.length) ||
           (element.groupIds.length === 1 &&
             allowedGroups.has(element.groupIds[0]))),
