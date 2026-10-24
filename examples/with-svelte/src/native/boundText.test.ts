@@ -32,7 +32,7 @@ describe("native flat box labels", () => {
     const box = createShape("rectangle", { x: 10, y: 20 }, { x: 240, y: 150 });
     const scene = { ...blankScene(), elements: [box] };
     expect(nativeEditableLabel(scene, box)).toBeNull();
-    const created = updateNativeBoxLabel(scene, box.id, "Hello\\nWorld");
+    const created = updateNativeBoxLabel(scene, box.id, "Hello\nWorld");
     expect(created.elements).toHaveLength(2);
     const shape = created.elements[0];
     const label = created.elements[1];
@@ -42,7 +42,7 @@ describe("native flat box labels", () => {
       return;
     }
     expect(label.containerId).toBe(shape.id);
-    expect(label.originalText).toBe("Hello\\nWorld");
+    expect(label.originalText).toBe("Hello\nWorld");
     expect(label.textAlign).toBe("center");
     expect(label.verticalAlign).toBe("middle");
     expect(nativeLabelBox(created, label)?.id).toBe(shape.id);
@@ -58,7 +58,7 @@ describe("native flat box labels", () => {
     const next = updateNativeBoxLabel(
       original,
       box.id,
-      "Updated label\\nAnother line",
+      "Updated label\nAnother line",
     );
     const label = next.elements[1];
     expect(label.id).toBe(previous.id);
@@ -67,7 +67,7 @@ describe("native flat box labels", () => {
       return;
     }
     expect(label.version).toBe(previous.version + 1);
-    expect(label.originalText).toBe("Updated label\\nAnother line");
+    expect(label.originalText).toBe("Updated label\nAnother line");
     expect(label.containerId).toBe(box.id);
     expect(next.elements[0].boundElements).toEqual([
       { id: label.id, type: "text" },
@@ -78,7 +78,7 @@ describe("native flat box labels", () => {
   it("grows a box if the label's measured height exceeds its interior", () => {
     const box = createShape("rectangle", { x: 5, y: 5 }, { x: 100, y: 55 });
     const scene = { ...blankScene(), elements: [box] };
-    const text = "First\\nSecond\\nThird\\nFourth\\nFifth";
+    const text = "First\nSecond\nThird\nFourth\nFifth";
     const updated = updateNativeBoxLabel(scene, box.id, text);
     expect(updated.elements[0].height).toBeGreaterThan(box.height);
     const label = updated.elements[1];

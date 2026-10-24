@@ -136,7 +136,7 @@ try {
   const cy = area.y + rect.y + rect.height / 2;
   await page.mouse.dblclick(cx, cy);
   await input.waitFor();
-  await input.fill("Bound text\\nInside rectangle");
+  await input.fill("Bound text\nInside rectangle");
   await input.press("Control+Enter");
   await input.waitFor({ state: "hidden" });
   let withLabel = await saveScene();
@@ -146,7 +146,7 @@ try {
   assert.equal(labeledBox.boundElements[0].type, "text");
   const firstLabel = withLabel.elements.find((element) => element.id === boundId);
   assert.equal(firstLabel.containerId, rect.id);
-  assert.equal(firstLabel.originalText, "Bound text\\nInside rectangle");
+  assert.equal(firstLabel.originalText, "Bound text\nInside rectangle");
 
   // Update the reciprocal bound label and restore it using undo.
   await page.mouse.dblclick(cx, cy);
