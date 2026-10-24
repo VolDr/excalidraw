@@ -1,0 +1,44 @@
+name: Svelte migration checks
+
+on:
+  pull_request:
+    paths:
+      - "examples/with-svelte/**"
+      - ".github/workflows/svelte-migration.yml"
+      - "SVELTE_MIGRATION.md"
+  push:
+    branches:
+      - feature/svelte-migration-phase-1
+    paths:
+      - "examples/with-svelte/**"
+      - ".github/workflows/svelte-migration.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Node 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20.x"
+          cache: yarn
+      - name: Dependencies
+        run: yarn install --non-interactive
+      - name: Build monorepo packages
+        run: yarn build:packages
+      - name: Svelte type checks
+        run: yarn --cwd examples/with-svelte typecheck
+      - name: Native scene tests
+        run: yarn --cwd examples/with-svelte test
+      - name: Production bundle
+        run: yarn --cwd examples/with-svelte build
+      - name: Install browser smoke dependencies
+        run: npm install --prefix "$RUNNER_TEMP/svelte-playwright" --no-save --no-package-lock --no-audit --no-fund playwright@1.56.1
+      - name: Chrome interaction smoke
+        run: |
+          command -v google-chrome
+          yarn --cwd examples/with-svelte preview --host 127.0.0.1 > "$RUNNER_TEMP/svelte-preview.log" 2>&1 &
+          export PLAYWRIGHT_ENTRY="$RUNNER_TEMP/svelte-playwright/node_modules/playwright/index.mjs"
+          node examples/with-svelte/scripts/browser-smoke.mjs
