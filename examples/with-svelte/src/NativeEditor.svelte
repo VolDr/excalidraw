@@ -288,14 +288,20 @@
     textEditor = {
       id: existing?.id ?? null,
       boxId,
-      at: existing ? { x: existing.x, y: existing.y } : at,
+      at: boxId ? at : existing ? { x: existing.x, y: existing.y } : at,
       value:
         existing?.type === "text"
           ? (existing.originalText ?? existing.text)
           : "",
-      width: existing?.type === "text" && !existing.autoResize
-        ? existing.width
-        : null,
+      width: boxId
+        ? Math.max(
+            40,
+            (scene.elements.find((item) => item.id === boxId)?.width ?? 220) -
+              24,
+          )
+        : existing?.type === "text" && !existing.autoResize
+          ? existing.width
+          : null,
       fontSize: existing?.type === "text" ? existing.fontSize : 20,
       fontFamily: existing?.type === "text" ? existing.fontFamily : DEFAULT_FONT_FAMILY,
       lineHeight: existing?.type === "text" ? existing.lineHeight : 1.25,
