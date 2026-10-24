@@ -232,5 +232,14 @@ describe("atomic Svelte bound-text groups", () => {
     };
     expect(nativeLabelBox(extra, label)).toBeNull();
     expect(groupSelection(extra, [box.id, other.id]).scene).toBe(extra);
+
+    const orphan = {
+      ...scene,
+      elements: [{ ...box, boundElements: null }, other, label],
+    };
+    expect(selectionUnit(orphan, box.id)).toEqual([]);
+    expect(moveSelection(orphan, [box.id], 8, 8)).toBe(orphan);
+    expect(duplicateSelection(orphan, [box.id]).scene).toBe(orphan);
+    expect(groupSelection(orphan, [box.id, other.id]).scene).toBe(orphan);
   });
 });
