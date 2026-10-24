@@ -7,7 +7,11 @@
   import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { SceneHistory } from "./native/history";
   import { paintNativeText } from "./native/text";
-  import { nativeBoundLabelLayout } from "./native/boundText";
+  import {
+    nativeBoundLabelLayout,
+    nativeEditableLabel,
+    updateNativeBoxLabel,
+  } from "./native/boundText";
   import {
     addNativeImage,
     NativeImageCache,
@@ -101,6 +105,7 @@
   let unsupported = $derived(unsupportedCount(scene));
   let textEditor = $state<{
     id: string | null;
+    boxId: string | null;
     at: Point;
     value: string;
     width: number | null;
@@ -261,7 +266,11 @@
   }
 
 
-  async function beginText(at: Point, existing?: ExcalidrawElement) {
+  async function beginText(
+    at: Point,
+    existing?: ExcalidrawElement,
+    boxId: string | null = null,
+  ) {
     if (
       existing &&
       (existing.type !== "text" ||
@@ -277,6 +286,7 @@
     }
     textEditor = {
       id: existing?.id ?? null,
+      boxId,
       at: existing ? { x: existing.x, y: existing.y } : at,
       value:
         existing?.type === "text"
@@ -302,7 +312,13 @@
     }
     textEditor = null;
     const value = editor.value.trimEnd();
-    if (!value.trim()) {
+    if (editor.boxId) {
+      const next = updateNativeBoxLabel(scene, editor.boxId, value);
+      if (next !== scene) {
+        commit(scene, next);
+      }
+      selectedIds = [editor.boxId];
+    } else if (!value.trim()) {
       if (editor.id) {
         commit(scene, deleteById(scene, editor.id));
       }
@@ -343,8 +359,32 @@
       return;
     }
     const hit = pickElement(scene.elements, getPoint(event), 8 / zoom);
-    if (hit?.type === "text" && hit.containerId === null && !hit.locked && hit.angle === 0) {
+    if (!hit) {
+      return;
+    }
+    if (
+      hit.type === "text" &&
+      hit.containerId === null &&
+      !hit.locked &&
+      hit.angle === 0
+    ) {
       void beginText({ x: hit.x, y: hit.y }, hit);
+      return;
+    }
+    if (
+      (hit.type === "rectangle" ||
+        hit.type === "ellipse" ||
+        hit.type === "diamond") &&
+      hit.angle === 0
+    ) {
+      const label = nativeEditableLabel(scene, hit);
+      if (label !== undefined) {
+        const position = label ? nativeBoundLabelLayout(scene, label) : null;
+        const at = position
+          ? { x: position.x, y: position.y }
+          : { x: hit.x + 12, y: hit.y + 12 };
+        void beginText(at, label ?? undefined, hit.id);
+      }
     }
   }
 
