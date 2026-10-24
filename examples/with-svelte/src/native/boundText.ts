@@ -1,8 +1,12 @@
 import { getFontString } from "@excalidraw/common";
 import {
   computeBoundTextPosition,
+  computeContainerDimensionForBoundText,
+  getBoundTextMaxHeight,
   getBoundTextMaxWidth,
   measureText,
+  normalizeText,
+  newTextElement,
   wrapText,
 } from "@excalidraw/element";
 
@@ -131,4 +135,179 @@ export function syncNativeBoundLabels(scene: SceneFile): SceneFile {
     };
   });
   return changed ? { ...scene, elements } : scene;
+}
+
+/**
+ * Return a safe label target for new or existing text. We do not touch boxes
+ * with arrow links or multiple bindings: their geometry belongs to React.
+ */
+export function nativeEditableLabel(
+  scene: SceneFile,
+  box: ExcalidrawElement,
+): ExcalidrawTextElement | null | undefined {
+  if (
+    (box.type !== "rectangle" &&
+      box.type !== "ellipse" &&
+      box.type !== "diamond") ||
+    box.isDeleted ||
+    box.locked ||
+    box.frameId ||
+    box.groupIds.length ||
+    box.width <= 20 ||
+    box.height <= 20
+  ) {
+    return undefined;
+  }
+  if (!box.boundElements?.length) {
+    return null;
+  }
+  if (
+    box.boundElements.length !== 1 ||
+    box.boundElements[0].type !== "text"
+  ) {
+    return undefined;
+  }
+  const label = scene.elements.find(
+    (element) => element.id === box.boundElements?.[0].id,
+  );
+  return label && nativeLabelBox(scene, label)?.id === box.id &&
+    label.type === "text"
+    ? label
+    : undefined;
+}
+
+/**
+ * Add, edit or clear a single safe bound label in one undoable scene update.
+ * Grow its box when text exceeds the available interior, matching Excalidraw's
+ * bound-text dimension rules. Unsupported imported bindings are unchanged.
+ */
+export function updateNativeBoxLabel(
+  scene: SceneFile,
+  boxId: string,
+  value: string,
+): SceneFile {
+  const container = scene.elements.find((element) => element.id === boxId);
+  if (!container) {
+    return scene;
+  }
+  const existing = nativeEditableLabel(scene, container);
+  if (existing === undefined) {
+    return scene;
+  }
+  const originalText = normalizeText(value.trimEnd());
+  if (existing && originalText === (existing.originalText ?? existing.text)) {
+    return scene;
+  }
+
+  const touch = <T extends ExcalidrawElement>(element: T): T => ({
+    ...element,
+    version: element.version + 1,
+    versionNonce: Math.floor(Math.random() * 2 ** 31),
+    updated: Date.now(),
+  });
+
+  if (!originalText) {
+    if (!existing) {
+      return scene;
+    }
+    return {
+      ...scene,
+      elements: scene.elements.map((element) => {
+        if (element.id === boxId) {
+          return {
+            ...touch(element),
+            boundElements: null,
+          };
+        }
+        if (element.id === existing.id) {
+          return { ...touch(element), isDeleted: true };
+        }
+        return element;
+      }),
+    };
+  }
+
+  const label = existing ?? {
+    ...newTextElement({
+      x: container.x,
+      y: container.y,
+      text: originalText,
+      fontSize: 20,
+    }),
+    containerId: boxId,
+    textAlign: "center" as const,
+    verticalAlign: "middle" as const,
+    strokeColor: container.strokeColor,
+  };
+  const font = getFontString(label);
+  const originalMaxWidth = Math.max(
+    1,
+    getBoundTextMaxWidth(container, label),
+  );
+  let wrapped = wrapText(originalText, font, originalMaxWidth);
+  let metrics = measureText(wrapped, font, label.lineHeight);
+  let width = container.width;
+  let height = container.height;
+
+  if (metrics.width > originalMaxWidth) {
+    width = Math.max(
+      width,
+      computeContainerDimensionForBoundText(
+        metrics.width,
+        container.type,
+      ),
+    );
+    wrapped = wrapText(
+      originalText,
+      font,
+      Math.max(1, getBoundTextMaxWidth({ ...container, width }, label)),
+    );
+    metrics = measureText(wrapped, font, label.lineHeight);
+  }
+  if (
+    metrics.height >
+    getBoundTextMaxHeight(
+      { ...container, width, height },
+      label as ExcalidrawTextElementWithContainer,
+    )
+  ) {
+    height = Math.max(
+      height,
+      computeContainerDimensionForBoundText(
+        metrics.height,
+        container.type,
+      ),
+    );
+  }
+
+  const resized = { ...container, width, height };
+  const nextLabel = {
+    ...label,
+    text: wrapped,
+    originalText,
+    width: metrics.width,
+    height: metrics.height,
+    angle: resized.angle,
+  };
+  const elements = scene.elements.map((element) => {
+    if (element.id === boxId) {
+      return existing && width === container.width &&
+        height === container.height
+        ? element
+        : {
+            ...touch(element),
+            width,
+            height,
+            boundElements: [{ id: label.id, type: "text" as const }],
+          };
+    }
+    if (element.id === label.id) {
+      return touch(nextLabel);
+    }
+    return element;
+  });
+  if (!existing) {
+    elements.push(nextLabel);
+  }
+  return syncNativeBoundLabels({ ...scene, elements });
 }
