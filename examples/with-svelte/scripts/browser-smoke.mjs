@@ -127,6 +127,48 @@ try {
   assert.deepEqual(imported, exported);
   assert.deepEqual(errors, []);
 
+  // Attach a label to the existing independent rectangle in native mode.
+  const rect = imported.elements.find(
+    (element) => element.type === "rectangle" && !element.isDeleted,
+  );
+  assert.ok(rect, "Imported scene must include a rectangle");
+  const cx = area.x + rect.x + rect.width / 2;
+  const cy = area.y + rect.y + rect.height / 2;
+  await page.mouse.dblclick(cx, cy);
+  await input.waitFor();
+  await input.fill("Bound text\\nInside rectangle");
+  await input.press("Control+Enter");
+  await input.waitFor({ state: "hidden" });
+  let withLabel = await saveScene();
+  const labeledBox = withLabel.elements.find((element) => element.id === rect.id);
+  assert.equal(labeledBox.boundElements.length, 1);
+  const boundId = labeledBox.boundElements[0].id;
+  assert.equal(labeledBox.boundElements[0].type, "text");
+  const firstLabel = withLabel.elements.find((element) => element.id === boundId);
+  assert.equal(firstLabel.containerId, rect.id);
+  assert.equal(firstLabel.originalText, "Bound text\\nInside rectangle");
+
+  // Update the reciprocal bound label and restore it using undo.
+  await page.mouse.dblclick(cx, cy);
+  await input.waitFor();
+  assert.equal(await input.inputValue(), firstLabel.originalText);
+  await input.fill("Edited bound text");
+  await input.press("Control+Enter");
+  await input.waitFor({ state: "hidden" });
+  withLabel = await saveScene();
+  assert.equal(
+    withLabel.elements.find((element) => element.id === boundId).originalText,
+    "Edited bound text",
+  );
+  assert.equal(withLabel.elements.find((element) => element.id === boundId).version,
+    firstLabel.version + 1);
+  await page.locator(".native-viewport").press("Control+z");
+  withLabel = await saveScene();
+  assert.equal(
+    withLabel.elements.find((element) => element.id === boundId).originalText,
+    firstLabel.originalText,
+  );
+
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
