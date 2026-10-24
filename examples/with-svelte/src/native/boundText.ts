@@ -159,7 +159,16 @@ export function nativeEditableLabel(
     return undefined;
   }
   if (!box.boundElements?.length) {
-    return null;
+    // A malformed imported label may still point at this box even when
+    // the reverse reference is missing. Do not create a second label.
+    return scene.elements.some(
+      (element) =>
+        element.type === "text" &&
+        element.containerId === box.id &&
+        !element.isDeleted,
+    )
+      ? undefined
+      : null;
   }
   if (
     box.boundElements.length !== 1 ||
