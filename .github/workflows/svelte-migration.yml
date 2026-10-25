@@ -1,6 +1,7 @@
 name: Svelte migration checks
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - "examples/with-svelte/**"
@@ -29,6 +30,10 @@ jobs:
         run: yarn install --non-interactive
       - name: Build monorepo packages
         run: yarn build:packages
+      - name: ESLint
+        run: yarn test:code
+      - name: Prettier
+        run: yarn test:other
       - name: Svelte type checks
         run: yarn --cwd examples/with-svelte typecheck
       - name: Native scene tests
