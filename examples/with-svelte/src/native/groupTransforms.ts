@@ -1,9 +1,13 @@
+import {
+  getBoundTextMaxHeight,
+  getBoundTextMaxWidth,
+} from "@excalidraw/element";
 import { pointFrom } from "@excalidraw/math";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 import type { LocalPoint } from "@excalidraw/math";
 
-import { syncNativeBoundLabels } from "./boundText";
+import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { editableSelection, safeGroupMembers } from "./groups";
 import { visualBounds } from "./selection";
 
@@ -247,5 +251,27 @@ export function transformGroup(
     elements: scene.elements.map((element) => byId.get(element.id) ?? element),
   };
   // Only labels of transformed boxes get official Excalidraw reflow/placement.
-  return syncNativeBoundLabels(updated, new Set(byId.keys()));
+  const result = syncNativeBoundLabels(updated, new Set(byId.keys()));
+  // Never silently write a group in which a shrunken container no longer
+  // accommodates its label. Such a resize remains a no-op, not a broken
+  // reciprocal reference or an overflow exported to Excalidraw.
+  for (const label of result.elements) {
+    if (
+      label.type !== "text" ||
+      !label.containerId ||
+      !byId.has(label.containerId) ||
+      label.isDeleted
+    ) {
+      continue;
+    }
+    const box = nativeLabelBox(result, label);
+    if (
+      !box ||
+      label.width > getBoundTextMaxWidth(box, label) + 0.5 ||
+      label.height > getBoundTextMaxHeight(box, label) + 0.5
+    ) {
+      return scene;
+    }
+  }
+  return result;
 }
