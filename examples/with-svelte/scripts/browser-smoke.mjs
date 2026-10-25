@@ -322,6 +322,77 @@ try {
   assert.deepEqual(await saveScene(), transformStart);
   assert.deepEqual(errors, []);
 
+  // A self-contained .excalidraw import exercises a simple, unbound arrow
+  // independently of the more complex labeled group above.
+  const linearBox = {
+    ...structuredClone(sourceBox),
+    id: "smoke-simple-box",
+    x: 90,
+    y: 120,
+    width: 100,
+    height: 80,
+    angle: 0,
+    groupIds: [],
+    boundElements: null,
+  };
+  const linearArrow = {
+    ...structuredClone(linearBox),
+    id: "smoke-simple-arrow",
+    type: "arrow",
+    x: 260,
+    y: 130,
+    width: 110,
+    height: 80,
+    points: [[0, 0], [110, 80]],
+    startBinding: null,
+    endBinding: null,
+    elbowed: false,
+    startArrowhead: null,
+    endArrowhead: "arrow",
+  };
+  const linearScene = {
+    ...transformStart,
+    elements: [linearBox, linearArrow],
+  };
+  await page.locator(".toolbar input[type=file]").setInputFiles({
+    name: "simple-linear-group.excalidraw",
+    mimeType: "application/vnd.excalidraw+json",
+    buffer: Buffer.from(JSON.stringify(linearScene)),
+  });
+  await page.getByText("Открыт файл: simple-linear-group.excalidraw").waitFor();
+  await page.locator(".native-viewport").press("Control+a");
+  await page.locator(".native-viewport").press("Control+g");
+  const linearGrouped = await saveScene();
+  assert.deepEqual(
+    linearGrouped.elements[0].groupIds,
+    linearGrouped.elements[1].groupIds,
+  );
+  assert.equal(linearGrouped.elements[0].groupIds.length, 1);
+  await page.mouse.move(area.x + 370, area.y + 210);
+  await page.mouse.down();
+  await page.mouse.move(area.x + 445, area.y + 260, { steps: 8 });
+  await page.mouse.up();
+  const linearScaled = await saveScene();
+  const scaledArrow = linearScaled.elements[1];
+  assert.ok(scaledArrow.width > linearArrow.width);
+  assert.ok(scaledArrow.points[1][0] > linearArrow.points[1][0]);
+  assert.ok(scaledArrow.points[1][1] > linearArrow.points[1][1]);
+  assert.equal(scaledArrow.startBinding, null);
+  assert.equal(scaledArrow.endBinding, null);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), linearGrouped);
+
+  await page.mouse.click(area.x + 140, area.y + 160);
+  await page.mouse.move(area.x + 230, area.y + 92);
+  await page.mouse.down();
+  await page.mouse.move(area.x + 370, area.y + 165, { steps: 8 });
+  await page.mouse.up();
+  const linearRotated = await saveScene();
+  assert.ok(Math.abs(linearRotated.elements[1].angle) > 0.1);
+  assert.deepEqual(linearRotated.elements[1].points, linearArrow.points);
+  assert.deepEqual(linearRotated.elements[0].groupIds, linearRotated.elements[1].groupIds);
+  assert.deepEqual(errors, []);
+
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
