@@ -109,6 +109,29 @@ describe("native scene compatibility", () => {
     expect(hitTest(line, { x: 90, y: 10 })).toBe(false);
   });
 
+  it("rejects corrupted group IDs, geometry, broken polylines and duplicate element IDs", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 140, y: 120 });
+    const arrow = createShape("arrow", { x: 160, y: 40 }, { x: 270, y: 130 });
+    const valid = { ...blankScene(), elements: [box, arrow] };
+    expect(parseScene(serializeScene(valid))).toEqual(valid);
+
+    const invalid = [
+      [{ ...box, groupIds: null }, arrow],
+      [{ ...box, width: "large" }, arrow],
+      [{ ...box, angle: Infinity }, arrow],
+      [{ ...box, boundElements: [{ type: "text" }] }, arrow],
+      [box, { ...arrow, points: null }],
+      [box, { ...arrow, points: [[0, 0], [NaN, 10]] }],
+      [box, { ...arrow, groupIds: ["ok", 3] }],
+      [box, { ...box, x: 200 }],
+    ];
+    for (const elements of invalid) {
+      expect(() =>
+        parseScene(JSON.stringify({ ...valid, elements })),
+      ).toThrow("Файл содержит некорректные элементы.");
+    }
+  });
+
   it("rejects non-Excalidraw input", () => {
     expect(() => parseScene('{"elements":[]}')).toThrow();
     expect(() =>
