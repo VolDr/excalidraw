@@ -40,6 +40,27 @@ const labeledPair = () => {
 };
 
 describe("atomic Svelte bound-text groups", () => {
+  it("cannot select, group or duplicate deleted native roots", () => {
+    const box = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 90 });
+    const ghost = {
+      ...createShape("ellipse", { x: 130, y: 10 }, { x: 220, y: 100 }),
+      isDeleted: true,
+    };
+    const scene = { ...blankScene(), elements: [box, ghost] };
+    expect(selectionUnit(scene, ghost.id)).toEqual([]);
+    expect(editableSelection(scene, [ghost.id])).toEqual([]);
+    expect(groupSelection(scene, [box.id, ghost.id])).toEqual({
+      scene,
+      ids: [],
+      groupId: null,
+    });
+    expect(duplicateSelection(scene, [ghost.id])).toEqual({
+      scene,
+      ids: [],
+    });
+    expect(moveSelection(scene, [ghost.id], 25, 30)).toBe(scene);
+  });
+
   it("groups two roots and an internal label without exposing the label as a selection root", () => {
     const { box, other, label, scene } = labeledPair();
     const grouped = groupSelection(scene, [box.id, other.id]);
