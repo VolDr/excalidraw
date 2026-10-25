@@ -1,4 +1,7 @@
+import { pointFrom } from "@excalidraw/math";
 import { describe, expect, it } from "vitest";
+
+import type { LocalPoint } from "@excalidraw/math";
 
 import { nativeLabelBox, updateNativeBoxLabel } from "./boundText";
 import {
@@ -230,7 +233,13 @@ describe("native flat group transforms", () => {
           mode: "inside" as const,
         },
       },
-      { ...arrow, points: [[-15, 0], [arrow.width, arrow.height]] as typeof arrow.points },
+      {
+        ...arrow,
+        points: [
+          pointFrom<LocalPoint>(-15, 0),
+          pointFrom<LocalPoint>(arrow.width, arrow.height),
+        ],
+      },
     ];
     for (const invalid of unsafe) {
       const scene = {
