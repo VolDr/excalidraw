@@ -39,7 +39,9 @@ const isSimpleLinear = (element: ExcalidrawElement): boolean => {
     element.boundElements?.length ||
     element.startBinding ||
     element.endBinding ||
-    (element.type === "line" && element.polygon) ||
+    (element.type === "line" &&
+      "polygon" in element &&
+      element.polygon === true) ||
     (element.type === "arrow" &&
       (element.elbowed ||
         ("fixedSegments" in element && element.fixedSegments != null)))
