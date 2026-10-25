@@ -211,6 +211,35 @@ describe("native flat group transforms", () => {
     expect(scene.elements[1]).toEqual(arrow);
   });
 
+  it("transforms a simple line while retaining endpoint order and scene roundtrip", () => {
+    const line = createShape("line", { x: 170, y: 170 }, { x: 70, y: 90 });
+    const box = createShape("diamond", { x: 250, y: 100 }, { x: 340, y: 210 });
+    const scene = { ...blankScene(), elements: [line, box] };
+    const grouped = groupSelection(scene, [line.id, box.id]);
+    expect(grouped.groupId).toBeTruthy();
+    const group = transformableGroup(grouped.scene, grouped.ids);
+    expect(group).not.toBeNull();
+    const handle = groupHandleLocations(group!.bounds).se;
+    const next = transformGroup(grouped.scene, grouped.ids, "se", {
+      x: handle.x + 55,
+      y: handle.y + 45,
+    });
+    const result = next.elements[0];
+    expect(result.type).toBe("line");
+    if (result.type !== "line" || line.type !== "line") {
+      return;
+    }
+    expect(result.id).toBe(line.id);
+    expect(result.points.length).toBe(2);
+    expect(result.points[0][0]).toBeGreaterThan(result.points[1][0]);
+    expect(result.points[0][1]).toBeGreaterThan(result.points[1][1]);
+    expect(result.width).toBeGreaterThan(line.width);
+    expect(result.points[0][0]).toBeCloseTo(
+      line.points[0][0] * (result.width / line.width),
+    );
+    expect(parseScene(serializeScene(next))).toEqual(next);
+  });
+
   it("rejects bound, routed and multi-point arrows during group transforms", () => {
     const box = createShape("rectangle", { x: 5, y: 5 }, { x: 115, y: 85 });
     const arrow = createShape("arrow", { x: 130, y: 30 }, { x: 260, y: 120 });
