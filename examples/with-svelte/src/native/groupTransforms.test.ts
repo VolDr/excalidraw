@@ -315,6 +315,34 @@ describe("native flat group transforms", () => {
     ).toBe(imported);
   });
 
+  it("rejects a group shrink if the reciprocal label no longer fits", () => {
+    const { scene, ids } = example();
+    const { bounds } = transformableGroup(scene, ids)!;
+    const tooSmall = transformGroup(scene, ids, "se", {
+      x: bounds.x + bounds.width * 0.15,
+      y: bounds.y + bounds.height * 0.15,
+    });
+    expect(tooSmall).toBe(scene);
+    expect(scene.elements[2].isDeleted).toBe(false);
+  });
+
+  it("still allows uniform shrinking of a group with no bound text", () => {
+    const first = createShape("rectangle", { x: 10, y: 10 }, { x: 150, y: 120 });
+    const second = createShape("ellipse", { x: 220, y: 30 }, { x: 390, y: 160 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [first, second] },
+      [first.id, second.id],
+    );
+    const { bounds } = transformableGroup(grouped.scene, grouped.ids)!;
+    const smaller = transformGroup(grouped.scene, grouped.ids, "se", {
+      x: bounds.x + bounds.width * 0.5,
+      y: bounds.y + bounds.height * 0.5,
+    });
+    expect(smaller).not.toBe(grouped.scene);
+    expect(smaller.elements[0].width).toBeCloseTo(first.width * 0.5);
+    expect(smaller.elements[1].height).toBeCloseTo(second.height * 0.5);
+  });
+
   it("clamps small group resizes rather than flipping shapes or labels", () => {
     const { box, scene, ids } = example();
     const { bounds } = transformableGroup(scene, ids)!;
