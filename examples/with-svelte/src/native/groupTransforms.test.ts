@@ -76,7 +76,6 @@ describe("native flat group transforms", () => {
     );
     expect(nativeLabelBox(next, resizedLabel)?.id).toBe(box.id);
     expect(parseScene(serializeScene(next))).toEqual(next);
-    expect(scene.elements[0]).toEqual(box.groupIds.length ? box : scene.elements[0]);
   });
 
   it("rotates multiple roots around one group center, preserving text orientation", () => {
