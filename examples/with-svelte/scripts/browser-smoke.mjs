@@ -260,12 +260,72 @@ try {
     ungroupedScene.elements.find((e) => e.id === rect.id).boundElements[0].id,
     boundId,
   );
+  // Resize and rotate a supported two-root group through visible handles.
+  const ungroupedEllipse = ungroupedScene.elements.find(
+    (e) => e.type === "ellipse" && !e.isDeleted,
+  );
+  assert.ok(ungroupedEllipse);
+  await page.mouse.click(cx, cy);
+  await page.mouse.click(
+    area.x + ungroupedEllipse.x + ungroupedEllipse.width / 2,
+    area.y + ungroupedEllipse.y + ungroupedEllipse.height / 2,
+    { modifiers: ["Shift"] },
+  );
+  await page.locator(".native-viewport").press("Control+g");
+  const transformStart = await saveScene();
+  const sourceBox = transformStart.elements.find((e) => e.id === rect.id);
+  const sourceEllipse = transformStart.elements.find((e) => e.id === ungroupedEllipse.id);
+  assert.deepEqual(sourceBox.groupIds, sourceEllipse.groupIds);
+  const left = Math.min(sourceBox.x, sourceEllipse.x);
+  const top = Math.min(sourceBox.y, sourceEllipse.y);
+  const right = Math.max(
+    sourceBox.x + sourceBox.width,
+    sourceEllipse.x + sourceEllipse.width,
+  );
+  const bottom = Math.max(
+    sourceBox.y + sourceBox.height,
+    sourceEllipse.y + sourceEllipse.height,
+  );
+
+  await page.mouse.move(area.x + right, area.y + bottom);
+  await page.mouse.down();
+  await page.mouse.move(area.x + right + 60, area.y + bottom + 35, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  const scaledGroup = await saveScene();
+  const scaledBox = scaledGroup.elements.find((e) => e.id === rect.id);
+  const scaledEllipse = scaledGroup.elements.find((e) => e.id === ungroupedEllipse.id);
+  const scaledLabel = scaledGroup.elements.find((e) => e.id === boundId);
+  assert.ok(scaledBox.width > sourceBox.width);
+  assert.ok(scaledEllipse.width > sourceEllipse.width);
+  assert.equal(scaledLabel.containerId, rect.id);
+  assert.deepEqual(scaledLabel.groupIds, scaledBox.groupIds);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), transformStart);
+
+  // Undo clears selection; reselect the group before dragging its rotation handle.
+  await page.mouse.click(cx, cy);
+  const midX = (left + right) / 2;
+  const midY = (top + bottom) / 2;
+  await page.mouse.move(area.x + midX, area.y + top - 28);
+  await page.mouse.down();
+  await page.mouse.move(area.x + midX + 170, area.y + midY, { steps: 8 });
+  await page.mouse.up();
+  const rotatedGroup = await saveScene();
+  const rotatedBox = rotatedGroup.elements.find((e) => e.id === rect.id);
+  const rotatedLabel = rotatedGroup.elements.find((e) => e.id === boundId);
+  assert.ok(Math.abs(rotatedBox.angle) > 0.1);
+  assert.ok(Math.abs(rotatedBox.angle - rotatedLabel.angle) < 0.0001);
+  assert.equal(rotatedLabel.containerId, rect.id);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), transformStart);
   assert.deepEqual(errors, []);
 
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
-  console.log("Browser smoke passed: native canvas, drawing, duplication, undo, text and JSON export");
+  console.log("Browser smoke passed: native canvas, bound groups, resize, rotation, undo, text and JSON export");
 } catch (error) {
   await page.screenshot({ path: "/tmp/svelte-smoke-failure.png" }).catch(() => {});
   console.error("Browser smoke failed:", error);
