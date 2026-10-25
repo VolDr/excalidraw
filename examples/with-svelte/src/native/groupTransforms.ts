@@ -1,4 +1,7 @@
+import { pointFrom } from "@excalidraw/math";
+
 import type { ExcalidrawElement } from "@excalidraw/element/types";
+import type { LocalPoint } from "@excalidraw/math";
 
 import { syncNativeBoundLabels } from "./boundText";
 import { editableSelection, safeGroupMembers } from "./groups";
@@ -22,9 +25,39 @@ const isBoundLabel = (element: ExcalidrawElement): boolean =>
   element.type === "text" && element.containerId !== null;
 
 /**
- * Only geometry-safe box/image roots may use group handles. Lines, freehand,
- * standalone text, linked arrows and imported nested groups remain movable,
- * but cannot be resized or rotated by the native group transformer.
+ * Guard two-point, unbound lines and arrows. Imported routed, linked, or
+ * out-of-bounds geometries remain read-only for group transforms.
+ */
+const isSimpleLinear = (element: ExcalidrawElement): boolean => {
+  if (element.type !== "line" && element.type !== "arrow") {
+    return false;
+  }
+  if (
+    element.points.length !== 2 ||
+    element.width <= 0 ||
+    element.height <= 0 ||
+    element.boundElements?.length ||
+    (element.type === "arrow" &&
+      (element.elbowed || element.startBinding || element.endBinding))
+  ) {
+    return false;
+  }
+  return element.points.every(
+    ([x, y]) =>
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      x >= 0 &&
+      y >= 0 &&
+      x <= element.width &&
+      y <= element.height,
+  );
+};
+
+/**
+ * Supported groups include ordinary boxes, raster images and strictly
+ * unbound two-point lines/arrows. Text is transformed only with its box.
+ * Freehand, standalone text, routed/linked arrows and nested groups are
+ * movable, but not transformable through native group handles.
  */
 export function transformableGroup(
   scene: SceneFile,
@@ -46,7 +79,10 @@ export function transformableGroup(
     roots.some(
       (element) =>
         !selected.has(element.id) ||
-        !["rectangle", "ellipse", "diamond", "image"].includes(element.type) ||
+        !(
+          ["rectangle", "ellipse", "diamond", "image"].includes(element.type) ||
+          isSimpleLinear(element)
+        ) ||
         !Number.isFinite(element.angle) ||
         element.width <= 0 ||
         element.height <= 0,
@@ -179,16 +215,26 @@ export function transformGroup(
     };
     const width = element.width * scale;
     const height = element.height * scale;
-    byId.set(
-      element.id,
-      touch(element, {
-        x: center.x - width / 2,
-        y: center.y - height / 2,
-        width,
-        height,
-        angle: normalizedAngle(element.angle + radians),
-      }),
-    );
+    const geometry = {
+      x: center.x - width / 2,
+      y: center.y - height / 2,
+      width,
+      height,
+      angle: normalizedAngle(element.angle + radians),
+    };
+    if (element.type === "line" || element.type === "arrow") {
+      byId.set(
+        element.id,
+        touch(element, {
+          ...geometry,
+          points: element.points.map((p) =>
+            pointFrom<LocalPoint>(p[0] * scale, p[1] * scale),
+          ),
+        }),
+      );
+    } else {
+      byId.set(element.id, touch(element, geometry));
+    }
   }
   const updated = {
     ...scene,
