@@ -270,6 +270,17 @@ describe("native flat group transforms", () => {
         ],
       },
     ];
+    if (arrow.type === "arrow") {
+      unsafe.push({
+        ...arrow,
+        fixedSegments: [
+          {
+            start: pointFrom<LocalPoint>(0, 0),
+            end: pointFrom<LocalPoint>(20, 30),
+          },
+        ],
+      });
+    }
     for (const invalid of unsafe) {
       const scene = {
         ...base.scene,
@@ -281,6 +292,28 @@ describe("native flat group transforms", () => {
       expect(transformGroup(scene, base.ids, "se", { x: 330, y: 240 }))
         .toBe(scene);
     }
+  });
+
+  it("does not expose polygonal line handles on imported scenes", () => {
+    const box = createShape("rectangle", { x: 0, y: 0 }, { x: 120, y: 90 });
+    const line = createShape("line", { x: 160, y: 10 }, { x: 290, y: 80 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [box, line] },
+      [box.id, line.id],
+    );
+    expect(transformableGroup(grouped.scene, grouped.ids)).not.toBeNull();
+    const imported = {
+      ...grouped.scene,
+      elements: grouped.scene.elements.map((element) =>
+        element.id === line.id && element.type === "line"
+          ? { ...element, polygon: true }
+          : element,
+      ),
+    };
+    expect(transformableGroup(imported, grouped.ids)).toBeNull();
+    expect(
+      transformGroup(imported, grouped.ids, "se", { x: 340, y: 140 }),
+    ).toBe(imported);
   });
 
   it("clamps small group resizes rather than flipping shapes or labels", () => {
