@@ -190,6 +190,25 @@ describe("atomic Svelte bound-text groups", () => {
     expect(parseScene(serializeScene(rotated))).toEqual(rotated);
   });
 
+  it("keeps a group editable when its bound text is soft-deleted", () => {
+    const { box, other, label, scene } = labeledPair();
+    const grouped = groupSelection(scene, [box.id, other.id]).scene;
+    const cleared = updateNativeBoxLabel(grouped, box.id, "");
+    expect(cleared.elements[0].boundElements).toBeNull();
+    expect(cleared.elements[2].isDeleted).toBe(true);
+    expect(cleared.elements[2].id).toBe(label.id);
+    expect(selectionUnit(cleared, box.id)).toEqual([box.id, other.id]);
+    const groupId = grouped.elements[0].groupIds[0];
+    expect(safeGroupMembers(cleared, groupId)).toHaveLength(2);
+    const moved = moveSelection(cleared, [box.id, other.id], 12, 6);
+    expect(moved.elements[0].x).toBe(cleared.elements[0].x + 12);
+    expect(moved.elements[2]).toBe(cleared.elements[2]);
+    const copied = duplicateSelection(cleared, [box.id, other.id]);
+    expect(copied.ids).toHaveLength(2);
+    expect(copied.scene.elements).toHaveLength(5);
+    expect(parseScene(serializeScene(copied.scene))).toEqual(copied.scene);
+  });
+
   it("does not silently normalize an unrelated imported label during a move", () => {
     const { other, label, scene } = labeledPair();
     const imported = {
