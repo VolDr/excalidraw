@@ -15,6 +15,7 @@ import type { SceneFile } from "./scene";
 const isIndependent = (element: ExcalidrawElement): boolean => {
   if (
     !isNativeShape(element) ||
+    element.isDeleted ||
     element.locked ||
     element.frameId ||
     element.boundElements?.length
