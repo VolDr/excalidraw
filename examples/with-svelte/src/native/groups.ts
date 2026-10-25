@@ -73,8 +73,8 @@ export function safeGroupMembers(
   scene: SceneFile,
   id: string,
 ): ExcalidrawElement[] {
-  const members = scene.elements.filter((element) =>
-    element.groupIds.includes(id),
+  const members = scene.elements.filter(
+    (element) => !element.isDeleted && element.groupIds.includes(id),
   );
   const ids = new Set(members.map((element) => element.id));
   if (
@@ -84,8 +84,7 @@ export function safeGroupMembers(
         element.groupIds.length !== 1 ||
         element.groupIds[0] !== id ||
         element.locked ||
-        element.frameId ||
-        element.isDeleted,
+        element.frameId,
     )
   ) {
     return [];
@@ -113,7 +112,7 @@ export function safeGroupMembers(
 /** Hit-testing a group returns selectable roots, not internal labels. */
 export function selectionUnit(scene: SceneFile, id: string): string[] {
   const element = scene.elements.find((item) => item.id === id);
-  if (!element) {
+  if (!element || element.isDeleted) {
     return [];
   }
   if (element.groupIds.length) {
