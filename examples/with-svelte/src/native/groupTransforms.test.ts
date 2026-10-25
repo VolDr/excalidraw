@@ -164,6 +164,87 @@ describe("native flat group transforms", () => {
     expect(transformGroup(scene, ids, "se", { x: NaN, y: 10 })).toBe(scene);
   });
 
+  it("scales and rotates an unbound two-point arrow without changing its metadata", () => {
+    const box = createShape("rectangle", { x: 20, y: 10 }, { x: 130, y: 90 });
+    const arrow = createShape("arrow", { x: 170, y: 50 }, { x: 280, y: 130 });
+    const scene = { ...blankScene(), elements: [box, arrow] };
+    const grouped = groupSelection(scene, [box.id, arrow.id]);
+    expect(grouped.groupId).toBeTruthy();
+    const frame = transformableGroup(grouped.scene, grouped.ids);
+    expect(frame).not.toBeNull();
+    const point = groupHandleLocations(frame!.bounds).se;
+    const scaled = transformGroup(grouped.scene, grouped.ids, "se", {
+      x: point.x + 100,
+      y: point.y + 80,
+    });
+    const scaledArrow = scaled.elements[1];
+    expect(scaledArrow.type).toBe("arrow");
+    if (scaledArrow.type !== "arrow" || arrow.type !== "arrow") {
+      return;
+    }
+    const scale = scaledArrow.width / arrow.width;
+    expect(scale).toBeGreaterThan(1);
+    expect(scaledArrow.points[1][0]).toBeCloseTo(arrow.points[1][0] * scale);
+    expect(scaledArrow.points[1][1]).toBeCloseTo(arrow.points[1][1] * scale);
+    expect(scaledArrow.startBinding).toBeNull();
+    expect(scaledArrow.endBinding).toBeNull();
+    expect(scaledArrow.endArrowhead).toBe(arrow.endArrowhead);
+    expect(scaledArrow.id).toBe(arrow.id);
+    const center = {
+      x: frame!.bounds.x + frame!.bounds.width / 2,
+      y: frame!.bounds.y + frame!.bounds.height / 2,
+    };
+    const rotated = transformGroup(grouped.scene, grouped.ids, "rotate", {
+      x: center.x + 200,
+      y: center.y,
+    });
+    const rotatedArrow = rotated.elements[1];
+    expect(rotatedArrow.angle).toBeCloseTo(Math.PI / 2);
+    expect(rotatedArrow.type).toBe("arrow");
+    if (rotatedArrow.type === "arrow") {
+      expect(rotatedArrow.points).toEqual(arrow.points);
+    }
+    expect(parseScene(serializeScene(scaled))).toEqual(scaled);
+    expect(scene.elements[1]).toEqual(arrow);
+  });
+
+  it("rejects bound, routed and multi-point arrows during group transforms", () => {
+    const box = createShape("rectangle", { x: 5, y: 5 }, { x: 115, y: 85 });
+    const arrow = createShape("arrow", { x: 130, y: 30 }, { x: 260, y: 120 });
+    const base = groupSelection(
+      { ...blankScene(), elements: [box, arrow] },
+      [box.id, arrow.id],
+    );
+    expect(transformableGroup(base.scene, base.ids)).not.toBeNull();
+    if (arrow.type !== "arrow") {
+      return;
+    }
+    const unsafe = [
+      { ...arrow, points: [...arrow.points, arrow.points[1]] },
+      { ...arrow, elbowed: true },
+      {
+        ...arrow,
+        startBinding: {
+          elementId: box.id,
+          fixedPoint: [0.5, 0.5] as [number, number],
+          mode: "inside" as const,
+        },
+      },
+      { ...arrow, points: [[-15, 0], [arrow.width, arrow.height]] as typeof arrow.points },
+    ];
+    for (const invalid of unsafe) {
+      const scene = {
+        ...base.scene,
+        elements: base.scene.elements.map((element) =>
+          element.id === arrow.id ? { ...invalid, groupIds: [...element.groupIds] } : element,
+        ),
+      };
+      expect(transformableGroup(scene, base.ids)).toBeNull();
+      expect(transformGroup(scene, base.ids, "se", { x: 330, y: 240 }))
+        .toBe(scene);
+    }
+  });
+
   it("clamps small group resizes rather than flipping shapes or labels", () => {
     const { box, scene, ids } = example();
     const { bounds } = transformableGroup(scene, ids)!;
