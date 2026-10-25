@@ -38,6 +38,18 @@ const isSupportedRoot = (
     return false;
   }
   if (isIndependent(element)) {
+    // An imported element may be referenced by a different element while its
+    // own binding fields are missing. Never mutate half of such a relation.
+    if (
+      scene.elements.some(
+        (other) =>
+          !other.isDeleted &&
+          other.id !== element.id &&
+          other.boundElements?.some((ref) => ref.id === element.id),
+      )
+    ) {
+      return false;
+    }
     if (
       element.type === "rectangle" ||
       element.type === "ellipse" ||
