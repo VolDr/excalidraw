@@ -69,6 +69,13 @@
     ungroupSelection,
   } from "./native/groups";
 
+  import {
+    groupHandleLocations,
+    pickGroupHandle,
+    transformableGroup,
+    transformGroup,
+  } from "./native/groupTransforms";
+
   type Props = {
     scene: SceneFile;
     theme: "light" | "dark";
@@ -169,7 +176,7 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free" | "transform" | "select" | "endpoint";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint";
     start: Point;
     original: SceneFile;
     initialPan: Point;
@@ -645,6 +652,33 @@
         }
       }
     }
+    const selectedGroup = transformableGroup(scene, selectedIds);
+    if (selectedGroup) {
+      const { x, y, width, height } = selectedGroup.bounds;
+      const handles = groupHandleLocations(selectedGroup.bounds);
+      const pad = 5 / zoom;
+      ctx.save();
+      ctx.strokeStyle = "#6965db";
+      ctx.lineWidth = 1.5 / zoom;
+      ctx.setLineDash([5 / zoom, 3 / zoom]);
+      ctx.strokeRect(x - pad, y - pad, width + pad * 2, height + pad * 2);
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x + width / 2, y);
+      ctx.lineTo(handles.rotate.x, handles.rotate.y);
+      ctx.stroke();
+      ctx.fillStyle = theme === "dark" ? "#282637" : "#ffffff";
+      for (const key of ["nw", "ne", "sw", "se"] as const) {
+        const p = handles[key];
+        ctx.fillRect(p.x - 5 / zoom, p.y - 5 / zoom, 10 / zoom, 10 / zoom);
+        ctx.strokeRect(p.x - 5 / zoom, p.y - 5 / zoom, 10 / zoom, 10 / zoom);
+      }
+      ctx.beginPath();
+      ctx.arc(handles.rotate.x, handles.rotate.y, 6 / zoom, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     if (marquee) {
       const { x, y, width, height } = rectangleBetween(marquee.start, marquee.end);
       ctx.save();
@@ -702,13 +736,24 @@
     let draft: ExcalidrawElement | null = null;
 
     if (action === "move") {
+      const group = !event.shiftKey
+        ? transformableGroup(scene, selectedIds)
+        : null;
+      const groupHandle = group
+        ? pickGroupHandle(group.bounds, start, 9 / zoom)
+        : null;
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
         ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
             pickEndpoint(selected, start, 9 / zoom)) : null;
       handle = !event.shiftKey && selected
         ? pickHandle(selected, start, 9 / zoom, scene) : null;
-      if (endpoint && selectedId) {
+      if (groupHandle && group) {
+        action = "group-transform";
+        id = group.id;
+        handle = groupHandle;
+        ids = [...selectedIds];
+      } else if (endpoint && selectedId) {
         action = "endpoint";
         id = selectedId;
         ids = [selectedId];
@@ -789,8 +834,19 @@
       }
     } else if (g.action === "transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        g.changed = true;
-        onChange(transformSelected(g.original, g.id, g.handle, point));
+        const next = transformSelected(g.original, g.id, g.handle, point);
+        if (next !== g.original) {
+          g.changed = true;
+          onChange(next);
+        }
+      }
+    } else if (g.action === "group-transform" && g.id && g.handle) {
+      if (Math.hypot(dx, dy) > 0.2) {
+        const next = transformGroup(g.original, g.ids, g.handle, point);
+        if (next !== g.original) {
+          g.changed = true;
+          onChange(next);
+        }
       }
     } else if (g.action === "endpoint" && g.id && g.endpoint) {
       if (Math.hypot(dx, dy) > 0.2) {
@@ -839,7 +895,7 @@
       viewport.releasePointerCapture(event.pointerId);
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "endpoint") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint") &&
       g.changed
     ) {
       // The move was previewed in-place; record the *original* scene once.

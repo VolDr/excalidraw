@@ -198,10 +198,205 @@ try {
   const restored = await saveScene();
   assert.deepEqual(restored, withLabel);
 
+  // A native flat group must include the bound label as an internal member.
+  await page.getByRole("button", { name: "Эллипс" }).click();
+  await page.mouse.move(x + 370, y + 10);
+  await page.mouse.down();
+  await page.mouse.move(x + 455, y + 95, { steps: 5 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Выделение" }).click();
+  await page.locator(".native-viewport").press("Control+a");
+  await page.locator(".native-viewport").press("Control+g");
+  const groupedScene = await saveScene();
+  const originalGroupedBox = groupedScene.elements.find((e) => e.id === rect.id);
+  const originalGroupedLabel = groupedScene.elements.find((e) => e.id === boundId);
+  assert.ok(originalGroupedBox.groupIds.length === 1);
+  const groupId = originalGroupedBox.groupIds[0];
+  assert.deepEqual(originalGroupedLabel.groupIds, [groupId]);
+  assert.ok(
+    groupedScene.elements.filter((e) => !e.isDeleted && e.groupIds.includes(groupId)).length >= 3,
+  );
+
+  // Import/export a grouped scene without losing reciprocal links or group IDs.
+  await page.locator(".toolbar input[type=file]").setInputFiles({
+    name: "grouped.excalidraw",
+    mimeType: "application/vnd.excalidraw+json",
+    buffer: Buffer.from(JSON.stringify(groupedScene)),
+  });
+  await page.getByText("Открыт файл: grouped.excalidraw").waitFor();
+  assert.deepEqual(await saveScene(), groupedScene);
+
+  await page.mouse.click(cx, cy);
+  await page.locator(".native-viewport").press("Control+d");
+  const duplicatedGroup = await saveScene();
+  const groupCopy = duplicatedGroup.elements.find(
+    (e) => e.type === "rectangle" && e.id !== rect.id && !e.isDeleted,
+  );
+  assert.ok(groupCopy, "Whole-group duplication must copy the bound box");
+  assert.notEqual(groupCopy.groupIds[0], groupId);
+  const copiedGroupLabel = duplicatedGroup.elements.find(
+    (e) => e.id === groupCopy.boundElements?.[0]?.id,
+  );
+  assert.ok(copiedGroupLabel);
+  assert.equal(copiedGroupLabel.containerId, groupCopy.id);
+  assert.deepEqual(copiedGroupLabel.groupIds, groupCopy.groupIds);
+  assert.equal(
+    duplicatedGroup.elements.find((e) => e.id === rect.id).boundElements[0].id,
+    boundId,
+  );
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), groupedScene);
+
+  // After undo resets the selection, select the group and ungroup it.
+  await page.mouse.click(cx, cy);
+  await page.locator(".native-viewport").press("Control+Shift+g");
+  const ungroupedScene = await saveScene();
+  assert.ok(ungroupedScene.elements.every((e) => e.groupIds.length === 0));
+  assert.equal(
+    ungroupedScene.elements.find((e) => e.id === boundId).containerId,
+    rect.id,
+  );
+  assert.equal(
+    ungroupedScene.elements.find((e) => e.id === rect.id).boundElements[0].id,
+    boundId,
+  );
+  // Resize and rotate a supported two-root group through visible handles.
+  const ungroupedEllipse = ungroupedScene.elements.find(
+    (e) => e.type === "ellipse" && !e.isDeleted,
+  );
+  assert.ok(ungroupedEllipse);
+  await page.mouse.click(cx, cy);
+  await page.mouse.click(
+    area.x + ungroupedEllipse.x + ungroupedEllipse.width / 2,
+    area.y + ungroupedEllipse.y + ungroupedEllipse.height / 2,
+    { modifiers: ["Shift"] },
+  );
+  await page.locator(".native-viewport").press("Control+g");
+  const transformStart = await saveScene();
+  const sourceBox = transformStart.elements.find((e) => e.id === rect.id);
+  const sourceEllipse = transformStart.elements.find((e) => e.id === ungroupedEllipse.id);
+  assert.deepEqual(sourceBox.groupIds, sourceEllipse.groupIds);
+  const left = Math.min(sourceBox.x, sourceEllipse.x);
+  const top = Math.min(sourceBox.y, sourceEllipse.y);
+  const right = Math.max(
+    sourceBox.x + sourceBox.width,
+    sourceEllipse.x + sourceEllipse.width,
+  );
+  const bottom = Math.max(
+    sourceBox.y + sourceBox.height,
+    sourceEllipse.y + sourceEllipse.height,
+  );
+
+  await page.mouse.move(area.x + right, area.y + bottom);
+  await page.mouse.down();
+  await page.mouse.move(area.x + right + 60, area.y + bottom + 35, {
+    steps: 8,
+  });
+  await page.mouse.up();
+  const scaledGroup = await saveScene();
+  const scaledBox = scaledGroup.elements.find((e) => e.id === rect.id);
+  const scaledEllipse = scaledGroup.elements.find((e) => e.id === ungroupedEllipse.id);
+  const scaledLabel = scaledGroup.elements.find((e) => e.id === boundId);
+  assert.ok(scaledBox.width > sourceBox.width);
+  assert.ok(scaledEllipse.width > sourceEllipse.width);
+  assert.equal(scaledLabel.containerId, rect.id);
+  assert.deepEqual(scaledLabel.groupIds, scaledBox.groupIds);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), transformStart);
+
+  // Undo clears selection; reselect the group before dragging its rotation handle.
+  await page.mouse.click(cx, cy);
+  const midX = (left + right) / 2;
+  const midY = (top + bottom) / 2;
+  await page.mouse.move(area.x + midX, area.y + top - 28);
+  await page.mouse.down();
+  await page.mouse.move(area.x + midX + 170, area.y + midY, { steps: 8 });
+  await page.mouse.up();
+  const rotatedGroup = await saveScene();
+  const rotatedBox = rotatedGroup.elements.find((e) => e.id === rect.id);
+  const rotatedLabel = rotatedGroup.elements.find((e) => e.id === boundId);
+  assert.ok(Math.abs(rotatedBox.angle) > 0.1);
+  assert.ok(Math.abs(rotatedBox.angle - rotatedLabel.angle) < 0.0001);
+  assert.equal(rotatedLabel.containerId, rect.id);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), transformStart);
+  assert.deepEqual(errors, []);
+
+  // A self-contained .excalidraw import exercises a simple, unbound arrow
+  // independently of the more complex labeled group above.
+  const linearBox = {
+    ...structuredClone(sourceBox),
+    id: "smoke-simple-box",
+    x: 90,
+    y: 120,
+    width: 100,
+    height: 80,
+    angle: 0,
+    groupIds: [],
+    boundElements: null,
+  };
+  const linearArrow = {
+    ...structuredClone(linearBox),
+    id: "smoke-simple-arrow",
+    type: "arrow",
+    x: 260,
+    y: 130,
+    width: 110,
+    height: 80,
+    points: [[0, 0], [110, 80]],
+    startBinding: null,
+    endBinding: null,
+    elbowed: false,
+    startArrowhead: null,
+    endArrowhead: "arrow",
+  };
+  const linearScene = {
+    ...transformStart,
+    elements: [linearBox, linearArrow],
+  };
+  await page.locator(".toolbar input[type=file]").setInputFiles({
+    name: "simple-linear-group.excalidraw",
+    mimeType: "application/vnd.excalidraw+json",
+    buffer: Buffer.from(JSON.stringify(linearScene)),
+  });
+  await page.getByText("Открыт файл: simple-linear-group.excalidraw").waitFor();
+  await page.locator(".native-viewport").press("Control+a");
+  await page.locator(".native-viewport").press("Control+g");
+  const linearGrouped = await saveScene();
+  assert.deepEqual(
+    linearGrouped.elements[0].groupIds,
+    linearGrouped.elements[1].groupIds,
+  );
+  assert.equal(linearGrouped.elements[0].groupIds.length, 1);
+  await page.mouse.move(area.x + 370, area.y + 210);
+  await page.mouse.down();
+  await page.mouse.move(area.x + 445, area.y + 260, { steps: 8 });
+  await page.mouse.up();
+  const linearScaled = await saveScene();
+  const scaledArrow = linearScaled.elements[1];
+  assert.ok(scaledArrow.width > linearArrow.width);
+  assert.ok(scaledArrow.points[1][0] > linearArrow.points[1][0]);
+  assert.ok(scaledArrow.points[1][1] > linearArrow.points[1][1]);
+  assert.equal(scaledArrow.startBinding, null);
+  assert.equal(scaledArrow.endBinding, null);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), linearGrouped);
+
+  await page.mouse.click(area.x + 140, area.y + 160);
+  await page.mouse.move(area.x + 230, area.y + 92);
+  await page.mouse.down();
+  await page.mouse.move(area.x + 370, area.y + 165, { steps: 8 });
+  await page.mouse.up();
+  const linearRotated = await saveScene();
+  assert.ok(Math.abs(linearRotated.elements[1].angle) > 0.1);
+  assert.deepEqual(linearRotated.elements[1].points, linearArrow.points);
+  assert.deepEqual(linearRotated.elements[0].groupIds, linearRotated.elements[1].groupIds);
+  assert.deepEqual(errors, []);
+
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
-  console.log("Browser smoke passed: native canvas, drawing, duplication, undo, text and JSON export");
+  console.log("Browser smoke passed: native canvas, bound groups, resize, rotation, undo, text and JSON export");
 } catch (error) {
   await page.screenshot({ path: "/tmp/svelte-smoke-failure.png" }).catch(() => {});
   console.error("Browser smoke failed:", error);

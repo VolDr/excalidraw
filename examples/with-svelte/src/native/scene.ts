@@ -73,6 +73,53 @@ export const blankScene = (): SceneFile => ({
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * Imported Excalidraw elements may contain unknown extension fields, but
+ * drawing and editing still require valid common geometry and group IDs.
+ * Reject malformed files at the boundary rather than crashing in hit-tests.
+ */
+const validImportedElement = (value: unknown): boolean => {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (
+    typeof value.id !== "string" ||
+    typeof value.type !== "string" ||
+    !["x", "y", "width", "height", "angle"].every((key) =>
+      Number.isFinite(value[key]),
+    ) ||
+    !Array.isArray(value.groupIds) ||
+    !value.groupIds.every((id: unknown) => typeof id === "string") ||
+    (value.boundElements != null &&
+      (!Array.isArray(value.boundElements) ||
+        !value.boundElements.every(
+          (ref: unknown) =>
+            isRecord(ref) &&
+            typeof ref.id === "string" &&
+            typeof ref.type === "string",
+        )))
+  ) {
+    return false;
+  }
+  if (
+    value.type === "line" ||
+    value.type === "arrow" ||
+    value.type === "freedraw"
+  ) {
+    return (
+      Array.isArray(value.points) &&
+      value.points.every(
+        (p: unknown) =>
+          Array.isArray(p) &&
+          p.length === 2 &&
+          Number.isFinite(p[0]) &&
+          Number.isFinite(p[1]),
+      )
+    );
+  }
+  return true;
+};
+
 export function parseScene(input: string): SceneFile {
   const data: unknown = JSON.parse(input);
   if (
@@ -85,18 +132,16 @@ export function parseScene(input: string): SceneFile {
     throw new Error("Это не файл .excalidraw.");
   }
   if (
-    !data.elements.every(
-      (element: unknown) =>
-        isRecord(element) &&
-        typeof element.id === "string" &&
-        typeof element.type === "string" &&
-        Number.isFinite(element.x) &&
-        Number.isFinite(element.y),
-    )
+    !data.elements.every(validImportedElement) ||
+    new Set(
+      data.elements.map((element: { id: string }) => element.id),
+    ).size !== data.elements.length
   ) {
     throw new Error("Файл содержит некорректные элементы.");
   }
   return {
+    // Preserve top-level extension fields from imported Excalidraw scenes.
+    ...data,
     type: "excalidraw",
     version: typeof data.version === "number" ? data.version : 2,
     source: typeof data.source === "string" ? data.source : SOURCE,

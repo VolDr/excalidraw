@@ -41,7 +41,7 @@ export function nativeLabelBox(
     !label.autoResize ||
     label.boundElements?.length ||
     label.frameId ||
-    label.groupIds.length
+    label.groupIds.length > 1
   ) {
     return null;
   }
@@ -54,12 +54,27 @@ export function nativeLabelBox(
     box.isDeleted ||
     box.locked ||
     box.frameId ||
-    box.groupIds.length ||
+    box.groupIds.length !== label.groupIds.length ||
+    box.groupIds.some((id, index) => id !== label.groupIds[index]) ||
     box.width <= 20 ||
     box.height <= 20 ||
     box.boundElements?.length !== 1 ||
     box.boundElements[0].type !== "text" ||
-    box.boundElements[0].id !== label.id
+    box.boundElements[0].id !== label.id ||
+    scene.elements.some(
+      (item) =>
+        item.type === "text" &&
+        !item.isDeleted &&
+        item.containerId === box.id &&
+        item.id !== label.id,
+    ) ||
+    scene.elements.some(
+      (item) =>
+        item.type === "arrow" &&
+        !item.isDeleted &&
+        (item.startBinding?.elementId === box.id ||
+          item.endBinding?.elementId === box.id),
+    )
   ) {
     return null;
   }
@@ -111,9 +126,20 @@ export function nativeBoundLabelLayout(
  * Move/rotate/rewrap the label together with its container. Both elements
  * remain valid Excalidraw elements in serialized scene and undo history.
  */
-export function syncNativeBoundLabels(scene: SceneFile): SceneFile {
+export function syncNativeBoundLabels(
+  scene: SceneFile,
+  changedContainers?: ReadonlySet<string>,
+): SceneFile {
   let changed = false;
   const elements = scene.elements.map((element) => {
+    if (
+      changedContainers &&
+      (element.type !== "text" ||
+        !element.containerId ||
+        !changedContainers.has(element.containerId))
+    ) {
+      return element;
+    }
     const layout = nativeBoundLabelLayout(scene, element);
     if (
       !layout ||
@@ -152,13 +178,17 @@ export function nativeEditableLabel(
     box.isDeleted ||
     box.locked ||
     box.frameId ||
-    box.groupIds.length ||
+    box.groupIds.length > 1 ||
     box.width <= 20 ||
     box.height <= 20
   ) {
     return undefined;
   }
   if (!box.boundElements?.length) {
+    // Do not create a new internal member in an existing group.
+    if (box.groupIds.length) {
+      return undefined;
+    }
     // A malformed imported label may still point at this box even when
     // the reverse reference is missing. Do not create a second label.
     return scene.elements.some(

@@ -192,21 +192,24 @@ export function moveSelection(
   if (!selected.size) {
     return scene;
   }
-  return syncNativeBoundLabels(syncNativeBindings({
-    ...scene,
-    elements: scene.elements.map((element) =>
-      selected.has(element.id)
-        ? {
-            ...element,
-            x: element.x + dx,
-            y: element.y + dy,
-            version: element.version + 1,
-            versionNonce: Math.floor(Math.random() * 2 ** 31),
-            updated: Date.now(),
-          }
-        : element,
-    ),
-  }));
+  return syncNativeBoundLabels(
+    syncNativeBindings({
+      ...scene,
+      elements: scene.elements.map((element) =>
+        selected.has(element.id)
+          ? {
+              ...element,
+              x: element.x + dx,
+              y: element.y + dy,
+              version: element.version + 1,
+              versionNonce: Math.floor(Math.random() * 2 ** 31),
+              updated: Date.now(),
+            }
+          : element,
+      ),
+    }),
+    selected,
+  );
 }
 
 export function deleteSelection(
@@ -252,16 +255,24 @@ export function transformSelected(
   handle: Handle,
   point: Point,
 ): SceneFile {
-  return syncNativeBoundLabels(syncNativeBindings({
+  const current = scene.elements.find((element) => element.id === id);
+  if (!current) {
+    return scene;
+  }
+  const transformed =
+    handle === "rotate"
+      ? rotateElement(current, point, scene)
+      : resizeElement(current, handle, point, scene);
+  if (transformed === current) {
+    return scene;
+  }
+  const updated = {
     ...scene,
     elements: scene.elements.map((element) =>
-      element.id !== id
-        ? element
-        : handle === "rotate"
-        ? rotateElement(element, point, scene)
-        : resizeElement(element, handle, point, scene),
+      element.id === id ? transformed : element,
     ),
-  }));
+  };
+  return syncNativeBoundLabels(syncNativeBindings(updated), new Set([id]));
 }
 
 /** Flip a supported raster image without rewriting its file or crop data. */
