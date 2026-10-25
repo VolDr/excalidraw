@@ -270,17 +270,16 @@ describe("native flat group transforms", () => {
         ],
       },
     ];
-    if (arrow.type === "arrow") {
-      unsafe.push({
-        ...arrow,
-        fixedSegments: [
-          {
-            start: pointFrom<LocalPoint>(0, 0),
-            end: pointFrom<LocalPoint>(20, 30),
-          },
-        ],
-      });
-    }
+    const routed = {
+      ...arrow,
+      fixedSegments: [
+        {
+          start: pointFrom<LocalPoint>(0, 0),
+          end: pointFrom<LocalPoint>(20, 30),
+        },
+      ],
+    };
+    unsafe.push(routed);
     for (const invalid of unsafe) {
       const scene = {
         ...base.scene,
