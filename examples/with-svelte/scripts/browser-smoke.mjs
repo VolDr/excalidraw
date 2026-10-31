@@ -393,6 +393,38 @@ try {
   assert.deepEqual(linearRotated.elements[0].groupIds, linearRotated.elements[1].groupIds);
   assert.deepEqual(errors, []);
 
+  // Native copy/paste uses tagged clipboard content. Drive the actual DOM
+  // ClipboardEvent handlers without relying on OS clipboard permissions in CI.
+  await page.locator(".native-viewport").press("Control+a");
+  const beforePaste = await saveScene();
+  const clipboardJSON = await page.locator(".native-viewport").evaluate((viewport) => {
+    const data = new DataTransfer();
+    const event = new ClipboardEvent("copy", {
+      bubbles: true, cancelable: true, clipboardData: data,
+    });
+    viewport.dispatchEvent(event);
+    return data.getData("text/plain");
+  });
+  assert.ok(clipboardJSON.includes("excalidraw/svelte-native-selection"));
+  await page.locator(".native-viewport").evaluate((viewport, text) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    viewport.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true, cancelable: true, clipboardData: data,
+    }));
+  }, clipboardJSON);
+  const afterPaste = await saveScene();
+  assert.equal(afterPaste.elements.length, beforePaste.elements.length * 2);
+  assert.equal(
+    new Set(afterPaste.elements.map((e) => e.id)).size,
+    afterPaste.elements.length,
+  );
+  assert.equal(afterPaste.elements[2].groupIds.length, 1);
+  assert.notEqual(afterPaste.elements[2].groupIds[0], beforePaste.elements[0].groupIds[0]);
+  assert.deepEqual(afterPaste.elements.slice(0, 2), beforePaste.elements);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), beforePaste);
+
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
