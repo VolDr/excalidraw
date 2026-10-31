@@ -85,9 +85,10 @@ const validImportedElement = (value: unknown): boolean => {
   if (
     typeof value.id !== "string" ||
     typeof value.type !== "string" ||
-    !["x", "y", "width", "height", "angle"].every((key) =>
-      Number.isFinite(value[key]),
-    ) ||
+    !["x", "y", "width", "height", "angle"].every((key) => {
+      const number = value[key];
+      return typeof number === "number" && Number.isFinite(number);
+    }) ||
     !Array.isArray(value.groupIds) ||
     !value.groupIds.every((id: unknown) => typeof id === "string") ||
     (value.boundElements != null &&
