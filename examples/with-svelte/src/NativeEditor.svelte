@@ -936,7 +936,7 @@
       return;
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "endpoint") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint") &&
       g.changed
     ) {
       onChange(g.original);
