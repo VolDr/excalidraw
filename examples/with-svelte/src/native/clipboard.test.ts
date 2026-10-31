@@ -98,9 +98,9 @@ describe("Svelte native scene clipboard", () => {
       return;
     }
     expect(copied.fileId).not.toBe(original.fileId);
-    expect(pasted.scene.files[copied.fileId!]).toMatchObject({
+    expect(pasted.scene.files[copied.fileId!]).toEqual({
+      ...(created.scene.files[original.fileId!] as Record<string, unknown>),
       id: copied.fileId,
-      dataURL: created.scene.files[original.fileId!].dataURL,
     });
     expect(pasted.scene.files[original.fileId!]).toEqual(
       created.scene.files[original.fileId!],
