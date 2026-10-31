@@ -62,6 +62,7 @@
     elementsInMarquee,
     rectangleBetween,
   } from "./native/selection";
+  import { copyNativeSelection, pasteNativeSelection } from "./native/clipboard";
   import {
     editableSelection,
     groupSelection,
@@ -211,6 +212,33 @@
     history.commit(previous);
     onChange(next);
     refreshHistory();
+  }
+
+  function copySelected(event: ClipboardEvent) {
+    if (gesture || textEditor || !event.clipboardData) {
+      return;
+    }
+    const payload = copyNativeSelection(scene, selectedIds);
+    if (payload) {
+      event.clipboardData.setData("text/plain", payload);
+      event.preventDefault();
+    }
+  }
+
+  function pasteSelected(event: ClipboardEvent) {
+    if (gesture || textEditor || !event.clipboardData) {
+      return;
+    }
+    const result = pasteNativeSelection(
+      scene,
+      event.clipboardData.getData("text/plain"),
+    );
+    if (result.ids.length) {
+      event.preventDefault();
+      commit(scene, result.scene);
+      selectedIds = result.ids;
+      tool = "selection";
+    }
   }
 
   function duplicate() {
@@ -1141,6 +1169,8 @@
     onpointercancel={pointerCancel}
     ondblclick={doubleClick}
     onkeydown={handleKeys}
+    oncopy={copySelected}
+    onpaste={pasteSelected}
   >
     <canvas bind:this={canvas}></canvas>
     {#if textEditor}
