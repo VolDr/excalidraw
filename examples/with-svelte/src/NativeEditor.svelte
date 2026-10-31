@@ -359,7 +359,8 @@
       if (next !== scene) {
         commit(scene, next);
       }
-      selectedIds = [editor.boxId];
+      // Keep the whole native group selected after editing an internal label.
+      selectedIds = selectionUnit(next, editor.boxId);
     } else if (!value.trim()) {
       if (editor.id) {
         commit(scene, deleteById(scene, editor.id));
