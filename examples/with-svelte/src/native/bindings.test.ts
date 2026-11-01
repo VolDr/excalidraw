@@ -37,6 +37,17 @@ describe("native reciprocal arrow binding", () => {
     expect(duplicate.ids).toEqual([]);
   });
 
+  it("does not partially duplicate a selection containing a linked target", () => {
+    const { left, scene } = makeScene();
+    const safe = createShape("diamond", { x: 360, y: 25 }, { x: 460, y: 125 });
+    const withSafe = { ...scene, elements: [...scene.elements, safe] };
+    const duplicate = duplicateSelection(withSafe, [left.id, safe.id]);
+    expect(duplicate.scene).toBe(withSafe);
+    expect(duplicate.ids).toEqual([]);
+    expect(withSafe.elements).toHaveLength(4);
+    expect(duplicateSelection(withSafe, [safe.id]).ids).toHaveLength(1);
+  });
+
   it("deletes linked shapes and arrows without dangling reciprocal bindings", () => {
     const { left, right, arrow, scene } = makeScene();
     const removedBox = deleteSelection(scene, [left.id]);
