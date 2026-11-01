@@ -425,6 +425,24 @@ try {
   await page.locator(".native-viewport").press("Control+z");
   assert.deepEqual(await saveScene(), beforePaste);
 
+  // Cutting the same full native group must be one undoable transaction.
+  await page.locator(".native-viewport").press("Control+a");
+  const cutJSON = await page.locator(".native-viewport").evaluate((viewport) => {
+    const data = new DataTransfer();
+    viewport.dispatchEvent(new ClipboardEvent("cut", {
+      bubbles: true, cancelable: true, clipboardData: data,
+    }));
+    return data.getData("text/plain");
+  });
+  assert.ok(cutJSON.includes("excalidraw/svelte-native-selection"));
+  const cutScene = await saveScene();
+  assert.equal(
+    cutScene.elements.filter((element) => element.isDeleted).length,
+    beforePaste.elements.length,
+  );
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), beforePaste);
+
   await page.getByRole("button", { name: "Тёмная тема" }).click();
   assert.ok(await page.getByRole("button", { name: "Светлая тема" }).isVisible());
   assert.deepEqual(errors, [], "No uncaught browser errors are expected");
