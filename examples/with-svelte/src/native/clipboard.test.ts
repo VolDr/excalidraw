@@ -102,6 +102,20 @@ describe("Svelte native scene clipboard", () => {
     expect(copyNativeSelection(scene, [other.id])).toBeTruthy();
   });
 
+  it("rejects a clipboard payload larger than paste can accept before cutting", () => {
+    const box = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 100 });
+    const large = {
+      ...box,
+      customData: { payload: "x".repeat(24_000_001) },
+    };
+    const scene = { ...blankScene(), elements: [large] };
+    expect(copyNativeSelection(scene, [box.id])).toBeNull();
+    const cut = cutNativeSelection(scene, [box.id]);
+    expect(cut.text).toBeNull();
+    expect(cut.scene).toBe(scene);
+    expect(scene.elements[0].isDeleted).toBe(false);
+  });
+
   it("does not copy unsupported half-selected or malformed groups", () => {
     const { scene, ids } = labeledGroup();
     expect(copyNativeSelection(scene, [ids[0]])).toBeNull();
