@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { appendNativeArrow } from "./bindings";
 import { updateNativeBoxLabel } from "./boundText";
-import { copyNativeSelection, cutNativeSelection, pasteNativeSelection } from "./clipboard";
+import {
+  copyNativeSelection,
+  cutNativeSelection,
+  pasteNativeSelection,
+} from "./clipboard";
 import { groupSelection } from "./groups";
 import { SceneHistory } from "./history";
 import { addNativeImage } from "./images";
@@ -68,7 +72,9 @@ describe("Svelte native scene clipboard", () => {
     expect(cut.text).toBeTruthy();
     expect(cut.scene).not.toBe(scene);
     expect(cut.scene.elements.map((element) => element.isDeleted)).toEqual([
-      true, true, true,
+      true,
+      true,
+      true,
     ]);
     expect(scene.elements.every((element) => !element.isDeleted)).toBe(true);
     const pasted = pasteNativeSelection(cut.scene, cut.text!);
