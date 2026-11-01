@@ -192,11 +192,15 @@
     pressures: number[];
   };
   let gesture: Gesture | null = null;
+  let lastPastedText: string | null = null;
+  let pasteNumber = 0;
 
   // Replace the undo stack after an explicit file import or editor reset.
   $effect(() => {
     documentEpoch;
     history.clear();
+    lastPastedText = null;
+    pasteNumber = 0;
     selectedIds = [];
     marquee = null;
     undoAvailable = false;
@@ -222,6 +226,8 @@
     if (payload) {
       event.clipboardData.setData("text/plain", payload);
       event.preventDefault();
+      lastPastedText = null;
+      pasteNumber = 0;
     }
   }
 
@@ -233,6 +239,8 @@
     if (result.text) {
       event.clipboardData.setData("text/plain", result.text);
       event.preventDefault();
+      lastPastedText = null;
+      pasteNumber = 0;
       commit(scene, result.scene);
       selectedIds = [];
     }
@@ -242,11 +250,12 @@
     if (gesture || textEditor || !event.clipboardData) {
       return;
     }
-    const result = pasteNativeSelection(
-      scene,
-      event.clipboardData.getData("text/plain"),
-    );
+    const encoded = event.clipboardData.getData("text/plain");
+    const nextPasteNumber = encoded === lastPastedText ? pasteNumber + 1 : 1;
+    const result = pasteNativeSelection(scene, encoded, nextPasteNumber * 24);
     if (result.ids.length) {
+      lastPastedText = encoded;
+      pasteNumber = nextPasteNumber;
       event.preventDefault();
       commit(scene, result.scene);
       selectedIds = result.ids;
