@@ -69,9 +69,12 @@ export function cutNativeSelection(
   const next = deleteSelection(scene, ids);
   if (
     next === scene ||
-    ids.some((id) => !next.elements.some(
-      (element) => element.id === id && element.isDeleted,
-    ))
+    ids.some(
+      (id) =>
+        !next.elements.some(
+          (element) => element.id === id && element.isDeleted,
+        ),
+    )
   ) {
     return { scene, text: null };
   }
