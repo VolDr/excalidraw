@@ -42,13 +42,16 @@ export function copyNativeSelection(
       files[element.fileId] = structuredClone(scene.files[element.fileId]);
     }
   }
-  return JSON.stringify({
+  const encoded = JSON.stringify({
     type: CLIPBOARD_TYPE,
     version: 1,
     rootIds: cloned.ids,
     elements,
     files,
   });
+  // A cut must not erase objects which cannot be pasted back because the
+  // serialized payload exceeds the import limit.
+  return encoded.length <= MAX_CLIPBOARD_SIZE ? encoded : null;
 }
 
 /**
