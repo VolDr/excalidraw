@@ -422,6 +422,20 @@ try {
   assert.equal(afterPaste.elements[2].groupIds.length, 1);
   assert.notEqual(afterPaste.elements[2].groupIds[0], beforePaste.elements[0].groupIds[0]);
   assert.deepEqual(afterPaste.elements.slice(0, 2), beforePaste.elements);
+
+  // Repeating the same paste should cascade in world-space, not overlap.
+  await page.locator(".native-viewport").evaluate((viewport, text) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    viewport.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true, cancelable: true, clipboardData: data,
+    }));
+  }, clipboardJSON);
+  const twicePasted = await saveScene();
+  assert.equal(twicePasted.elements.length, beforePaste.elements.length * 3);
+  assert.equal(twicePasted.elements[4].x, beforePaste.elements[0].x + 48);
+  await page.locator(".native-viewport").press("Control+z");
+  assert.deepEqual(await saveScene(), afterPaste);
   await page.locator(".native-viewport").press("Control+z");
   assert.deepEqual(await saveScene(), beforePaste);
 
