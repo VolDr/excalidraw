@@ -1,9 +1,9 @@
 import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
 
+import { editableSelection } from "./groups";
 import { nativeImageSource } from "./images";
 import { blankScene, parseScene } from "./scene";
 import { duplicateSelection } from "./selection";
-import { editableSelection } from "./groups";
 import { deleteSelection } from "./transforms";
 
 import type { SceneFile } from "./scene";
@@ -88,7 +88,11 @@ export function pasteNativeSelection(
   encoded: string,
   offset = 24,
 ): { scene: SceneFile; ids: string[] } {
-  if (!encoded || encoded.length > MAX_CLIPBOARD_SIZE || !Number.isFinite(offset)) {
+  if (
+    !encoded ||
+    encoded.length > MAX_CLIPBOARD_SIZE ||
+    !Number.isFinite(offset)
+  ) {
     return unchanged(scene);
   }
   try {
@@ -114,11 +118,13 @@ export function pasteNativeSelection(
     ) {
       return unchanged(scene);
     }
-    const source = parseScene(JSON.stringify({
-      ...blankScene(),
-      elements: payload.elements,
-      files: payload.files,
-    }));
+    const source = parseScene(
+      JSON.stringify({
+        ...blankScene(),
+        elements: payload.elements,
+        files: payload.files,
+      }),
+    );
     // Every element must be part of the copyable selection: no dangling
     // labels, partially copied groups or unsupported foreign references.
     for (const element of source.elements) {
