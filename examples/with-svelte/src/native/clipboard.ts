@@ -3,6 +3,8 @@ import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
 import { nativeImageSource } from "./images";
 import { blankScene, parseScene } from "./scene";
 import { duplicateSelection } from "./selection";
+import { editableSelection } from "./groups";
+import { deleteSelection } from "./transforms";
 
 import type { SceneFile } from "./scene";
 
@@ -20,8 +22,14 @@ export function copyNativeSelection(
   scene: SceneFile,
   ids: readonly string[],
 ): string | null {
+  const allowed = editableSelection(scene, ids);
+  // Never copy a subset of an unsafe/mixed selection. In particular, linked
+  // arrow targets cannot be cloned without their reciprocal arrows.
+  if (!allowed.length || allowed.length !== new Set(ids).size) {
+    return null;
+  }
   const cloned = duplicateSelection(scene, ids, 0);
-  if (!cloned.ids.length) {
+  if (cloned.ids.length !== allowed.length) {
     return null;
   }
   const elements = cloned.scene.elements.slice(scene.elements.length);
@@ -41,6 +49,30 @@ export function copyNativeSelection(
     elements,
     files,
   });
+}
+
+/**
+ * Cut is one atomic scene transaction. If a complete selection cannot be
+ * serialized, leave both its source objects and clipboard untouched.
+ */
+export function cutNativeSelection(
+  scene: SceneFile,
+  ids: readonly string[],
+): { scene: SceneFile; text: string | null } {
+  const text = copyNativeSelection(scene, ids);
+  if (!text) {
+    return { scene, text: null };
+  }
+  const next = deleteSelection(scene, ids);
+  if (
+    next === scene ||
+    ids.some((id) => !next.elements.some(
+      (element) => element.id === id && element.isDeleted,
+    ))
+  ) {
+    return { scene, text: null };
+  }
+  return { scene: next, text };
 }
 
 /**
