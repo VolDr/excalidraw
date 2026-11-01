@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { appendNativeArrow } from "./bindings";
 import { updateNativeBoxLabel } from "./boundText";
-import { copyNativeSelection, pasteNativeSelection } from "./clipboard";
+import { copyNativeSelection, cutNativeSelection, pasteNativeSelection } from "./clipboard";
 import { groupSelection } from "./groups";
 import { SceneHistory } from "./history";
 import { addNativeImage } from "./images";
@@ -59,6 +60,46 @@ describe("Svelte native scene clipboard", () => {
     history.commit(scene);
     expect(history.undo(first.scene)).toEqual(scene);
     expect(history.redo(scene)).toEqual(first.scene);
+  });
+
+  it("cuts an entire labeled group and restores it via undo", () => {
+    const { scene, ids } = labeledGroup();
+    const cut = cutNativeSelection(scene, ids);
+    expect(cut.text).toBeTruthy();
+    expect(cut.scene).not.toBe(scene);
+    expect(cut.scene.elements.map((element) => element.isDeleted)).toEqual([
+      true, true, true,
+    ]);
+    expect(scene.elements.every((element) => !element.isDeleted)).toBe(true);
+    const pasted = pasteNativeSelection(cut.scene, cut.text!);
+    expect(pasted.ids).toHaveLength(2);
+    expect(pasted.scene.elements).toHaveLength(6);
+    expect(pasted.scene.elements.slice(3).every((element) => !element.isDeleted))
+      .toBe(true);
+    expect(pasted.scene.elements[3].boundElements?.[0].id).toBe(
+      pasted.scene.elements[5].id,
+    );
+    const history = new SceneHistory();
+    history.commit(scene);
+    expect(history.undo(cut.scene)).toEqual(scene);
+  });
+
+  it("refuses an entire mixed copy/cut if a linked target is unsafe to clone", () => {
+    const left = createShape("rectangle", { x: 20, y: 20 }, { x: 130, y: 100 });
+    const right = createShape("ellipse", { x: 280, y: 20 }, { x: 400, y: 120 });
+    const other = createShape("diamond", { x: 440, y: 20 }, { x: 520, y: 100 });
+    const arrow = createShape("arrow", { x: 130, y: 70 }, { x: 280, y: 70 });
+    const scene = appendNativeArrow(
+      { ...blankScene(), elements: [left, right, other] },
+      arrow,
+      { x: 130, y: 70 },
+      { x: 280, y: 70 },
+    );
+    expect(copyNativeSelection(scene, [left.id, other.id])).toBeNull();
+    const cut = cutNativeSelection(scene, [left.id, other.id]);
+    expect(cut).toEqual({ scene, text: null });
+    expect(scene.elements.every((element) => !element.isDeleted)).toBe(true);
+    expect(copyNativeSelection(scene, [other.id])).toBeTruthy();
   });
 
   it("does not copy unsupported half-selected or malformed groups", () => {
