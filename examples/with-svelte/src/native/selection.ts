@@ -126,7 +126,10 @@ export function duplicateSelection(
     }
   }
 
-  if (!selected.size) {
+  // A root allowed for selection might still have an arrow binding which
+  // cannot be cloned by this limited native duplication path. In that case
+  // reject the entire operation instead of silently copying other roots.
+  if (!selected.size || copiedParents.size !== requested.size) {
     return { scene, ids: [] };
   }
 
