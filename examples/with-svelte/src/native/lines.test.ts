@@ -33,6 +33,27 @@ describe("two-point native line endpoints", () => {
     ).toBe(100);
   });
 
+  it("preserves rotated endpoint coordinates through core math and mutations", () => {
+    const line = createShape("line", { x: 40, y: 40 }, { x: 160, y: 100 });
+    const rotated = {
+      ...line,
+      angle: (Math.PI / 2) as typeof line.angle,
+    };
+    const endpoints = endpointLocations(rotated)!;
+    expect(endpoints.start.x).toBeCloseTo(130);
+    expect(endpoints.start.y).toBeCloseTo(10);
+    expect(endpoints.end.x).toBeCloseTo(70);
+    expect(endpoints.end.y).toBeCloseTo(130);
+    const moved = moveEndpoint(rotated, "start", { x: 150, y: -10 });
+    const changed = endpointLocations(moved)!;
+    expect(changed.start).toEqual({ x: 150, y: -10 });
+    expect(changed.end.x).toBeCloseTo(endpoints.end.x);
+    expect(changed.end.y).toBeCloseTo(endpoints.end.y);
+    expect(moved.angle).toBe(0);
+    expect(moved.version).toBe(rotated.version + 1);
+    expect(rotated.points).toEqual(line.type === "line" ? line.points : []);
+  });
+
   it("rejects bound, grouped, framed, locked and complex paths", () => {
     const line = createShape("line", { x: 0, y: 0 }, { x: 50, y: 50 });
     const cases = [
