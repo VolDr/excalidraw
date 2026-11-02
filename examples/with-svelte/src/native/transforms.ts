@@ -3,13 +3,15 @@ import { pointFrom, pointRotateRads } from "@excalidraw/math";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
-  detachDeletedNativeBindings,
   isNativeLinkedArrow,
   isSafeBoundBox,
   syncNativeBindings,
 } from "./bindings";
 import { canEditIndependently, editableSelection } from "./groups";
-import { updateNativeElement } from "./coreAdapter";
+import {
+  deleteNativeElementsWithCore,
+  updateNativeElement,
+} from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { nativeImageSource } from "./images";
 
@@ -225,15 +227,7 @@ export function deleteSelection(
       selected.add(element.id);
     }
   }
-  const unlinked = detachDeletedNativeBindings(scene, selected);
-  return {
-    ...unlinked,
-    elements: unlinked.elements.map((element) =>
-      selected.has(element.id)
-        ? updateNativeElement(element, { isDeleted: true })
-        : element,
-    ),
-  };
+  return deleteNativeElementsWithCore(scene, selected);
 }
 
 export function transformSelected(
