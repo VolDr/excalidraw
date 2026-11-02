@@ -1,10 +1,10 @@
-import { pointFrom } from "@excalidraw/math";
+import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type {
   ExcalidrawElement,
   ExcalidrawArrowElement,
 } from "@excalidraw/element/types";
-import type { LocalPoint } from "@excalidraw/math";
+import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { nativeLabelBox } from "./boundText";
 import { hitTest } from "./scene";
@@ -107,25 +107,29 @@ export function isNativeLinkedArrow(
 }
 
 const world = (shape: ExcalidrawElement, point: Point): Point => {
-  const cx = shape.x + shape.width / 2;
-  const cy = shape.y + shape.height / 2;
-  const dx = point.x - cx;
-  const dy = point.y - cy;
-  return {
-    x: cx + dx * Math.cos(shape.angle) - dy * Math.sin(shape.angle),
-    y: cy + dx * Math.sin(shape.angle) + dy * Math.cos(shape.angle),
-  };
+  const center = pointFrom<GlobalPoint>(
+    shape.x + shape.width / 2,
+    shape.y + shape.height / 2,
+  );
+  const [x, y] = pointRotateRads(
+    pointFrom<GlobalPoint>(point.x, point.y),
+    center,
+    shape.angle,
+  );
+  return { x, y };
 };
 
 const local = (shape: ExcalidrawElement, point: Point): Point => {
-  const cx = shape.x + shape.width / 2;
-  const cy = shape.y + shape.height / 2;
-  const dx = point.x - cx;
-  const dy = point.y - cy;
-  return {
-    x: cx + dx * Math.cos(shape.angle) + dy * Math.sin(shape.angle),
-    y: cy - dx * Math.sin(shape.angle) + dy * Math.cos(shape.angle),
-  };
+  const center = pointFrom<GlobalPoint>(
+    shape.x + shape.width / 2,
+    shape.y + shape.height / 2,
+  );
+  const [x, y] = pointRotateRads(
+    pointFrom<GlobalPoint>(point.x, point.y),
+    center,
+    -shape.angle as ExcalidrawElement["angle"],
+  );
+  return { x, y };
 };
 
 const center = (shape: ExcalidrawElement): Point => ({
