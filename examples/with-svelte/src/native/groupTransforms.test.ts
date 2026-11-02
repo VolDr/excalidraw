@@ -86,6 +86,43 @@ describe("native flat group transforms", () => {
     expect(history.redo(grouped.scene)).toEqual(resized);
   });
 
+  it("rotates plain grouped boxes using the original Excalidraw transform engine", () => {
+    const first = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 90 });
+    const second = createShape("diamond", { x: 190, y: 40 }, { x: 290, y: 120 });
+    const outsider = createShape("ellipse", { x: 480, y: 50 }, { x: 580, y: 170 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [first, second, outsider] },
+      [first.id, second.id],
+    );
+    const original = grouped.scene;
+    const bounds = transformableGroup(original, grouped.ids)!.bounds;
+    const center = {
+      x: bounds.x + bounds.width / 2,
+      y: bounds.y + bounds.height / 2,
+    };
+    const rotated = transformGroup(original, grouped.ids, "rotate", {
+      x: center.x + 200,
+      y: center.y,
+    });
+    expect(rotated).not.toBe(original);
+    for (const element of rotated.elements.slice(0, 2)) {
+      expect(element.angle).toBeCloseTo(Math.PI / 2);
+      expect(element.version).toBe(original.elements.find((item) => item.id === element.id)!.version + 1);
+      expect(element.index).toBe(original.elements.find((item) => item.id === element.id)!.index);
+    }
+    const firstCenter = { x: first.x + first.width / 2, y: first.y + first.height / 2 };
+    const rotatedFirst = rotated.elements[0];
+    expect(rotatedFirst.x + rotatedFirst.width / 2).toBeCloseTo(center.x - (firstCenter.y - center.y));
+    expect(rotatedFirst.y + rotatedFirst.height / 2).toBeCloseTo(center.y + (firstCenter.x - center.x));
+    expect(rotated.elements[2]).toBe(outsider);
+    expect(original.elements[0].angle).toBe(0);
+    expect(original.elements[1].angle).toBe(0);
+    const history = new SceneHistory();
+    history.commit(original);
+    expect(history.undo(rotated)).toEqual(original);
+    expect(history.redo(original)).toEqual(rotated);
+  });
+
   it("rejects direct multi-resize when imported group has external relationships", () => {
     const first = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
     const second = createShape("diamond", { x: 150, y: 30 }, { x: 250, y: 130 });
