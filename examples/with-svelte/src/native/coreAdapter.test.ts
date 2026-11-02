@@ -9,7 +9,13 @@ import { describe, expect, it } from "vitest";
 
 import type { LocalPoint } from "@excalidraw/math";
 
-import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
+import { appendNativeArrow } from "./bindings";
+import { updateNativeBoxLabel } from "./boundText";
+import {
+  deleteNativeElementsWithCore,
+  nativeElementsMap,
+  updateNativeElement,
+} from "./coreAdapter";
 import { blankScene, createShape } from "./scene";
 
 describe("Svelte scene adapter to original Excalidraw core", () => {
@@ -72,6 +78,63 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(deleted.version).toBe(moved.version + 1);
     expect(updateNativeElement(deleted, { isDeleted: true })).toBe(deleted);
     expect(scene.elements[0].isDeleted).toBe(false);
+  });
+
+  it("cleans up both reciprocal sides when deleting an arrow", () => {
+    const left = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
+    const right = createShape("ellipse", { x: 210, y: 10 }, { x: 310, y: 110 });
+    const arrow = createShape("arrow", { x: 110, y: 60 }, { x: 210, y: 60 });
+    const original = appendNativeArrow(
+      { ...blankScene(), elements: [left, right] },
+      arrow,
+      { x: 110, y: 60 },
+      { x: 210, y: 60 },
+    );
+    const snapshot = structuredClone(original);
+    const removed = deleteNativeElementsWithCore(original, new Set([arrow.id]));
+    expect(removed.elements[2].isDeleted).toBe(true);
+    expect(removed.elements[0].boundElements).toBeNull();
+    expect(removed.elements[1].boundElements).toBeNull();
+    expect(original).toEqual(snapshot);
+    expect(deleteNativeElementsWithCore(original, new Set(["missing"]))).toBe(original);
+  });
+
+  it("detaches the deleted arrow target while preserving the opposite end", () => {
+    const left = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
+    const right = createShape("rectangle", { x: 210, y: 10 }, { x: 310, y: 110 });
+    const arrow = createShape("arrow", { x: 110, y: 60 }, { x: 210, y: 60 });
+    const original = appendNativeArrow(
+      { ...blankScene(), elements: [left, right] },
+      arrow,
+      { x: 110, y: 60 },
+      { x: 210, y: 60 },
+    );
+    const removed = deleteNativeElementsWithCore(original, new Set([left.id]));
+    expect(removed.elements[0].isDeleted).toBe(true);
+    const surviving = removed.elements[2];
+    expect(surviving.type).toBe("arrow");
+    if (surviving.type === "arrow") {
+      expect(surviving.startBinding).toBeNull();
+      expect(surviving.endBinding?.elementId).toBe(right.id);
+    }
+    expect(removed.elements[1].boundElements?.[0].id).toBe(arrow.id);
+    expect(original.elements[0].isDeleted).toBe(false);
+  });
+
+  it("cleans up a reciprocal label without deleting unrelated elements", () => {
+    const box = createShape("rectangle", { x: 10, y: 10 }, { x: 220, y: 150 });
+    const other = createShape("diamond", { x: 300, y: 10 }, { x: 400, y: 110 });
+    const scene = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box, other] },
+      box.id,
+      "Caption",
+    );
+    const textId = scene.elements[2].id;
+    const removed = deleteNativeElementsWithCore(scene, new Set([textId]));
+    expect(removed.elements[2].isDeleted).toBe(true);
+    expect(removed.elements[0].boundElements).toBeNull();
+    expect(removed.elements[1]).toEqual(other);
+    expect(scene.elements[0].boundElements?.[0].id).toBe(textId);
   });
 
   it("retains import extension fields on immutable updates", () => {
