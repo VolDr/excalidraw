@@ -242,17 +242,22 @@ export function transformSelected(
   if (!current) {
     return scene;
   }
-  // Native rectangle/ellipse/diamond resizing is now fully performed by
-  // Excalidraw's original resizeSingleElement on a private core Scene.
-  // Keep the conservative legacy path for images and bound containers until
-  // their crop, label and arrow semantics have parity fixtures.
+  // Native box resize now uses Excalidraw's resizeSingleElement, including
+  // its own bound-text reflow for one validated reciprocal label. Unsupported
+  // arrow links, imported orphan labels and raster crops stay guarded.
+  const textRef =
+    current.boundElements?.length === 1 &&
+    current.boundElements[0].type === "text"
+      ? scene.elements.find((item) => item.id === current.boundElements?.[0].id)
+      : null;
   if (
     handle !== "rotate" &&
     isBoxTransformable(current, scene) &&
     (current.type === "rectangle" ||
       current.type === "ellipse" ||
       current.type === "diamond") &&
-    !current.boundElements?.length
+    (!current.boundElements?.length ||
+      (!!textRef && nativeLabelBox(scene, textRef)?.id === id))
   ) {
     return resizeNativeBoxWithCore(scene, id, handle, point);
   }
