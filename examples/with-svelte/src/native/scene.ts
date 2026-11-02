@@ -16,11 +16,10 @@ import { pointFrom } from "@excalidraw/math";
 import type {
   ExcalidrawElement,
   ExcalidrawTextElement,
-  ElementsMap,
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
-import { updateNativeElement } from "./coreAdapter";
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 import { nativeImageSource } from "./images";
 import { nativeLabelBox } from "./boundText";
 
@@ -379,9 +378,7 @@ export function pickElement(
   point: Point,
   tolerance = 7,
 ): ExcalidrawElement | null {
-  const elementsMap = new Map(
-    elements.map((element) => [element.id, element]),
-  ) as ElementsMap;
+  const elementsMap = nativeElementsMap({ elements });
   for (let i = elements.length - 1; i >= 0; i--) {
     const element = elements[i];
     if (hitTest(element, point, tolerance, elementsMap)) {
