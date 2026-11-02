@@ -2,6 +2,7 @@ import {
   dragSelectedElements,
   fixBindingsAfterDeletion,
   getNextSingleWidthAndHeightFromPointer,
+  resizeMultipleElements,
   resizeSingleElement,
   newElementWith,
   Scene,
@@ -212,6 +213,106 @@ export function resizeNativeBoxWithCore(
       {
         shouldMaintainAspectRatio: false,
         shouldResizeFromCenter: false,
+      },
+    );
+  });
+}
+
+/**
+ * Use the original uniform multi-element resize for *plain* flat groups.
+ * This is deliberately narrower than the native group's overall supported
+ * shape set: labeled boxes, images and linear elements require their own
+ * layout/point/ratio parity before their core branch can be enabled.
+ */
+export function resizeNativeGroupWithCore(
+  scene: SceneFile,
+  ids: readonly string[],
+  handle: "nw" | "ne" | "sw" | "se",
+  scale: number,
+  bounds: { x: number; y: number; width: number; height: number },
+): SceneFile {
+  const selected = new Set(ids);
+  if (
+    selected.size < 2 ||
+    selected.size !== ids.length ||
+    !Number.isFinite(scale) ||
+    scale <= 0 ||
+    ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) ||
+    bounds.width <= 0 ||
+    bounds.height <= 0
+  ) {
+    return scene;
+  }
+  const roots = scene.elements.filter((element) => selected.has(element.id));
+  const groupId = roots[0]?.groupIds.length === 1 ? roots[0].groupIds[0] : null;
+  if (
+    !groupId ||
+    roots.length !== selected.size ||
+    roots.some((element) =>
+      !["rectangle", "ellipse", "diamond"].includes(element.type) ||
+      element.isDeleted ||
+      element.locked ||
+      element.frameId !== null ||
+      element.groupIds.length !== 1 ||
+      element.groupIds[0] !== groupId ||
+      element.boundElements?.length ||
+      element.angle !== 0 ||
+      element.width <= 0 ||
+      element.height <= 0 ||
+      !Number.isFinite(element.width) ||
+      !Number.isFinite(element.height)
+    ) ||
+    scene.elements.some((element) =>
+      !element.isDeleted &&
+      (!selected.has(element.id) && element.groupIds.includes(groupId) ||
+        (element.type === "text" &&
+          element.containerId !== null &&
+          selected.has(element.containerId)) ||
+        (element.type === "arrow" &&
+          (element.startBinding && selected.has(element.startBinding.elementId) ||
+            element.endBinding && selected.has(element.endBinding.elementId)))),
+    )
+  ) {
+    return scene;
+  }
+  if (Math.abs(scale - 1) < 1e-9) {
+    return scene;
+  }
+
+  return withNativeCoreScene(scene, (core) => {
+    const originals = new Map(
+      core.getNonDeletedElements().map((element) => [
+        element.id,
+        structuredClone(element),
+      ]),
+    ) as ElementsMap;
+    const selectedRoots = ids.map((id) => core.getNonDeletedElement(id));
+    if (selectedRoots.some((element) => !element)) {
+      return;
+    }
+    resizeMultipleElements(
+      selectedRoots as NonDeletedExcalidrawElement[],
+      core.getNonDeletedElementsMap(),
+      handle,
+      core,
+      originals,
+      {
+        shouldMaintainAspectRatio: true,
+        shouldResizeFromCenter: false,
+        flipByX: false,
+        flipByY: false,
+        nextWidth: bounds.width * scale,
+        nextHeight: bounds.height * scale,
+        originalBoundingBox: {
+          minX: bounds.x,
+          minY: bounds.y,
+          maxX: bounds.x + bounds.width,
+          maxY: bounds.y + bounds.height,
+          midX: bounds.x + bounds.width / 2,
+          midY: bounds.y + bounds.height / 2,
+          width: bounds.width,
+          height: bounds.height,
+        },
       },
     );
   });
