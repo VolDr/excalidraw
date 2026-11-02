@@ -186,9 +186,12 @@ const outline = (scene: SceneFile, shape: Box, toward: Point): Point => {
     );
     return { x: intersections[0][0], y: intersections[0][1] };
   }
-  // Degenerate imported geometry is not expected for a safe Box. Fall back
-  // to the original target position instead of producing NaNs or mutations.
-  return toward;
+  // If an imported shape has no usable outline intersection, retain a
+  // finite, on-box anchor rather than accidentally binding far outside it.
+  return world(shape, {
+    x: shape.x + shape.width,
+    y: shape.y + shape.height / 2,
+  });
 };
 
 /** Derive bindings using the original non-elbow arrow algorithm. */
