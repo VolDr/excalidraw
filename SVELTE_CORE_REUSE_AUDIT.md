@@ -13,10 +13,10 @@ still an unverified draft.
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Group membership and ID-array modifications |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Group bounds, simple line/arrow point scaling, center rotation and label limits |
-| `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`; `@excalidraw/math`: `pointRotateRads` | Official local-axis resize pointer projection, rotated shape handles; native UI retains size/clamp/no-flip behavior |
+| `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`, and core `dragSelectedElements` / `resizeSingleElement` via adapter; `@excalidraw/math`: `pointRotateRads` | Pointer motion delegates to the original drag engine; unbound native boxes resize through core Scene, while images/bound containers retain guarded legacy behavior |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Official world-space linear endpoint geometry, normalized lines and version/nonce updates |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `calculateFixedPointForNonElbowArrowBinding`, `getGlobalFixedPointForBindableElement`; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Official endpoint geometry, outline intersections, fixed-point attachment ratios and anchor coordinates for safe simple arrows |
-| `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `fixBindingsAfterDeletion` | Isolated core Scene transactions, immutable updates, map conversion, reciprocal binding cleanup on copies while preserving original indices, versions and unknown metadata |
+| `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `getNextSingleWidthAndHeightFromPointer`, `fixBindingsAfterDeletion` | Isolated Scene-backed dragging, safe unbound-box resizing, mutation/version preservation, reciprocal binding cleanup on copies |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
@@ -41,19 +41,19 @@ until the entire interaction policy is ported.
 | Area | Existing core | Why not swapped wholesale yet |
 | --- | --- | --- |
 | Remaining arrow binding lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`: `updateBoundElements`, `getGlobalFixedPoints`, `bindOrUnbindBindingElement` | Fixed-point calculations and deletion cleanup now reuse core. Live endpoint dragging, attaching, detaching and moving still use restricted native glue; full behavior requires `Scene`, mutable maps and binding strategies. |
-| Resize and rotation | `packages/element/src/resizeElements.ts`: `resizeSingleElement`, `resizeMultipleElements`, `transformElements` | Operations expect native `Scene`, original elements and canvas/editor context. Our limited transform is restricted to straightforward geometry. |
-| Dragging | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Requires the editor's `PointerDownState`, `Scene` and updates through mutable infrastructure. |
+| Remaining resize and rotation | `packages/element/src/resizeElements.ts`: `resizeMultipleElements`, `transformElements`, `rotateSingleElement` | `resizeSingleElement` now handles unbound native rectangles, ellipses and diamonds. Images, bound containers, multi-object group resizing and complex rotations still need additional parity work. |
+| Drag interaction completeness | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Basic native movement now delegates to this original engine with an isolated synthetic original-elements pointer snapshot; grid snapping, modifiers, nested frame interactions and the full React pointer state have not been ported. |
 | Full selection semantics | `packages/element/src/selection.ts`, `packages/element/src/bounds.ts` | Marquee geometry now uses `elementsOverlappingBBox`; selection state, nested groups, locked elements and frames still need a real Svelte state adapter. |
 | Undo/redo | `packages/element/src/store.ts` plus the original editor's history | The current snapshot history is intentionally independent, not granular Excalidraw history. |
 | Rendering | `packages/element/src/shape.ts`, `renderElement.ts`, `packages/excalidraw/scene` | Current native Canvas/Rough.js rendering does not yet reproduce all Excalidraw drawables or interaction overlays. |
 
 ## Required next refactor (before claiming parity)
 
-1. Extend the React-free `withNativeCoreScene` adapter (already used for
-   deletion) to transactions for core arrow updates, motion and resize;
-   only promote a native path after fixture parity tests.
-2. Replace native arrow binding and individual/group resize operations with
-   their Excalidraw counterparts after cross-editor fixture tests pass.
+1. Extend the already working-in-code `withNativeCoreScene` bridge from
+   deletion, native selection drag and unbound-box resize to linked arrow
+   reconnect/resize workflows after parity tests are actually run.
+2. Replace remaining native arrow endpoint binding, bound-box/image resize
+   and group rotation/resize with core algorithms after cross-editor tests.
 3. Reuse Excalidraw's fractional indexing, source element-order handling,
    and native history transaction semantics.
 4. Reuse the official rendering and hit-test pipeline where possible; test
@@ -61,6 +61,24 @@ until the entire interaction policy is ported.
 5. Add roundtrip/behavior parity fixtures with the React editor **and run them**
    in an environment that has the repository dependencies. No CI or local
    package test result is claimed by this audit.
+
+### Latest native core integrations
+
+The Svelte selection move path now invokes `dragSelectedElements` with the
+original-elements snapshot extracted from an isolated `Scene`. The official
+drag implementation updates reciprocal arrow geometry and bound text as
+appropriate; Svelte keeps its strict editable-selection policy and the
+explicit label layout reconciliation. For unbound native rectangles, ellipses
+and diamonds, Svelte now delegates resize to `resizeSingleElement`, while
+preserving an 8px minimum and refusing orphan/malformed bindings. Images and
+bound text boxes still use their restricted native geometry path.
+
+The clipboard's maximum element count is shared between copy and paste, so
+cutting 1001 or more elements no longer deletes content that cannot be pasted
+back. A regression fixture covers this destructive-mismatch case.
+
+**None of the newly authored tests or CI workflows have been executed.**
+These imports and parity checks must be validated before release.
 
 ### Core Scene mutation isolation
 
