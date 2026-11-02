@@ -2,11 +2,14 @@ import {
   getBoundTextMaxHeight,
   getBoundTextMaxWidth,
   getCommonBounds,
+  rescalePointsInElement,
 } from "@excalidraw/element";
 import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
-import type { ExcalidrawElement } from "@excalidraw/element/types";
-import type { LocalPoint } from "@excalidraw/math";
+import type {
+  ExcalidrawElement,
+  NonDeletedExcalidrawElement,
+} from "@excalidraw/element/types";
 
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { editableSelection, safeGroupMembers } from "./groups";
@@ -52,14 +55,25 @@ const isSimpleLinear = (element: ExcalidrawElement): boolean => {
   ) {
     return false;
   }
-  return element.points.every(
-    ([x, y]) =>
-      Number.isFinite(x) &&
-      Number.isFinite(y) &&
-      x >= 0 &&
-      y >= 0 &&
-      x <= element.width &&
-      y <= element.height,
+  const xs = element.points.map(([x]) => x);
+  const ys = element.points.map(([, y]) => y);
+  // Official point rescaling assumes normalized element extents. Never
+  // reinterpret malformed imported local coordinates by silently shifting
+  // their endpoints to the container's edges.
+  return (
+    element.points.every(
+      ([x, y]) =>
+        Number.isFinite(x) &&
+        Number.isFinite(y) &&
+        x >= 0 &&
+        y >= 0 &&
+        x <= element.width &&
+        y <= element.height,
+    ) &&
+    Math.abs(Math.min(...xs)) < 1e-6 &&
+    Math.abs(Math.max(...xs) - element.width) < 1e-6 &&
+    Math.abs(Math.min(...ys)) < 1e-6 &&
+    Math.abs(Math.max(...ys) - element.height) < 1e-6
   );
 };
 
@@ -236,8 +250,11 @@ export function transformGroup(
         element.id,
         touch(element, {
           ...geometry,
-          points: element.points.map((p) =>
-            pointFrom<LocalPoint>(p[0] * scale, p[1] * scale),
+          ...rescalePointsInElement(
+            element as NonDeletedExcalidrawElement,
+            width,
+            height,
+            false,
           ),
         }),
       );
