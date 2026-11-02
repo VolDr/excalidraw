@@ -246,9 +246,10 @@ export function syncNativeBindings(scene: SceneFile): SceneFile {
 }
 
 const findTarget = (scene: SceneFile, at: Point): Box | null => {
+  const elementsMap = nativeElementsMap(scene);
   for (let i = scene.elements.length - 1; i >= 0; i--) {
     const element = scene.elements[i];
-    if (isSafeBoundBox(scene, element) && hitTest(element, at, 10)) {
+    if (isSafeBoundBox(scene, element) && hitTest(element, at, 10, elementsMap)) {
       return element;
     }
   }
