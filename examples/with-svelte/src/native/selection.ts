@@ -1,7 +1,7 @@
 import {
   duplicateElement,
-  fixDuplicatedBindingsAfterDuplication,
   elementsOverlappingBBox,
+  fixDuplicatedBindingsAfterDuplication,
   getElementBounds,
 } from "@excalidraw/element";
 
