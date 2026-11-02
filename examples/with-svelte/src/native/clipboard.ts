@@ -10,6 +10,7 @@ import type { SceneFile } from "./scene";
 
 const CLIPBOARD_TYPE = "excalidraw/svelte-native-selection";
 const MAX_CLIPBOARD_SIZE = 24_000_000;
+const MAX_CLIPBOARD_ELEMENTS = 1000;
 
 const unchanged = (scene: SceneFile) => ({ scene, ids: [] as string[] });
 
@@ -33,6 +34,11 @@ export function copyNativeSelection(
     return null;
   }
   const elements = cloned.scene.elements.slice(scene.elements.length);
+  // Paste rejects payloads above this count. Enforce the same limit before
+  // cut can delete the original selection, including its internal labels.
+  if (elements.length > MAX_CLIPBOARD_ELEMENTS) {
+    return null;
+  }
   const files: Record<string, unknown> = {};
   for (const element of elements) {
     if (element.type === "image") {
@@ -111,7 +117,7 @@ export function pasteNativeSelection(
       !("elements" in payload) ||
       !Array.isArray(payload.elements) ||
       !payload.elements.length ||
-      payload.elements.length > 1000 ||
+      payload.elements.length > MAX_CLIPBOARD_ELEMENTS ||
       !("rootIds" in payload) ||
       !Array.isArray(payload.rootIds) ||
       !payload.rootIds.length ||
