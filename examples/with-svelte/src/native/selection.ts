@@ -7,11 +7,11 @@ import {
 
 import type {
   ExcalidrawElement,
-  ElementsMap,
   NonDeletedSceneElementsMap,
 } from "@excalidraw/element/types";
 
 import { nativeEditableLabel } from "./boundText";
+import { nativeElementsMap } from "./coreAdapter";
 import {
   canEditIndependently,
   editableSelection,
@@ -33,7 +33,7 @@ export function rectangleBetween(a: Point, b: Point): Bounds {
 
 /** Use Excalidraw's element-specific bounds for rotated/linear shapes. */
 export function visualBounds(element: ExcalidrawElement): Bounds {
-  const map = new Map([[element.id, element]]) as ElementsMap;
+  const map = nativeElementsMap({ elements: [element] });
   const [x1, y1, x2, y2] = getElementBounds(element, map);
   return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
@@ -50,9 +50,7 @@ export function elementsInMarquee(
 ): string[] {
   const box = rectangleBetween(start, end);
   const fullyEnclosed = end.x < start.x;
-  const elementsMap = new Map(
-    scene.elements.map((element) => [element.id, element]),
-  ) as ElementsMap;
+  const elementsMap = nativeElementsMap(scene);
   // Excalidraw's own marquee geometry handles rotated shapes, diamonds,
   // ellipses, paths and group semantics. Only validated, selectable native
   // roots are passed into it: linked labels remain internal to their boxes.
@@ -139,9 +137,7 @@ export function duplicateSelection(
     index: null,
     version: 1,
   }));
-  const duplicateMap = new Map(
-    duplicates.map((element) => [element.id, element]),
-  ) as NonDeletedSceneElementsMap;
+  const duplicateMap = nativeElementsMap({ elements: duplicates }) as NonDeletedSceneElementsMap;
   fixDuplicatedBindingsAfterDuplication(
     duplicates,
     idsByOriginal,
