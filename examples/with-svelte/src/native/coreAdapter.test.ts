@@ -1,4 +1,6 @@
 import {
+  getBoundTextMaxHeight,
+  getBoundTextMaxWidth,
   newArrowElement,
   newElement,
   newElementWith,
@@ -8,6 +10,7 @@ import { pointFrom } from "@excalidraw/math";
 import { describe, expect, it } from "vitest";
 
 import type { LocalPoint } from "@excalidraw/math";
+import type { ExcalidrawTextElementWithContainer } from "@excalidraw/element/types";
 
 import { appendNativeArrow, isNativeLinkedArrow, nativeLinkedEndpoints } from "./bindings";
 import { updateNativeBoxLabel } from "./boundText";
@@ -306,6 +309,80 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(rotateNativeGroupWithCore(damaged, grouped.ids, pointer, bounds)).toBe(damaged);
     expect(scene.elements[0].x).toBe(box.x);
     expect(scene.elements[1].angle).toBe(0);
+  });
+
+  it("resizes a box with one reciprocal label using Excalidraw text reflow", () => {
+    const box = createShape("rectangle", { x: 20, y: 30 }, { x: 290, y: 170 });
+    const labeled = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box] },
+      box.id,
+      "A native label\\nwith two lines",
+    );
+    const foreign = {
+      ...createShape("diamond", { x: 430, y: 30 }, { x: 530, y: 130 }),
+      customData: { imported: "preserve" },
+    };
+    const source = { ...labeled, elements: [...labeled.elements, foreign] };
+    const copyBefore = structuredClone(source);
+    const before = source.elements[1];
+    const updated = transformSelected(source, box.id, "se", { x: 390, y: 235 });
+    expect(updated).not.toBe(source);
+    const nextBox = updated.elements[0];
+    const nextLabel = updated.elements[1];
+    expect(nextBox.width).toBeGreaterThan(box.width);
+    expect(nextBox.height).toBeGreaterThan(box.height);
+    expect(nextBox.boundElements).toEqual([
+      { id: nextLabel.id, type: "text" },
+    ]);
+    expect(nextLabel.type).toBe("text");
+    if (nextLabel.type !== "text") {
+      throw new Error("Core resize must preserve the original bound text");
+    }
+    expect(nextLabel.containerId).toBe(box.id);
+    expect(nextLabel.id).toBe(before.id);
+    expect(nextLabel.originalText).toBe(
+      before.type === "text" ? before.originalText : undefined,
+    );
+    expect(nextLabel.width).toBeLessThanOrEqual(
+      getBoundTextMaxWidth(nextBox, nextLabel) + 0.5,
+    );
+    expect(nextLabel.height).toBeLessThanOrEqual(
+      getBoundTextMaxHeight(
+        nextBox,
+        nextLabel as ExcalidrawTextElementWithContainer,
+      ) + 0.5,
+    );
+    expect(updated.elements[2]).toBe(foreign);
+    expect(nextBox.index).toBe(box.index);
+    expect(nextLabel.index).toBe(before.index);
+    expect(source).toEqual(copyBefore);
+    const history = new SceneHistory();
+    history.commit(source);
+    expect(history.undo(updated)).toEqual(source);
+    expect(history.redo(source)).toEqual(updated);
+  });
+
+  it("does not core-resize a box with a foreign reverse reference to its label", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 250, y: 140 });
+    const source = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box] },
+      box.id,
+      "Protected",
+    );
+    const label = source.elements[1];
+    const foreign = {
+      ...createShape("rectangle", { x: 400, y: 30 }, { x: 500, y: 150 }),
+      boundElements: [{ id: label.id, type: "text" as const }],
+    };
+    const damaged = { ...source, elements: [...source.elements, foreign] };
+    const previous = structuredClone(damaged);
+    expect(resizeNativeBoxWithCore(
+      damaged,
+      box.id,
+      "se",
+      { x: 320, y: 200 },
+    )).toBe(damaged);
+    expect(damaged).toEqual(previous);
   });
 
   it("cleans up both reciprocal sides when deleting an arrow", () => {
