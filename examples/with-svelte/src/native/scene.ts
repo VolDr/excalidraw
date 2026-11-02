@@ -2,6 +2,9 @@ import {
   getTextAnchorRatios,
   hitElementItself,
   measureText,
+  newArrowElement,
+  newElement,
+  newLinearElement,
   newFreeDrawElement,
   newTextElement,
   normalizeText,
@@ -17,6 +20,7 @@ import type {
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
+import { updateNativeElement } from "./coreAdapter";
 import { nativeImageSource } from "./images";
 import { nativeLabelBox } from "./boundText";
 
@@ -165,8 +169,10 @@ export const unsupportedCount = (scene: SceneFile): number =>
         (element.type === "image" && !nativeImageSource(scene, element))),
   ).length;
 
-const versionNonce = () => Math.floor(Math.random() * 2 ** 31);
-
+/**
+ * Excalidraw's original constructors own the element schema, metadata,
+ * defaults and seeds. Svelte only supplies pointer geometry and chosen style.
+ */
 export function createShape(
   tool: NativeShape,
   start: Point,
@@ -176,55 +182,39 @@ export function createShape(
   const y = Math.min(start.y, end.y);
   const width = Math.abs(end.x - start.x);
   const height = Math.abs(end.y - start.y);
-  const now = Date.now();
-  const base = {
-    id: crypto.randomUUID(),
-    type: tool,
+  const style = {
     x,
     y,
     width,
     height,
-    angle: 0,
     strokeColor: "#1e1e1e",
     backgroundColor: "transparent",
-    fillStyle: "hachure",
+    fillStyle: "hachure" as const,
     strokeWidth: 2,
-    strokeStyle: "solid",
+    strokeStyle: "solid" as const,
     roughness: 1,
-    opacity: 100,
-    groupIds: [],
-    frameId: null,
-    index: null,
-    roundness: null,
-    seed: versionNonce(),
-    version: 1,
-    versionNonce: versionNonce(),
-    isDeleted: false,
-    boundElements: null,
-    updated: now,
-    created: now,
-    link: null,
-    locked: false,
   };
-
   if (tool === "line" || tool === "arrow") {
-    // A line's points are relative to the bounding box, including when
-    // dragging from bottom-right towards top-left.
     const points = [
-      [start.x - x, start.y - y],
-      [end.x - x, end.y - y],
+      pointFrom<LocalPoint>(start.x - x, start.y - y),
+      pointFrom<LocalPoint>(end.x - x, end.y - y),
     ];
-    return {
-      ...base,
-      points,
-      startBinding: null,
-      endBinding: null,
-      startArrowhead: null,
-      endArrowhead: tool === "arrow" ? "arrow" : null,
-      ...(tool === "arrow" ? { elbowed: false } : { polygon: false }),
-    } as unknown as ExcalidrawElement;
+    return tool === "arrow"
+      ? newArrowElement({
+          ...style,
+          type: "arrow",
+          points,
+          endArrowhead: "arrow",
+          elbowed: false,
+        })
+      : newLinearElement({
+          ...style,
+          type: "line",
+          points,
+          polygon: false,
+        });
   }
-  return base as unknown as ExcalidrawElement;
+  return newElement({ ...style, type: tool });
 }
 
 /** Create canonical Excalidraw text with the element package's own metrics. */
