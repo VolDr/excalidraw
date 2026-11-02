@@ -122,6 +122,22 @@ describe("Svelte native scene clipboard", () => {
     expect(scene.elements[0].isDeleted).toBe(false);
   });
 
+  it("never cuts more elements than the paste importer can restore", () => {
+    const elements = Array.from({ length: 1001 }, (_, index) =>
+      createShape(
+        "rectangle",
+        { x: index * 3, y: 0 },
+        { x: index * 3 + 2, y: 2 },
+      ),
+    );
+    const scene = { ...blankScene(), elements };
+    const ids = elements.map((element) => element.id);
+    expect(copyNativeSelection(scene, ids)).toBeNull();
+    const cut = cutNativeSelection(scene, ids);
+    expect(cut).toEqual({ scene, text: null });
+    expect(scene.elements.every((element) => !element.isDeleted)).toBe(true);
+  });
+
   it("does not copy unsupported half-selected or malformed groups", () => {
     const { scene, ids } = labeledGroup();
     expect(copyNativeSelection(scene, [ids[0]])).toBeNull();
