@@ -12,6 +12,7 @@ import type {
 } from "@excalidraw/element/types";
 
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 import { editableSelection, safeGroupMembers } from "./groups";
 
 import type { Bounds } from "./selection";
@@ -116,7 +117,7 @@ export function transformableGroup(
   }
   // Reuse the same type-aware bounds as Excalidraw (including rotated
   // ellipses, diamonds and two-point arrows).
-  const [x, y, right, bottom] = getCommonBounds(roots);
+  const [x, y, right, bottom] = getCommonBounds(roots, nativeElementsMap(scene));
   if (![x, y, right, bottom].every(Number.isFinite) || right <= x || bottom <= y) {
     return null;
   }
@@ -153,13 +154,7 @@ export function pickGroupHandle(
 const normalizedAngle = (value: number): ExcalidrawElement["angle"] =>
   Math.atan2(Math.sin(value), Math.cos(value)) as ExcalidrawElement["angle"];
 
-const touch = <T extends ExcalidrawElement>(element: T, change: Partial<T>): T => ({
-  ...element,
-  ...change,
-  version: element.version + 1,
-  versionNonce: Math.floor(Math.random() * 2 ** 31),
-  updated: Date.now(),
-});
+
 
 /**
  * Every pointer sample applies to the immutable gesture-start scene, avoiding
@@ -248,7 +243,7 @@ export function transformGroup(
     if (element.type === "line" || element.type === "arrow") {
       byId.set(
         element.id,
-        touch(element, {
+        updateNativeElement(element, {
           ...geometry,
           ...rescalePointsInElement(
             element as NonDeletedExcalidrawElement,
