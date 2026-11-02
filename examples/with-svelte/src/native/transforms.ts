@@ -13,6 +13,7 @@ import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
   resizeNativeBoxWithCore,
+  rotateNativeBoxWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
@@ -251,7 +252,6 @@ export function transformSelected(
       ? scene.elements.find((item) => item.id === current.boundElements?.[0].id)
       : null;
   if (
-    handle !== "rotate" &&
     isBoxTransformable(current, scene) &&
     (current.type === "rectangle" ||
       current.type === "ellipse" ||
@@ -259,7 +259,9 @@ export function transformSelected(
     (!current.boundElements?.length ||
       (!!textRef && nativeLabelBox(scene, textRef)?.id === id))
   ) {
-    return resizeNativeBoxWithCore(scene, id, handle, point);
+    return handle === "rotate"
+      ? rotateNativeBoxWithCore(scene, id, point)
+      : resizeNativeBoxWithCore(scene, id, handle, point);
   }
   const transformed =
     handle === "rotate"
