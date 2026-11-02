@@ -19,6 +19,8 @@ import {
   withNativeCoreScene,
   nativeElementsMap,
   resizeNativeBoxWithCore,
+  resizeNativeGroupWithCore,
+  rotateNativeGroupWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { blankScene, createShape, createText } from "./scene";
@@ -275,6 +277,35 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(resizeNativeBoxWithCore(malformed, orphan.id, "se", {
       x: 200, y: 190,
     })).toBe(malformed);
+  });
+
+  it("rejects unsafe or partial core multi-transform before mutating Scene", () => {
+    const box = createShape("rectangle", { x: 20, y: 30 }, { x: 120, y: 110 });
+    const other = createShape("ellipse", { x: 180, y: 50 }, { x: 280, y: 150 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [box, other] },
+      [box.id, other.id],
+    );
+    const scene = grouped.scene;
+    const bounds = { x: 20, y: 30, width: 260, height: 120 };
+    const pointer = { x: 240, y: 70 };
+    expect(resizeNativeGroupWithCore(scene, [box.id], "se", 1.5, bounds)).toBe(scene);
+    expect(rotateNativeGroupWithCore(scene, [other.id], pointer, bounds)).toBe(scene);
+    expect(resizeNativeGroupWithCore(scene, grouped.ids, "se", NaN, bounds)).toBe(scene);
+    expect(rotateNativeGroupWithCore(scene, grouped.ids, { x: NaN, y: 0 }, bounds)).toBe(scene);
+    const orphan = {
+      ...createShape("arrow", { x: 120, y: 70 }, { x: 180, y: 70 }),
+      startBinding: {
+        elementId: box.id,
+        fixedPoint: [1, 0.5] as [number, number],
+        mode: "inside" as const,
+      },
+    };
+    const damaged = { ...scene, elements: [...scene.elements, orphan] };
+    expect(resizeNativeGroupWithCore(damaged, grouped.ids, "se", 1.5, bounds)).toBe(damaged);
+    expect(rotateNativeGroupWithCore(damaged, grouped.ids, pointer, bounds)).toBe(damaged);
+    expect(scene.elements[0].x).toBe(box.x);
+    expect(scene.elements[1].angle).toBe(0);
   });
 
   it("cleans up both reciprocal sides when deleting an arrow", () => {
