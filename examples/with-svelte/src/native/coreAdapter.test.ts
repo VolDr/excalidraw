@@ -9,15 +9,19 @@ import { describe, expect, it } from "vitest";
 
 import type { LocalPoint } from "@excalidraw/math";
 
-import { appendNativeArrow } from "./bindings";
+import { appendNativeArrow, isNativeLinkedArrow, nativeLinkedEndpoints } from "./bindings";
 import { updateNativeBoxLabel } from "./boundText";
+import { groupSelection } from "./groups";
+import { SceneHistory } from "./history";
 import {
   deleteNativeElementsWithCore,
+  dragNativeSelectionWithCore,
   withNativeCoreScene,
   nativeElementsMap,
   updateNativeElement,
 } from "./coreAdapter";
 import { blankScene, createShape } from "./scene";
+import { moveSelection } from "./transforms";
 
 describe("Svelte scene adapter to original Excalidraw core", () => {
   it("uses native Excalidraw constructors for all supported primitives", () => {
@@ -135,6 +139,80 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(result.elements[0].version).toBe(custom.version + 1);
     expect(result.elements[1]).toBe(untouched);
     expect(source.elements[0]).toBe(custom);
+  });
+
+  it("delegates native multi-selection dragging through the core Scene", () => {
+    const rectangle = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 100 });
+    const ellipse = createShape("ellipse", { x: 230, y: 40 }, { x: 330, y: 130 });
+    const locked = {
+      ...createShape("diamond", { x: 400, y: 20 }, { x: 470, y: 90 }),
+      locked: true,
+    };
+    const scene = { ...blankScene(), elements: [rectangle, ellipse, locked] };
+    const initial = structuredClone(scene);
+    const moved = moveSelection(scene, [rectangle.id, ellipse.id, locked.id], 45, -13);
+    expect(moved.elements.map((element) => [element.x, element.y])).toEqual([
+      [55, 7],
+      [275, 27],
+      [400, 20],
+    ]);
+    expect(moved.elements[0].version).toBe(rectangle.version + 1);
+    expect(moved.elements[1].version).toBe(ellipse.version + 1);
+    expect(moved.elements[2]).toBe(locked);
+    expect(moved.elements[0].index).toBe(rectangle.index);
+    expect(scene).toEqual(initial);
+    expect(dragNativeSelectionWithCore(scene, new Set(), 10, 10)).toBe(scene);
+    expect(dragNativeSelectionWithCore(scene, new Set([rectangle.id]), 0, 0)).toBe(scene);
+  });
+
+  it("preserves reciprocal labels on core-driven group drag and undo", () => {
+    const rectangle = createShape("rectangle", { x: 10, y: 20 }, { x: 230, y: 140 });
+    const other = createShape("ellipse", { x: 330, y: 40 }, { x: 440, y: 150 });
+    const labeled = updateNativeBoxLabel(
+      { ...blankScene(), elements: [rectangle, other] },
+      rectangle.id,
+      "Core group drag",
+    );
+    const grouped = groupSelection(labeled, [rectangle.id, other.id]);
+    expect(grouped.ids).toHaveLength(2);
+    const scene = grouped.scene;
+    const label = scene.elements[2];
+    const history = new SceneHistory();
+    history.commit(scene);
+    const dragged = moveSelection(scene, grouped.ids, 60, 25);
+    expect(dragged.elements[0].x).toBe(scene.elements[0].x + 60);
+    expect(dragged.elements[1].x).toBe(scene.elements[1].x + 60);
+    expect(dragged.elements[2].x).toBeCloseTo(label.x + 60);
+    expect(dragged.elements[2].y).toBeCloseTo(label.y + 25);
+    expect(dragged.elements[2].groupIds).toEqual(dragged.elements[0].groupIds);
+    expect(dragged.elements[0].boundElements?.[0].id).toBe(label.id);
+    expect(history.undo(dragged)).toEqual(scene);
+    expect(scene.elements[0].x).toBe(rectangle.x);
+  });
+
+  it("updates reciprocal arrows through Excalidraw's original bound-element drag", () => {
+    const left = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
+    const right = createShape("ellipse", { x: 230, y: 10 }, { x: 330, y: 110 });
+    const arrow = createShape("arrow", { x: 110, y: 60 }, { x: 230, y: 60 });
+    const scene = appendNativeArrow(
+      { ...blankScene(), elements: [left, right] },
+      arrow,
+      { x: 110, y: 60 },
+      { x: 230, y: 60 },
+    );
+    const before = nativeLinkedEndpoints(scene, scene.elements[2]);
+    expect(before).not.toBeNull();
+    const snapshot = structuredClone(scene);
+    const moved = moveSelection(scene, [left.id], 35, 20);
+    const attached = nativeLinkedEndpoints(moved, moved.elements[2]);
+    expect(attached).not.toBeNull();
+    expect(attached?.start.x).toBeCloseTo(before!.start.x + 35, 1);
+    expect(attached?.start.y).toBeCloseTo(before!.start.y + 20, 1);
+    expect(attached?.end.x).toBeCloseTo(before!.end.x, 1);
+    expect(attached?.end.y).toBeCloseTo(before!.end.y, 1);
+    expect(isNativeLinkedArrow(moved, moved.elements[2])).toBe(true);
+    expect(moved.elements[1]).toBe(scene.elements[1]);
+    expect(scene).toEqual(snapshot);
   });
 
   it("cleans up both reciprocal sides when deleting an arrow", () => {
