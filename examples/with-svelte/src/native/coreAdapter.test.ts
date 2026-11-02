@@ -21,7 +21,7 @@ import {
   resizeNativeBoxWithCore,
   updateNativeElement,
 } from "./coreAdapter";
-import { blankScene, createShape } from "./scene";
+import { blankScene, createShape, createText } from "./scene";
 import { handleLocations, moveSelection, rotateElement, transformSelected } from "./transforms";
 
 describe("Svelte scene adapter to original Excalidraw core", () => {
@@ -266,6 +266,15 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(resizeNativeBoxWithCore(scene, other.id, "nw", { x: 15, y: 15 })).toBe(scene);
     expect(resizeNativeBoxWithCore(scene, "missing", "se", { x: 100, y: 100 })).toBe(scene);
     expect(resizeNativeBoxWithCore(scene, box.id, "se", { x: NaN, y: 100 })).toBe(scene);
+
+    // A malformed imported label can point at a box without the required
+    // reciprocal boundElements reference. Do not silently alter that box.
+    const orphan = createShape("rectangle", { x: 0, y: 0 }, { x: 110, y: 90 });
+    const label = { ...createText({ x: 0, y: 0 }, "Orphan"), containerId: orphan.id };
+    const malformed = { ...blankScene(), elements: [orphan, label] };
+    expect(resizeNativeBoxWithCore(malformed, orphan.id, "se", {
+      x: 200, y: 190,
+    })).toBe(malformed);
   });
 
   it("cleans up both reciprocal sides when deleting an arrow", () => {
