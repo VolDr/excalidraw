@@ -1,11 +1,17 @@
 import {
+  dragSelectedElements,
   fixBindingsAfterDeletion,
   newElementWith,
   Scene,
 } from "@excalidraw/element";
 
 import type { ElementUpdate } from "@excalidraw/element";
-import type { ElementsMap, ExcalidrawElement } from "@excalidraw/element/types";
+import type {
+  ElementsMap,
+  ExcalidrawElement,
+  NonDeleted,
+} from "@excalidraw/element/types";
+import type { PointerDownState } from "@excalidraw/excalidraw/types";
 
 import type { SceneFile } from "./scene";
 
@@ -82,6 +88,48 @@ export function withNativeCoreScene(
   } finally {
     core.destroy();
   }
+}
+
+/**
+ * Delegate native pointer motion to Excalidraw's original drag engine.
+ * Its only pointer-down dependency is the originalElements snapshot.
+ * We supply that snapshot from an isolated core Scene rather than creating
+ * a second React pointer controller. No snapping is enabled by native UI.
+ *
+ * The caller must first authorize the complete selection through native
+ * safe-selection guards; this is an implementation bridge, not permission
+ * to edit arbitrary imported bindings or frames.
+ */
+export function dragNativeSelectionWithCore(
+  scene: SceneFile,
+  ids: ReadonlySet<string>,
+  dx: number,
+  dy: number,
+): SceneFile {
+  if (!ids.size || (!dx && !dy) || !Number.isFinite(dx) || !Number.isFinite(dy)) {
+    return scene;
+  }
+  return withNativeCoreScene(scene, (core) => {
+    const selected = Array.from(ids, (id) => core.getNonDeletedElement(id));
+    if (selected.some((element) => !element)) {
+      return;
+    }
+    const originalElements = new Map<string, NonDeleted<ExcalidrawElement>>();
+    for (const element of core.getNonDeletedElements()) {
+      originalElements.set(element.id, structuredClone(element));
+    }
+    // Verified against dragElements.ts: this function only reads the
+    // pointerDownState.originalElements field.
+    const pointerDown = { originalElements } as PointerDownState;
+    dragSelectedElements(
+      pointerDown,
+      selected as NonDeleted<ExcalidrawElement>[],
+      { x: dx, y: dy },
+      core,
+      { x: 0, y: 0 },
+      null,
+    );
+  });
 }
 
 /**
