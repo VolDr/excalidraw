@@ -257,10 +257,9 @@ const acceptCoreLabelResult = (
 };
 
 /**
- * Core single-element resize for plain unbound native boxes. The safety
- * restrictions are intentionally duplicated at this boundary: callers
- * may not pass a complex imported element into a Scene mutator.
- * Images (crop/flip), text containers, arrows and nested groups require
+ * Core single-element resize for independent native boxes and intact
+ * reciprocal single-label pairs. The safety checks refuse unsupported
+ * imported bindings; images, grouped text and arrow paths still require
  * separate parity handling.
  */
 export function resizeNativeBoxWithCore(
@@ -320,7 +319,6 @@ export function resizeNativeBoxWithCore(
     );
   });
   return acceptCoreLabelResult(scene, resized, id, label);
-
 }
 
 /**
