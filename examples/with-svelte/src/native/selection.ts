@@ -1,4 +1,6 @@
-import type { ExcalidrawElement } from "@excalidraw/element/types";
+import { duplicateElement, getElementBounds } from "@excalidraw/element";
+
+import type { ExcalidrawElement, ElementsMap } from "@excalidraw/element/types";
 
 import { nativeEditableLabel } from "./boundText";
 import {
@@ -20,34 +22,11 @@ export function rectangleBetween(a: Point, b: Point): Bounds {
   };
 }
 
-/** Axis-aligned extents of a possibly rotated element. */
+/** Use Excalidraw's element-specific bounds for rotated/linear shapes. */
 export function visualBounds(element: ExcalidrawElement): Bounds {
-  const center = {
-    x: element.x + element.width / 2,
-    y: element.y + element.height / 2,
-  };
-  const cos = Math.cos(element.angle);
-  const sin = Math.sin(element.angle);
-  const offsets = [
-    [-element.width / 2, -element.height / 2],
-    [element.width / 2, -element.height / 2],
-    [element.width / 2, element.height / 2],
-    [-element.width / 2, element.height / 2],
-  ];
-  const corners = offsets.map(([dx, dy]) => ({
-    x: center.x + dx * cos - dy * sin,
-    y: center.y + dx * sin + dy * cos,
-  }));
-  const xs = corners.map((p) => p.x);
-  const ys = corners.map((p) => p.y);
-  const x = Math.min(...xs);
-  const y = Math.min(...ys);
-  return {
-    x,
-    y,
-    width: Math.max(...xs) - x,
-    height: Math.max(...ys) - y,
-  };
+  const map = new Map([[element.id, element]]) as ElementsMap;
+  const [x1, y1, x2, y2] = getElementBounds(element, map);
+  return { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
 }
 
 /**
@@ -133,56 +112,43 @@ export function duplicateSelection(
     return { scene, ids: [] };
   }
 
-  const now = Date.now();
+  // Delegate identity creation, deep copy, seed generation and group ID
+  // remapping to Excalidraw's own duplication algorithm.
+  const originals = scene.elements.filter((element) => selected.has(element.id));
   const idsByOriginal = new Map<string, string>();
-  const newGroupIds = new Map<string, string>();
-  for (const element of scene.elements) {
-    if (selected.has(element.id)) {
-      idsByOriginal.set(element.id, crypto.randomUUID());
+  const groupIdMap = new Map<string, string>();
+  const nativeCopies = originals.map((element) => {
+    const copy = duplicateElement(null, groupIdMap, element, true);
+    idsByOriginal.set(element.id, copy.id);
+    return copy;
+  });
+
+  // Native-only policy: append copies after the source elements and reset
+  // their fractional indices until the editor's index manager is migrated.
+  // The reciprocal text IDs must be rewritten after all IDs are allocated.
+  const duplicates = nativeCopies.map((nativeCopy, index): ExcalidrawElement => {
+    const element = originals[index];
+    const copy = {
+      ...nativeCopy,
+      x: nativeCopy.x + offset,
+      y: nativeCopy.y + offset,
+      index: null,
+      version: 1,
+    };
+    if (element.type === "text" && element.containerId) {
+      return { ...copy, containerId: idsByOriginal.get(element.containerId)! };
     }
-  }
-
-  const duplicates = scene.elements
-    .filter((element) => selected.has(element.id))
-    .map((element): ExcalidrawElement => {
-      const groupIds = element.groupIds.map((id) => {
-        if (!newGroupIds.has(id)) {
-          newGroupIds.set(id, crypto.randomUUID());
-        }
-        return newGroupIds.get(id)!;
-      });
-      const id = idsByOriginal.get(element.id)!;
-      const copy = {
-        ...structuredClone(element),
-        id,
-        groupIds,
-        x: element.x + offset,
-        y: element.y + offset,
-        index: null,
-        version: 1,
-        versionNonce: Math.floor(Math.random() * 2 ** 31),
-        seed: Math.floor(Math.random() * 2 ** 31),
-        created: now,
-        updated: now,
+    if (element.boundElements?.length) {
+      return {
+        ...copy,
+        boundElements: element.boundElements.map((ref) => ({
+          ...ref,
+          id: idsByOriginal.get(ref.id)!,
+        })),
       };
-
-      if (element.type === "text" && element.containerId) {
-        return {
-          ...copy,
-          containerId: idsByOriginal.get(element.containerId)!,
-        };
-      }
-      if (element.boundElements?.length) {
-        return {
-          ...copy,
-          boundElements: element.boundElements.map((ref) => ({
-            ...ref,
-            id: idsByOriginal.get(ref.id)!,
-          })),
-        };
-      }
-      return copy;
-    });
+    }
+    return copy;
+  });
 
   return {
     scene: { ...scene, elements: [...scene.elements, ...duplicates] },
