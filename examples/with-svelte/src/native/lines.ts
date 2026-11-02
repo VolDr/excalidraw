@@ -1,7 +1,9 @@
-import { pointFrom } from "@excalidraw/math";
+import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
-import type { LocalPoint } from "@excalidraw/math";
+import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
+
+import { updateNativeElement } from "./coreAdapter";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -37,14 +39,12 @@ export function endpointLocations(
   const cx = element.x + element.width / 2;
   const cy = element.y + element.height / 2;
   const rotate = (p: readonly [number, number]): Point => {
-    const x = element.x + p[0];
-    const y = element.y + p[1];
-    const dx = x - cx;
-    const dy = y - cy;
-    return {
-      x: cx + dx * Math.cos(element.angle) - dy * Math.sin(element.angle),
-      y: cy + dx * Math.sin(element.angle) + dy * Math.cos(element.angle),
-    };
+    const [x, y] = pointRotateRads(
+      pointFrom<GlobalPoint>(element.x + p[0], element.y + p[1]),
+      pointFrom<GlobalPoint>(cx, cy),
+      element.angle,
+    );
+    return { x, y };
   };
   return { start: rotate(points[0]), end: rotate(points[1]) };
 }
@@ -77,15 +77,14 @@ export function moveEndpoint(
   target: Point,
 ): ExcalidrawElement {
   const points = endpointLocations(element);
-  if (!points) {
+  if (!points || (element.type !== "line" && element.type !== "arrow")) {
     return element;
   }
   const start = endpoint === "start" ? target : points.start;
   const end = endpoint === "end" ? target : points.end;
   const x = Math.min(start.x, end.x);
   const y = Math.min(start.y, end.y);
-  return {
-    ...element,
+  return updateNativeElement(element, {
     x,
     y,
     width: Math.abs(end.x - start.x),
@@ -95,10 +94,7 @@ export function moveEndpoint(
       pointFrom<LocalPoint>(start.x - x, start.y - y),
       pointFrom<LocalPoint>(end.x - x, end.y - y),
     ],
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  } as ExcalidrawElement;
+  });
 }
 
 export function updateLineEndpoint(
