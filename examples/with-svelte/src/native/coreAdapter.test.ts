@@ -4,7 +4,10 @@ import {
   newElementWith,
   newLinearElement,
 } from "@excalidraw/element";
+import { pointFrom } from "@excalidraw/math";
 import { describe, expect, it } from "vitest";
+
+import type { LocalPoint } from "@excalidraw/math";
 
 import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 import { blankScene, createShape } from "./scene";
@@ -28,7 +31,7 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(ellipse.type).toBe("ellipse");
 
     const officialLine = newLinearElement({
-      type: "line", x: 140, y: 40, width: 100, height: 50, points: [[0, 0], [100, 50]],
+      type: "line", x: 140, y: 40, width: 100, height: 50, points: [pointFrom<LocalPoint>(0, 0), pointFrom<LocalPoint>(100, 50)],
     });
     expect(line.type).toBe(officialLine.type);
     if (line.type === "line") {
@@ -37,7 +40,8 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     }
     const officialArrow = newArrowElement({
       type: "arrow", x: 250, y: 70, width: 80, height: 70,
-      points: [[80, 70], [0, 0]], elbowed: false, endArrowhead: "arrow",
+      points: [pointFrom<LocalPoint>(80, 70), pointFrom<LocalPoint>(0, 0)],
+      elbowed: false, endArrowhead: "arrow",
     });
     expect(arrow.type).toBe(officialArrow.type);
     if (arrow.type === "arrow") {
