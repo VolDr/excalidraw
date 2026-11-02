@@ -1,3 +1,9 @@
+import {
+  addToGroup,
+  getElementsInGroup,
+  removeFromSelectedGroups,
+} from "@excalidraw/element";
+
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import { isSafeBoundBox, isNativeLinkedArrow } from "./bindings";
@@ -86,8 +92,8 @@ export function safeGroupMembers(
   scene: SceneFile,
   id: string,
 ): ExcalidrawElement[] {
-  const members = scene.elements.filter(
-    (element) => !element.isDeleted && element.groupIds.includes(id),
+  const members = getElementsInGroup(scene.elements, id).filter(
+    (element) => !element.isDeleted,
   );
   const ids = new Set(members.map((element) => element.id));
   if (
@@ -219,7 +225,7 @@ export function groupSelection(
       ...scene,
       elements: scene.elements.map((element) =>
         allIds.has(element.id)
-          ? touch(element, { groupIds: [groupId] })
+          ? touch(element, { groupIds: addToGroup(element.groupIds, groupId, null) })
           : element,
       ),
     },
@@ -262,7 +268,14 @@ export function ungroupSelection(
     scene: {
       ...scene,
       elements: scene.elements.map((element) =>
-        affected.includes(element) ? touch(element, { groupIds: [] }) : element,
+        affected.includes(element)
+          ? touch(element, {
+              groupIds: removeFromSelectedGroups(
+                element.groupIds,
+                Object.fromEntries([...allowed].map((groupId) => [groupId, true])),
+              ),
+            })
+          : element,
       ),
     },
     ids: selectionRoots(affected).map((element) => element.id),
