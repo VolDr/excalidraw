@@ -1,4 +1,8 @@
-import { duplicateElement, getElementBounds } from "@excalidraw/element";
+import {
+  duplicateElement,
+  elementsOverlappingBBox,
+  getElementBounds,
+} from "@excalidraw/element";
 
 import type { ExcalidrawElement, ElementsMap } from "@excalidraw/element/types";
 
@@ -39,35 +43,33 @@ export function elementsInMarquee(
   start: Point,
   end: Point,
 ): string[] {
-  const selection = rectangleBetween(start, end);
-  const enclosed = end.x < start.x;
-  const seen = new Set<string>();
-  const result = new Set<string>();
-  const intersects = (element: ExcalidrawElement): boolean => {
-    const box = visualBounds(element);
-    return enclosed
-      ? box.x >= selection.x &&
-          box.y >= selection.y &&
-          box.x + box.width <= selection.x + selection.width &&
-          box.y + box.height <= selection.y + selection.height
-      : box.x <= selection.x + selection.width &&
-          box.x + box.width >= selection.x &&
-          box.y <= selection.y + selection.height &&
-          box.y + box.height >= selection.y;
-  };
-  for (const element of scene.elements) {
-    const unit = selectionUnit(scene, element.id);
-    if (!unit.length || unit.some((id) => seen.has(id))) {
-      continue;
-    }
-    unit.forEach((id) => seen.add(id));
-    const members = scene.elements.filter((member) => unit.includes(member.id));
-    if (enclosed ? members.every(intersects) : members.some(intersects)) {
-      unit.forEach((id) => result.add(id));
-    }
+  const box = rectangleBetween(start, end);
+  const fullyEnclosed = end.x < start.x;
+  const elementsMap = new Map(
+    scene.elements.map((element) => [element.id, element]),
+  ) as ElementsMap;
+  // Excalidraw's own marquee geometry handles rotated shapes, diamonds,
+  // ellipses, paths and group semantics. Only validated, selectable native
+  // roots are passed into it: linked labels remain internal to their boxes.
+  const candidates = scene.elements.filter(
+    (element) =>
+      !(element.type === "text" && element.containerId !== null) &&
+      selectionUnit(scene, element.id).length > 0,
+  );
+  const hits = elementsOverlappingBBox({
+    elements: candidates,
+    elementsMap,
+    bounds: [box.x, box.y, box.x + box.width, box.y + box.height],
+    type: fullyEnclosed ? "contain" : "overlap",
+    excludeElementsInFrames: false,
+    includeStroke: false,
+  });
+  const ids = new Set<string>();
+  for (const element of hits) {
+    selectionUnit(scene, element.id).forEach((id) => ids.add(id));
   }
   return scene.elements
-    .filter((element) => result.has(element.id))
+    .filter((element) => ids.has(element.id))
     .map((element) => element.id);
 }
 
