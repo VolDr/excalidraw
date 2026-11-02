@@ -12,6 +12,7 @@ import { canEditIndependently, editableSelection } from "./groups";
 import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
+  resizeNativeBoxWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
@@ -240,6 +241,20 @@ export function transformSelected(
   const current = scene.elements.find((element) => element.id === id);
   if (!current) {
     return scene;
+  }
+  // Native rectangle/ellipse/diamond resizing is now fully performed by
+  // Excalidraw's original resizeSingleElement on a private core Scene.
+  // Keep the conservative legacy path for images and bound containers until
+  // their crop, label and arrow semantics have parity fixtures.
+  if (
+    handle !== "rotate" &&
+    isBoxTransformable(current, scene) &&
+    (current.type === "rectangle" ||
+      current.type === "ellipse" ||
+      current.type === "diamond") &&
+    !current.boundElements?.length
+  ) {
+    return resizeNativeBoxWithCore(scene, id, handle, point);
   }
   const transformed =
     handle === "rotate"
