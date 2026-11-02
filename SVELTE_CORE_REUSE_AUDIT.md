@@ -12,11 +12,11 @@ still an unverified draft.
 | `native/scene.ts` | `@excalidraw/element`: `newElement`, `newLinearElement`, `newArrowElement`, `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | All native shape constructors, text metrics, precise pointer hit tests |
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Group membership and ID-array modifications |
-| `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Group bounds, simple line/arrow point scaling, center rotation and label limits |
+| `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Plain flat-box groups now delegate uniform resize and rotation to core; mixed/linked groups retain conservative native policies |
 | `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`, and core `dragSelectedElements` / `resizeSingleElement` via adapter; `@excalidraw/math`: `pointRotateRads` | Pointer motion delegates to the original drag engine; unbound native boxes resize through core Scene, while images/bound containers retain guarded legacy behavior |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Official world-space linear endpoint geometry, normalized lines and version/nonce updates |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `calculateFixedPointForNonElbowArrowBinding`, `getGlobalFixedPointForBindableElement`; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Official endpoint geometry, outline intersections, fixed-point attachment ratios and anchor coordinates for safe simple arrows |
-| `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `getNextSingleWidthAndHeightFromPointer`, `fixBindingsAfterDeletion` | Isolated Scene-backed dragging, safe unbound-box resizing, mutation/version preservation, reciprocal binding cleanup on copies |
+| `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `getNextSingleWidthAndHeightFromPointer`, `fixBindingsAfterDeletion` | Isolated Scene-backed dragging, unbound single-box resize, plain-group multi-resize/rotation, mutation/version preservation, reciprocal binding cleanup on copies |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
@@ -41,7 +41,7 @@ until the entire interaction policy is ported.
 | Area | Existing core | Why not swapped wholesale yet |
 | --- | --- | --- |
 | Remaining arrow binding lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`: `updateBoundElements`, `getGlobalFixedPoints`, `bindOrUnbindBindingElement` | Fixed-point calculations and deletion cleanup now reuse core. Live endpoint dragging, attaching, detaching and moving still use restricted native glue; full behavior requires `Scene`, mutable maps and binding strategies. |
-| Remaining resize and rotation | `packages/element/src/resizeElements.ts`: `resizeMultipleElements`, `transformElements`, `rotateSingleElement` | `resizeSingleElement` now handles unbound native rectangles, ellipses and diamonds. Images, bound containers, multi-object group resizing and complex rotations still need additional parity work. |
+| Remaining resize and rotation | `packages/element/src/resizeElements.ts` | `resizeSingleElement` handles unbound native boxes, and `resizeMultipleElements`/`transformElements` now handle plain flat-box groups. Bound-text groups, images, mixed linear objects and unsupported imports still need additional parity work. |
 | Drag interaction completeness | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Basic native movement now delegates to this original engine with an isolated synthetic original-elements pointer snapshot; grid snapping, modifiers, nested frame interactions and the full React pointer state have not been ported. |
 | Full selection semantics | `packages/element/src/selection.ts`, `packages/element/src/bounds.ts` | Marquee geometry now uses `elementsOverlappingBBox`; selection state, nested groups, locked elements and frames still need a real Svelte state adapter. |
 | Undo/redo | `packages/element/src/store.ts` plus the original editor's history | The current snapshot history is intentionally independent, not granular Excalidraw history. |
@@ -53,7 +53,8 @@ until the entire interaction policy is ported.
    deletion, native selection drag and unbound-box resize to linked arrow
    reconnect/resize workflows after parity tests are actually run.
 2. Replace remaining native arrow endpoint binding, bound-box/image resize
-   and group rotation/resize with core algorithms after cross-editor tests.
+   and **mixed/grouped linear + bound text** transformations with core
+   algorithms after cross-editor tests.
 3. Reuse Excalidraw's fractional indexing, source element-order handling,
    and native history transaction semantics.
 4. Reuse the official rendering and hit-test pipeline where possible; test
@@ -72,6 +73,15 @@ explicit label layout reconciliation. For unbound native rectangles, ellipses
 and diamonds, Svelte now delegates resize to `resizeSingleElement`, while
 preserving an 8px minimum and refusing orphan/malformed bindings. Images and
 bound text boxes still use their restricted native geometry path.
+
+For a *complete* flat group of plain rectangles, ellipses and diamonds,
+uniform corner resizing now invokes Excalidraw's `resizeMultipleElements`,
+and rotation invokes its `transformElements` with the original
+`"rotation"` handle. These operations run on an isolated `Scene`, not the
+Svelte editor's source objects. They refuse partial groups, orphaned external
+bindings, locked members, frames and other unsupported imported geometry.
+Grouped labels, images, and straight arrows deliberately still use the
+guarded native transform until core parity fixtures can be executed.
 
 The clipboard's maximum element count is shared between copy and paste, so
 cutting 1001 or more elements no longer deletes content that cannot be pasted
