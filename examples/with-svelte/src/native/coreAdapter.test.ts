@@ -13,6 +13,7 @@ import { appendNativeArrow } from "./bindings";
 import { updateNativeBoxLabel } from "./boundText";
 import {
   deleteNativeElementsWithCore,
+  withNativeCoreScene,
   nativeElementsMap,
   updateNativeElement,
 } from "./coreAdapter";
@@ -78,6 +79,62 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(deleted.version).toBe(moved.version + 1);
     expect(updateNativeElement(deleted, { isDeleted: true })).toBe(deleted);
     expect(scene.elements[0].isDeleted).toBe(false);
+  });
+
+  it("does not leak Scene constructor fractional-index repairs into source documents", () => {
+    const box = createShape("rectangle", { x: 20, y: 30 }, { x: 120, y: 110 });
+    const other = createShape("ellipse", { x: 160, y: 20 }, { x: 250, y: 90 });
+    // Native elements intentionally have null indices; the core Scene
+    // assigns temporary indices and bumps versions on construction.
+    const original = { ...blankScene(), elements: [box, other] };
+    const unchanged = withNativeCoreScene(original, () => {});
+    expect(unchanged).toBe(original);
+    expect(original.elements[0].index).toBeNull();
+    expect(original.elements[0].version).toBe(box.version);
+
+    const changed = withNativeCoreScene(original, (core) => {
+      const item = core.getNonDeletedElement(box.id);
+      if (!item) {
+        throw new Error("Expected native box to exist in core scene");
+      }
+      // Scene owns this cloned mutable element, never the source box.
+      core.mutateElement(
+        item as Parameters<typeof core.mutateElement>[0],
+        { x: item.x + 55 },
+      );
+    });
+    expect(changed.elements[0].x).toBe(box.x + 55);
+    expect(changed.elements[0].version).toBe(box.version + 1);
+    expect(changed.elements[0].index).toBeNull();
+    expect(changed.elements[1]).toBe(other);
+    expect(original.elements).toEqual([box, other]);
+    expect(original.elements[0].x).toBe(20);
+  });
+
+  it("preserves imported custom fields and existing fractional indices", () => {
+    const custom = {
+      ...createShape("diamond", { x: 0, y: 0 }, { x: 80, y: 80 }),
+      customData: { author: "imported" },
+      foreignField: { untouched: true },
+    };
+    const untouched = createShape("rectangle", { x: 150, y: 20 }, { x: 230, y: 80 });
+    const source = { ...blankScene(), elements: [custom, untouched] };
+    const result = withNativeCoreScene(source, (core) => {
+      const item = core.getNonDeletedElement(custom.id);
+      if (!item) {
+        throw new Error("Expected imported item");
+      }
+      core.mutateElement(
+        item as Parameters<typeof core.mutateElement>[0],
+        { y: 17 },
+      );
+    });
+    expect(result.elements[0].customData).toEqual(custom.customData);
+    expect((result.elements[0] as typeof custom).foreignField).toEqual(custom.foreignField);
+    expect(result.elements[0].index).toBe(custom.index);
+    expect(result.elements[0].version).toBe(custom.version + 1);
+    expect(result.elements[1]).toBe(untouched);
+    expect(source.elements[0]).toBe(custom);
   });
 
   it("cleans up both reciprocal sides when deleting an arrow", () => {
