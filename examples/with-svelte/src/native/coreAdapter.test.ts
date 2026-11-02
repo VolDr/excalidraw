@@ -317,7 +317,7 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     const labeled = updateNativeBoxLabel(
       { ...blankScene(), elements: [box] },
       box.id,
-      "A native label\\nwith two lines",
+      "A native label\nwith two lines",
     );
     const foreign = {
       ...createShape("diamond", { x: 430, y: 30 }, { x: 530, y: 130 }),
