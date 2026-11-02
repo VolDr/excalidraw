@@ -252,18 +252,14 @@ export function replaceText(
       const metrics = measureText(text, font, element.lineHeight);
       const nextWidth = element.autoResize ? metrics.width : element.width;
       const { x: ax, y: ay } = getTextAnchorRatios(element);
-      return {
-        ...element,
+      return updateNativeElement(element, {
         text,
         originalText,
         x: element.x + (element.width - nextWidth) * ax,
         y: element.y + (element.height - metrics.height) * ay,
         width: nextWidth,
         height: metrics.height,
-        version: element.version + 1,
-        versionNonce: versionNonce(),
-        updated: Date.now(),
-      };
+      });
     }),
   };
 }
@@ -303,14 +299,10 @@ export function moveElement(
   if (!dx && !dy) {
     return element;
   }
-  return {
-    ...element,
+  return updateNativeElement(element, {
     x: element.x + dx,
     y: element.y + dy,
-    version: element.version + 1,
-    versionNonce: versionNonce(),
-    updated: Date.now(),
-  };
+  });
 }
 
 export function moveById(
@@ -335,13 +327,7 @@ export function deleteById(scene: SceneFile, id: string): SceneFile {
     ...scene,
     elements: scene.elements.map((element) =>
       element.id === id && !element.locked
-        ? {
-            ...element,
-            isDeleted: true,
-            version: element.version + 1,
-            versionNonce: versionNonce(),
-            updated: Date.now(),
-          }
+        ? updateNativeElement(element, { isDeleted: true })
         : element,
     ),
   };
