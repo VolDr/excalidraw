@@ -8,6 +8,11 @@ Core Excalidraw remains a React/Jotai application and library. The new native ed
 
 ## Architecture
 
+The core-reuse inventory and remaining React-coupled APIs are tracked in
+[SVELTE_CORE_REUSE_AUDIT.md](./SVELTE_CORE_REUSE_AUDIT.md). The Svelte UI should
+consume existing element/maths/serialization algorithms through an adapter;
+only UI state and unsupported compatibility policies remain native.
+
 - `packages/excalidraw/`: original React editor. Untouched.
 - `excalidraw-app/`: original production site. Untouched.
 - `packages/common`, `packages/element`, `packages/math`: reusable existing geometry and data types, subject to per-module dependency audits.
