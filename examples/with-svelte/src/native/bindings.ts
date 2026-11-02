@@ -307,6 +307,13 @@ export function appendNativeArrow(
       }
     : null;
   const bound = { ...arrow, startBinding, endBinding };
+  // Match the official normalized fixed points immediately so the first
+  // subsequent sync is a no-op (and cannot make the arrow visibly jump).
+  const anchored = withEndpoints(
+    bound,
+    (startBinding && attached(scene, startBinding)) || start,
+    (endBinding && attached(scene, endBinding)) || end,
+  );
   const elements = scene.elements.map((el) =>
     el.id === startBox?.id || el.id === endBox?.id
       ? updateNativeElement(el, {
@@ -317,7 +324,7 @@ export function appendNativeArrow(
         })
       : el,
   );
-  return { ...scene, elements: [...elements, bound] };
+  return { ...scene, elements: [...elements, anchored] };
 }
 
 export function pickNativeLinkedEndpoint(
@@ -375,10 +382,11 @@ export function reconnectNativeEndpoint(
         mode: "inside" as const,
       }
     : null;
+  const anchoredTarget = (binding && attached(scene, binding)) || target;
   const moved = withEndpoints(
     el,
-    endpoint === "start" ? target : before.start,
-    endpoint === "end" ? target : before.end,
+    endpoint === "start" ? anchoredTarget : before.start,
+    endpoint === "end" ? anchoredTarget : before.end,
   );
   const updated = updateNativeElement(moved, {
     [endpoint === "start" ? "startBinding" : "endBinding"]: binding,
