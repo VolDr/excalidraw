@@ -1,8 +1,9 @@
 import {
   calculateFixedPointForNonElbowArrowBinding,
   getGlobalFixedPointForBindableElement,
+  intersectElementWithLineSegment,
 } from "@excalidraw/element";
-import { pointFrom, pointRotateRads } from "@excalidraw/math";
+import { lineSegment, pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type {
   ExcalidrawElement,
@@ -126,19 +127,6 @@ const world = (shape: ExcalidrawElement, point: Point): Point => {
   return { x, y };
 };
 
-const local = (shape: ExcalidrawElement, point: Point): Point => {
-  const center = pointFrom<GlobalPoint>(
-    shape.x + shape.width / 2,
-    shape.y + shape.height / 2,
-  );
-  const [x, y] = pointRotateRads(
-    pointFrom<GlobalPoint>(point.x, point.y),
-    center,
-    -shape.angle as ExcalidrawElement["angle"],
-  );
-  return { x, y };
-};
-
 const center = (shape: ExcalidrawElement): Point => ({
   x: shape.x + shape.width / 2,
   y: shape.y + shape.height / 2,
@@ -157,28 +145,50 @@ const worldEndpoints = (
   };
 };
 
-/** Rotated shape outline in direction of the other endpoint. */
-const outline = (shape: Box, toward: Point): Point => {
+/**
+ * Use Excalidraw's actual shape boundary (including rotation and rounded
+ * corners) rather than a second rectangle/diamond/ellipse approximation.
+ * Cast a ray from the center towards the opposite endpoint and take the
+ * closest intersection in the forward direction.
+ */
+const outline = (scene: SceneFile, shape: Box, toward: Point): Point => {
   const c = center(shape);
-  const other = local(shape, toward);
-  const dx = other.x - c.x;
-  const dy = other.y - c.y;
-  const rx = shape.width / 2;
-  const ry = shape.height / 2;
-  const nx = dx / rx;
-  const ny = dy / ry;
-  let divisor = 1;
-  if (shape.type === "ellipse") {
-    divisor = Math.hypot(nx, ny);
-  } else if (shape.type === "diamond") {
-    divisor = Math.abs(nx) + Math.abs(ny);
+  let dx = toward.x - c.x;
+  let dy = toward.y - c.y;
+  const norm = Math.hypot(dx, dy);
+  if (norm < EPS) {
+    dx = 1;
+    dy = 0;
   } else {
-    divisor = Math.max(Math.abs(nx), Math.abs(ny));
+    dx /= norm;
+    dy /= norm;
   }
-  if (divisor < EPS) {
-    return world(shape, { x: c.x + rx, y: c.y });
+  const reach = Math.max(shape.width, shape.height, norm, 1) * 4;
+  const origin = pointFrom<GlobalPoint>(c.x, c.y);
+  const intersections = intersectElementWithLineSegment(
+    shape,
+    nativeElementsMap(scene),
+    lineSegment(
+      origin,
+      pointFrom<GlobalPoint>(c.x + dx * reach, c.y + dy * reach),
+    ),
+  ).filter(
+    (point) =>
+      Number.isFinite(point[0]) &&
+      Number.isFinite(point[1]) &&
+      (point[0] - c.x) * dx + (point[1] - c.y) * dy >= -EPS,
+  );
+  if (intersections.length) {
+    intersections.sort(
+      (a, b) =>
+        Math.hypot(a[0] - c.x, a[1] - c.y) -
+        Math.hypot(b[0] - c.x, b[1] - c.y),
+    );
+    return { x: intersections[0][0], y: intersections[0][1] };
   }
-  return world(shape, { x: c.x + dx / divisor, y: c.y + dy / divisor });
+  // Degenerate imported geometry is not expected for a safe Box. Fall back
+  // to the original target position instead of producing NaNs or mutations.
+  return toward;
 };
 
 /** Derive bindings using the original non-elbow arrow algorithm. */
@@ -286,10 +296,10 @@ export function appendNativeArrow(
   const foundEnd = findTarget(scene, endAt);
   const endBox = foundEnd?.id === startBox?.id ? null : foundEnd;
   const start = startBox
-    ? outline(startBox, endBox ? center(endBox) : endAt)
+    ? outline(scene, startBox, endBox ? center(endBox) : endAt)
     : startAt;
   const end = endBox
-    ? outline(endBox, startBox ? center(startBox) : startAt)
+    ? outline(scene, endBox, startBox ? center(startBox) : startAt)
     : endAt;
   const arrow = withEndpoints(element, start, end);
   const startBinding = startBox
@@ -374,7 +384,7 @@ export function reconnectNativeEndpoint(
   const otherBinding = opposite === "start" ? el.startBinding : el.endBinding;
   const found = findTarget(scene, pointer);
   const shape = found?.id === otherBinding?.elementId ? null : found;
-  const target = shape ? outline(shape, before[opposite]) : pointer;
+  const target = shape ? outline(scene, shape, before[opposite]) : pointer;
   const binding = shape
     ? {
         elementId: shape.id,
