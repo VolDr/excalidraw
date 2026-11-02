@@ -157,6 +157,19 @@ export function resizeNativeBoxWithCore(
     element.frameId ||
     element.groupIds.length ||
     element.boundElements?.length ||
+    !Number.isFinite(element.width) ||
+    !Number.isFinite(element.height) ||
+    element.width <= 0 ||
+    element.height <= 0 ||
+    scene.elements.some(
+      (other) =>
+        other.id !== id &&
+        !other.isDeleted &&
+        ((other.type === "text" && other.containerId === id) ||
+          (other.type === "arrow" &&
+            (other.startBinding?.elementId === id ||
+              other.endBinding?.elementId === id))),
+    ) ||
     !Number.isFinite(pointer.x) ||
     !Number.isFinite(pointer.y)
   ) {
