@@ -7,6 +7,7 @@ import {
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import { isSafeBoundBox, isNativeLinkedArrow } from "./bindings";
+import { updateNativeElement } from "./coreAdapter";
 import { nativeEditableLabel, nativeLabelBox } from "./boundText";
 import { nativeImageSource } from "./images";
 import { isNativeShape } from "./scene";
@@ -184,16 +185,7 @@ export function editableSelection(
     .map((element) => element.id);
 }
 
-const touch = <T extends ExcalidrawElement>(
-  element: T,
-  change: Partial<T>,
-): T => ({
-  ...element,
-  ...change,
-  version: element.version + 1,
-  versionNonce: Math.floor(Math.random() * 2 ** 31),
-  updated: Date.now(),
-});
+
 
 /** Group two or more roots, including each bound label as an atomic member. */
 export function groupSelection(
@@ -225,7 +217,9 @@ export function groupSelection(
       ...scene,
       elements: scene.elements.map((element) =>
         allIds.has(element.id)
-          ? touch(element, { groupIds: addToGroup(element.groupIds, groupId, null) })
+          ? updateNativeElement(element, {
+              groupIds: addToGroup(element.groupIds, groupId, null),
+            })
           : element,
       ),
     },
@@ -272,7 +266,7 @@ export function ungroupSelection(
       ...scene,
       elements: scene.elements.map((element) =>
         affected.includes(element)
-          ? touch(element, {
+          ? updateNativeElement(element, {
               groupIds: removeFromSelectedGroups(
                 element.groupIds,
                 selectedGroupIds,
