@@ -11,11 +11,12 @@ import {
 } from "@excalidraw/element";
 
 import type {
-  ElementsMap,
   ExcalidrawElement,
   ExcalidrawTextElement,
   ExcalidrawTextElementWithContainer,
 } from "@excalidraw/element/types";
+
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 
 import type { SceneFile } from "./scene";
 
@@ -111,9 +112,7 @@ export function nativeBoundLabelLayout(
     height: metrics.height,
     angle: box.angle,
   };
-  const map = new Map(
-    scene.elements.map((item) => [item.id, item]),
-  ) as ElementsMap;
+  const map = nativeElementsMap(scene);
   const position = computeBoundTextPosition(
     box,
     resized as ExcalidrawTextElementWithContainer,
@@ -153,12 +152,17 @@ export function syncNativeBoundLabels(
       return element;
     }
     changed = true;
-    return {
-      ...layout,
-      version: element.version + 1,
-      versionNonce: Math.floor(Math.random() * 2 ** 31),
-      updated: Date.now(),
-    };
+    if (element.type !== "text") {
+      return element;
+    }
+    return updateNativeElement(element, {
+      x: layout.x,
+      y: layout.y,
+      text: layout.text,
+      width: layout.width,
+      height: layout.height,
+      angle: layout.angle,
+    });
   });
   return changed ? { ...scene, elements } : scene;
 }
@@ -247,13 +251,6 @@ export function updateNativeBoxLabel(
     return scene;
   }
 
-  const touch = <T extends ExcalidrawElement>(element: T): T => ({
-    ...element,
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  });
-
   if (!originalText) {
     if (!existing) {
       return scene;
@@ -262,13 +259,10 @@ export function updateNativeBoxLabel(
       ...scene,
       elements: scene.elements.map((element) => {
         if (element.id === boxId) {
-          return {
-            ...touch(element),
-            boundElements: null,
-          };
+          return updateNativeElement(element, { boundElements: null });
         }
         if (element.id === existing.id) {
-          return { ...touch(element), isDeleted: true };
+          return updateNativeElement(element, { isDeleted: true });
         }
         return element;
       }),
@@ -337,12 +331,11 @@ export function updateNativeBoxLabel(
       ) {
         return element;
       }
-      return {
-        ...touch(element),
+      return updateNativeElement(element, {
         width,
         height,
         boundElements: [{ id: label.id, type: "text" as const }],
-      };
+      });
     }
     if (element.id === label.id) {
       return nextLabel;
@@ -357,7 +350,17 @@ export function updateNativeBoxLabel(
   if (!positioned) {
     return scene;
   }
-  const updatedLabel = existing ? touch(positioned) : positioned;
+  const updatedLabel = existing
+    ? updateNativeElement(existing, {
+        text: positioned.text,
+        originalText: positioned.originalText,
+        x: positioned.x,
+        y: positioned.y,
+        width: positioned.width,
+        height: positioned.height,
+        angle: positioned.angle,
+      })
+    : positioned;
   return {
     ...candidate,
     elements: elements.map((element) =>
