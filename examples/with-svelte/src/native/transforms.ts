@@ -11,6 +11,7 @@ import {
 import { canEditIndependently, editableSelection } from "./groups";
 import {
   deleteNativeElementsWithCore,
+  dragNativeSelectionWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
@@ -199,18 +200,10 @@ export function moveSelection(
   if (!selected.size) {
     return scene;
   }
+  // Core owns group movement, bound labels and reciprocal arrow updates.
+  // Native policy has already narrowed this to valid editable roots/groups.
   return syncNativeBoundLabels(
-    syncNativeBindings({
-      ...scene,
-      elements: scene.elements.map((element) =>
-        selected.has(element.id)
-          ? updateNativeElement(element, {
-              x: element.x + dx,
-              y: element.y + dy,
-            })
-          : element,
-      ),
-    }),
+    dragNativeSelectionWithCore(scene, selected, dx, dy),
     selected,
   );
 }
