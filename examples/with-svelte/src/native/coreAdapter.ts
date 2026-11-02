@@ -1,6 +1,8 @@
 import {
   dragSelectedElements,
   fixBindingsAfterDeletion,
+  getNextSingleWidthAndHeightFromPointer,
+  resizeSingleElement,
   newElementWith,
   Scene,
 } from "@excalidraw/element";
@@ -10,6 +12,7 @@ import type {
   ElementsMap,
   ExcalidrawElement,
   NonDeleted,
+  NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
 import type { PointerDownState } from "@excalidraw/excalidraw/types";
 
@@ -128,6 +131,75 @@ export function dragNativeSelectionWithCore(
       core,
       { x: 0, y: 0 },
       null,
+    );
+  });
+}
+
+/**
+ * Core single-element resize for plain unbound native boxes. The safety
+ * restrictions are intentionally duplicated at this boundary: callers
+ * may not pass a complex imported element into a Scene mutator.
+ * Images (crop/flip), text containers, arrows and nested groups require
+ * separate parity handling.
+ */
+export function resizeNativeBoxWithCore(
+  scene: SceneFile,
+  id: string,
+  handle: "nw" | "ne" | "sw" | "se",
+  pointer: { x: number; y: number },
+): SceneFile {
+  const element = scene.elements.find((item) => item.id === id);
+  if (
+    !element ||
+    !["rectangle", "ellipse", "diamond"].includes(element.type) ||
+    element.isDeleted ||
+    element.locked ||
+    element.frameId ||
+    element.groupIds.length ||
+    element.boundElements?.length ||
+    !Number.isFinite(pointer.x) ||
+    !Number.isFinite(pointer.y)
+  ) {
+    return scene;
+  }
+  const { nextWidth, nextHeight } = getNextSingleWidthAndHeightFromPointer(
+    element,
+    element,
+    handle,
+    pointer.x,
+    pointer.y,
+  );
+  if (!Number.isFinite(nextWidth) || !Number.isFinite(nextHeight)) {
+    return scene;
+  }
+  const minSize = 8;
+  return withNativeCoreScene(scene, (core) => {
+    const latest = core.getNonDeletedElement(id);
+    if (!latest) {
+      return;
+    }
+    const originalElementsMap = new Map(
+      core.getNonDeletedElements().map((item) => [
+        item.id,
+        structuredClone(item),
+      ]),
+    ) as ElementsMap;
+    const original = originalElementsMap.get(id);
+    if (!original) {
+      return;
+    }
+    resizeSingleElement(
+      Math.max(minSize, nextWidth),
+      Math.max(minSize, nextHeight),
+      latest as NonDeletedExcalidrawElement,
+      original as NonDeletedExcalidrawElement,
+      originalElementsMap,
+      core,
+      handle,
+      {
+        shouldMaintainAspectRatio: false,
+        shouldResizeFromCenter: false,
+      },
     );
   });
 }
