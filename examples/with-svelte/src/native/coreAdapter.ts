@@ -18,6 +18,7 @@ import type {
   NonDeleted,
   NonDeletedExcalidrawElement,
   ExcalidrawTextElement,
+  ExcalidrawTextElementWithContainer,
 } from "@excalidraw/element/types";
 import type { PointerDownState } from "@excalidraw/excalidraw/types";
 
@@ -167,6 +168,11 @@ const safeResizeLabel = (
     label.containerId !== element.id ||
     !label.autoResize ||
     label.boundElements?.length ||
+    scene.elements.some((item) =>
+      !item.isDeleted &&
+      item.id !== element.id &&
+      item.boundElements?.some((ref) => ref.id === label.id)
+    ) ||
     !Number.isFinite(label.fontSize) ||
     !Number.isFinite(label.width) ||
     !Number.isFinite(label.height) ||
@@ -285,7 +291,10 @@ export function resizeNativeBoxWithCore(
       labelAfter.x, labelAfter.y, labelAfter.width, labelAfter.height]
       .every(Number.isFinite) ||
     labelAfter.width > getBoundTextMaxWidth(boxAfter, labelAfter) + 0.5 ||
-    labelAfter.height > getBoundTextMaxHeight(boxAfter, labelAfter) + 0.5
+    labelAfter.height > getBoundTextMaxHeight(
+      boxAfter,
+      labelAfter as ExcalidrawTextElementWithContainer,
+    ) + 0.5
   ) {
     return scene;
   }
