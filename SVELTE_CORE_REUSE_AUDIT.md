@@ -14,9 +14,9 @@ still an unverified draft.
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Group membership and ID-array modifications |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Group bounds, simple line/arrow point scaling, center rotation and label limits |
 | `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`; `@excalidraw/math`: `pointRotateRads` | Official local-axis resize pointer projection, rotated shape handles; native UI retains size/clamp/no-flip behavior |
-| `native/lines.ts` | `@excalidraw/element`: `newElementWith` (via `coreAdapter`); `@excalidraw/math`: `pointRotateRads` | World-space linear endpoints, normalized lines and official version/nonce updates |
-| `native/bindings.ts` | `@excalidraw/element`: `calculateFixedPointForNonElbowArrowBinding`, `getGlobalFixedPointForBindableElement`; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Official attachment ratios and anchor coordinates for safe simple arrows; coordinate rotations |
-| `native/coreAdapter.ts` | `@excalidraw/element`: `newElementWith`, `fixBindingsAfterDeletion` | Immutable mutation metadata and no-op detection, typed `ElementsMap` conversion, core reciprocal binding cleanup on cloned deleted-element snapshots |
+| `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Official world-space linear endpoint geometry, normalized lines and version/nonce updates |
+| `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `calculateFixedPointForNonElbowArrowBinding`, `getGlobalFixedPointForBindableElement`; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Official endpoint geometry, outline intersections, fixed-point attachment ratios and anchor coordinates for safe simple arrows |
+| `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `fixBindingsAfterDeletion` | Isolated core Scene transactions, immutable updates, map conversion, reciprocal binding cleanup on copies while preserving original indices, versions and unknown metadata |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
@@ -49,8 +49,9 @@ until the entire interaction policy is ported.
 
 ## Required next refactor (before claiming parity)
 
-1. Introduce a React-free scene/state adapter that exposes the element maps,
-   binding updates and mutation semantics required by the core functions.
+1. Extend the React-free `withNativeCoreScene` adapter (already used for
+   deletion) to transactions for core arrow updates, motion and resize;
+   only promote a native path after fixture parity tests.
 2. Replace native arrow binding and individual/group resize operations with
    their Excalidraw counterparts after cross-editor fixture tests pass.
 3. Reuse Excalidraw's fractional indexing, source element-order handling,
@@ -60,6 +61,17 @@ until the entire interaction policy is ported.
 5. Add roundtrip/behavior parity fixtures with the React editor **and run them**
    in an environment that has the repository dependencies. No CI or local
    package test result is claimed by this audit.
+
+### Core Scene mutation isolation
+
+A temporary `Scene` created from Svelte's JSON snapshot always invokes
+`syncInvalidIndices`, which may regenerate fractional indices and bump
+versions even without a user action. `withNativeCoreScene` records the
+post-construction version baseline and imports **only actual subsequent
+mutations**, normalizes their version delta to the original, and keeps
+original indices, ordering, and unrelated object identities. Unchanged
+transactions return the identical source scene reference. Tests cover these
+invariants, but have not yet been executed.
 
 React components must stay in the lazy fallback until their UI and state
 counterparts are replaced. A function's TypeScript type import from
