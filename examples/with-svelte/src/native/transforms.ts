@@ -1,3 +1,4 @@
+import { getNextSingleWidthAndHeightFromPointer } from "@excalidraw/element";
 import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
@@ -118,14 +119,21 @@ export function resizeElement(
     se: "nw",
   };
   const fixed = loc[opposite[corner]];
-  const dx = target.x - fixed.x;
-  const dy = target.y - fixed.y;
+  // Excalidraw owns local-axis pointer projection for rotated and
+  // unrotated shapes; Svelte keeps only its current no-flip/min-size UI
+  // policy and the world-space opposite-corner anchor.
+  const { nextWidth: projectedWidth, nextHeight: projectedHeight } =
+    getNextSingleWidthAndHeightFromPointer(
+      element,
+      element,
+      corner,
+      target.x,
+      target.y,
+    );
   const cos = Math.cos(element.angle);
   const sin = Math.sin(element.angle);
   const horizontalSign = corner.endsWith("e") ? 1 : -1;
   const verticalSign = corner.startsWith("s") ? 1 : -1;
-  const projectedWidth = horizontalSign * (dx * cos + dy * sin);
-  const projectedHeight = verticalSign * (-dx * sin + dy * cos);
   // Image resize keeps the existing crop and flipped axes while preserving
   // the displayed aspect ratio. Shapes retain independent width and height.
   const ratio = element.width / element.height;
