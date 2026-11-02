@@ -44,6 +44,13 @@ export function withNativeCoreScene(
   const core = new Scene(structuredClone(scene.elements), {
     skipValidation: true,
   });
+  // Scene repairs null/invalid fractional indices during construction,
+  // bumping element versions. Treat that as private setup, never as a Svelte
+  // edit. Compare against this baseline, not against the imported versions.
+  const baseline = core.getElementsIncludingDeleted().map((element) => ({
+    version: element.version,
+    versionNonce: element.versionNonce,
+  }));
   try {
     operation(core);
     const nextElements = core.getElementsIncludingDeleted();
@@ -57,9 +64,10 @@ export function withNativeCoreScene(
     let changed = false;
     const elements = scene.elements.map((original, index) => {
       const updated = nextElements[index];
+      const initial = baseline[index];
       if (
-        updated.version === original.version &&
-        updated.versionNonce === original.versionNonce
+        updated.version === initial.version &&
+        updated.versionNonce === initial.versionNonce
       ) {
         return original;
       }
@@ -67,6 +75,7 @@ export function withNativeCoreScene(
       return {
         ...updated,
         index: original.index,
+        version: original.version + (updated.version - initial.version),
       };
     });
     return changed ? { ...scene, elements } : scene;
