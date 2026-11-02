@@ -1,4 +1,8 @@
-import { fixBindingsAfterDeletion, newElementWith } from "@excalidraw/element";
+import {
+  fixBindingsAfterDeletion,
+  newElementWith,
+  Scene,
+} from "@excalidraw/element";
 
 import type { ElementUpdate } from "@excalidraw/element";
 import type { ElementsMap, ExcalidrawElement } from "@excalidraw/element/types";
@@ -25,12 +29,56 @@ export const nativeElementsMap = (
   new Map(scene.elements.map((element) => [element.id, element])) as ElementsMap;
 
 /**
- * Apply the original Excalidraw reciprocal-binding deletion lifecycle to a
- * private copy, then soft-delete the requested IDs. The core helper mutates
- * its arguments, so it must never see the Svelte state objects directly.
+ * Run a Scene-dependent Excalidraw algorithm without exposing our immutable
+ * Svelte store to the core's in-place mutations.
  *
- * Selection/unsupported-binding policy is enforced by the caller; this layer
- * only handles mutation mechanics. The original scene is never modified.
+ * Scene synchronizes fractional indices when constructed. These are *not*
+ * applied back to the native file: preserve original element order and index
+ * explicitly, and adopt only elements whose versions changed in the core
+ * transaction. Unknown extension fields and unrelated objects survive.
+ */
+export function withNativeCoreScene(
+  scene: SceneFile,
+  operation: (core: Scene) => void,
+): SceneFile {
+  const core = new Scene(structuredClone(scene.elements), {
+    skipValidation: true,
+  });
+  try {
+    operation(core);
+    const nextElements = core.getElementsIncludingDeleted();
+    if (
+      nextElements.length !== scene.elements.length ||
+      nextElements.some((element, index) => element.id !== scene.elements[index].id)
+    ) {
+      throw new Error("Core Scene adapter cannot insert or reorder elements");
+    }
+
+    let changed = false;
+    const elements = scene.elements.map((original, index) => {
+      const updated = nextElements[index];
+      if (
+        updated.version === original.version &&
+        updated.versionNonce === original.versionNonce
+      ) {
+        return original;
+      }
+      changed = true;
+      return {
+        ...updated,
+        index: original.index,
+      };
+    });
+    return changed ? { ...scene, elements } : scene;
+  } finally {
+    core.destroy();
+  }
+}
+
+/**
+ * The official reciprocal-binding deletion lifecycle updates all affected
+ * neighbors in an isolated core Scene. Soft deletion remains immutable and
+ * source order/index/extension fields are preserved by the adapter.
  */
 export function deleteNativeElementsWithCore(
   scene: SceneFile,
@@ -45,12 +93,16 @@ export function deleteNativeElementsWithCore(
   if (!originals.length || originals.length !== ids.size) {
     return scene;
   }
-  const elements = structuredClone(scene.elements);
-  const deleted = elements.filter((element) => ids.has(element.id));
-  fixBindingsAfterDeletion(elements, deleted);
+  const unbound = withNativeCoreScene(scene, (core) => {
+    const elements = core.getElementsIncludingDeleted();
+    fixBindingsAfterDeletion(
+      elements,
+      elements.filter((element) => ids.has(element.id)),
+    );
+  });
   return {
-    ...scene,
-    elements: elements.map((element) =>
+    ...unbound,
+    elements: unbound.elements.map((element) =>
       ids.has(element.id)
         ? updateNativeElement(element, { isDeleted: true })
         : element,
