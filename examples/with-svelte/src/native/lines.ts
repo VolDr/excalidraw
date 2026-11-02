@@ -1,9 +1,10 @@
-import { pointFrom, pointRotateRads } from "@excalidraw/math";
+import { LinearElementEditor } from "@excalidraw/element";
+import { pointFrom } from "@excalidraw/math";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
-import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
+import type { LocalPoint } from "@excalidraw/math";
 
-import { updateNativeElement } from "./coreAdapter";
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -35,18 +36,21 @@ export function endpointLocations(
   if (element.type !== "line" && element.type !== "arrow") {
     return null;
   }
-  const points = element.points;
-  const cx = element.x + element.width / 2;
-  const cy = element.y + element.height / 2;
-  const rotate = (p: readonly [number, number]): Point => {
-    const [x, y] = pointRotateRads(
-      pointFrom<GlobalPoint>(element.x + p[0], element.y + p[1]),
-      pointFrom<GlobalPoint>(cx, cy),
-      element.angle,
-    );
-    return { x, y };
+  const map = nativeElementsMap({ elements: [element] });
+  const [startX, startY] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element,
+    0,
+    map,
+  );
+  const [endX, endY] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element,
+    -1,
+    map,
+  );
+  return {
+    start: { x: startX, y: startY },
+    end: { x: endX, y: endY },
   };
-  return { start: rotate(points[0]), end: rotate(points[1]) };
 }
 
 export function pickEndpoint(
