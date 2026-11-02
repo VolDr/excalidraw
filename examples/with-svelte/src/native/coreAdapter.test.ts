@@ -24,6 +24,7 @@ import {
   resizeNativeBoxWithCore,
   resizeNativeGroupWithCore,
   rotateNativeGroupWithCore,
+  rotateNativeBoxWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { blankScene, createShape, createText } from "./scene";
@@ -360,6 +361,59 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     history.commit(source);
     expect(history.undo(updated)).toEqual(source);
     expect(history.redo(source)).toEqual(updated);
+  });
+
+  it("rotates a reciprocal label together with its box using core transforms", () => {
+    const box = createShape("rectangle", { x: 20, y: 30 }, { x: 280, y: 170 });
+    const labeled = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box] },
+      box.id,
+      "Rotate with me",
+    );
+    const original = structuredClone(labeled);
+    const center = {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    };
+    const rotated = transformSelected(labeled, box.id, "rotate", {
+      x: center.x + 100,
+      y: center.y,
+    });
+    expect(rotated).not.toBe(labeled);
+    expect(rotated.elements[0].angle).toBeCloseTo(Math.PI / 2);
+    const label = rotated.elements[1];
+    expect(label.type).toBe("text");
+    if (label.type !== "text") {
+      throw new Error("Expected unchanged reciprocal label type");
+    }
+    expect(label.angle).toBeCloseTo(rotated.elements[0].angle);
+    expect(label.containerId).toBe(box.id);
+    expect(rotated.elements[0].boundElements).toEqual([
+      { id: label.id, type: "text" },
+    ]);
+    expect(label.originalText).toBe(
+      labeled.elements[1].type === "text"
+        ? labeled.elements[1].originalText
+        : undefined,
+    );
+    expect(rotated.elements[0].index).toBe(labeled.elements[0].index);
+    expect(rotated.elements[1].index).toBe(labeled.elements[1].index);
+    expect(labeled).toEqual(original);
+    const history = new SceneHistory();
+    history.commit(labeled);
+    expect(history.undo(rotated)).toEqual(labeled);
+  });
+
+  it("refuses unsafe single-box core rotation with orphan external label references", () => {
+    const box = createShape("rectangle", { x: 20, y: 30 }, { x: 250, y: 150 });
+    const orphan = {
+      ...createText({ x: 0, y: 0 }, "Missing reverse"),
+      containerId: box.id,
+    };
+    const scene = { ...blankScene(), elements: [box, orphan] };
+    expect(rotateNativeBoxWithCore(scene, box.id, { x: 400, y: 110 }))
+      .toBe(scene);
+    expect(scene.elements[0].angle).toBe(0);
   });
 
   it("does not core-resize a box with a foreign reverse reference to its label", () => {
