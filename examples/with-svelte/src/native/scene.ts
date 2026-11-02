@@ -1,5 +1,6 @@
 import {
   getTextAnchorRatios,
+  hitElementItself,
   measureText,
   newFreeDrawElement,
   newTextElement,
@@ -12,8 +13,9 @@ import { pointFrom } from "@excalidraw/math";
 import type {
   ExcalidrawElement,
   ExcalidrawTextElement,
+  ElementsMap,
 } from "@excalidraw/element/types";
-import type { LocalPoint } from "@excalidraw/math";
+import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { nativeImageSource } from "./images";
 import { nativeLabelBox } from "./boundText";
@@ -372,87 +374,28 @@ export function elementBounds(element: ExcalidrawElement) {
   };
 }
 
-function segmentDistance(point: Point, a: Point, b: Point): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const l2 = dx * dx + dy * dy;
-  const t = l2
-    ? Math.max(
-        0,
-        Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / l2),
-      )
-    : 0;
-  return Math.hypot(point.x - a.x - t * dx, point.y - a.y - t * dy);
-}
-
 /**
- * Hit-test in the rotated element coordinate space; don't select an entire
- * arrow's bounding rectangle. Defer bound/complex geometry to the full editor.
+ * Delegate precise shape, linear-path and rotation hit-testing to the
+ * Excalidraw core. The native editor intentionally allows picking inside
+ * transparent boxes, so use the explicit inside-test override.
  */
 export function hitTest(
   element: ExcalidrawElement,
   point: Point,
   tolerance = 7,
+  elementsMap?: ElementsMap,
 ): boolean {
   if (!isNativeShape(element) || element.locked) {
     return false;
   }
-  const { x, y, width, height } = elementBounds(element);
-  const cx = x + width / 2;
-  const cy = y + height / 2;
-  const angle = -element.angle;
-  const dx = point.x - cx;
-  const dy = point.y - cy;
-  const local = {
-    x: cx + dx * Math.cos(angle) - dy * Math.sin(angle),
-    y: cy + dx * Math.sin(angle) + dy * Math.cos(angle),
-  };
-  if (
-    element.type === "line" ||
-    element.type === "arrow" ||
-    element.type === "freedraw"
-  ) {
-    const points = element.points.map((p) => ({
-      x: element.x + p[0],
-      y: element.y + p[1],
-    }));
-    if (points.length === 1) {
-      return (
-        Math.hypot(local.x - points[0].x, local.y - points[0].y) <= tolerance
-      );
-    }
-    return points
-      .slice(1)
-      .some(
-        (p, i) =>
-          segmentDistance(local, points[i], p) <=
-          tolerance + element.strokeWidth / 2,
-      );
-  }
-  if (element.type === "ellipse") {
-    const rx = width / 2 + tolerance;
-    const ry = height / 2 + tolerance;
-    return (
-      rx > 0 &&
-      ry > 0 &&
-      ((local.x - cx) / rx) ** 2 + ((local.y - cy) / ry) ** 2 <= 1
-    );
-  }
-  if (element.type === "diamond") {
-    const rx = width / 2 + tolerance;
-    const ry = height / 2 + tolerance;
-    return (
-      rx > 0 &&
-      ry > 0 &&
-      Math.abs((local.x - cx) / rx) + Math.abs((local.y - cy) / ry) <= 1
-    );
-  }
-  return (
-    local.x >= x - tolerance &&
-    local.x <= x + width + tolerance &&
-    local.y >= y - tolerance &&
-    local.y <= y + height + tolerance
-  );
+  const map = elementsMap ?? new Map([[element.id, element]]) as ElementsMap;
+  return hitElementItself({
+    point: pointFrom<GlobalPoint>(point.x, point.y),
+    element,
+    threshold: tolerance,
+    elementsMap: map,
+    overrideShouldTestInside: true,
+  });
 }
 
 export function pickElement(
@@ -460,9 +403,12 @@ export function pickElement(
   point: Point,
   tolerance = 7,
 ): ExcalidrawElement | null {
+  const elementsMap = new Map(
+    elements.map((element) => [element.id, element]),
+  ) as ElementsMap;
   for (let i = elements.length - 1; i >= 0; i--) {
     const element = elements[i];
-    if (hitTest(element, point, tolerance)) {
+    if (hitTest(element, point, tolerance, elementsMap)) {
       return element;
     }
   }
