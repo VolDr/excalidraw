@@ -1,10 +1,15 @@
 import {
   duplicateElement,
+  fixDuplicatedBindingsAfterDuplication,
   elementsOverlappingBBox,
   getElementBounds,
 } from "@excalidraw/element";
 
-import type { ExcalidrawElement, ElementsMap } from "@excalidraw/element/types";
+import type {
+  ExcalidrawElement,
+  ElementsMap,
+  NonDeletedSceneElementsMap,
+} from "@excalidraw/element/types";
 
 import { nativeEditableLabel } from "./boundText";
 import {
@@ -125,32 +130,23 @@ export function duplicateSelection(
     return copy;
   });
 
-  // Native-only policy: append copies after the source elements and reset
-  // their fractional indices until the editor's index manager is migrated.
-  // The reciprocal text IDs must be rewritten after all IDs are allocated.
-  const duplicates = nativeCopies.map((nativeCopy, index): ExcalidrawElement => {
-    const element = originals[index];
-    const copy = {
-      ...nativeCopy,
-      x: nativeCopy.x + offset,
-      y: nativeCopy.y + offset,
-      index: null,
-      version: 1,
-    };
-    if (element.type === "text" && element.containerId) {
-      return { ...copy, containerId: idsByOriginal.get(element.containerId)! };
-    }
-    if (element.boundElements?.length) {
-      return {
-        ...copy,
-        boundElements: element.boundElements.map((ref) => ({
-          ...ref,
-          id: idsByOriginal.get(ref.id)!,
-        })),
-      };
-    }
-    return copy;
-  });
+  // Excalidraw owns reciprocal-link remapping as well as ID creation.
+  // Run it on independent deep copies, never on the imported source scene.
+  const duplicates: ExcalidrawElement[] = nativeCopies.map((copy) => ({
+    ...copy,
+    x: copy.x + offset,
+    y: copy.y + offset,
+    index: null,
+    version: 1,
+  }));
+  const duplicateMap = new Map(
+    duplicates.map((element) => [element.id, element]),
+  ) as NonDeletedSceneElementsMap;
+  fixDuplicatedBindingsAfterDuplication(
+    duplicates,
+    idsByOriginal,
+    duplicateMap,
+  );
 
   return {
     scene: { ...scene, elements: [...scene.elements, ...duplicates] },
