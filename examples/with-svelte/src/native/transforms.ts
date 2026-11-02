@@ -1,3 +1,5 @@
+import { pointFrom, pointRotateRads } from "@excalidraw/math";
+
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
@@ -18,15 +20,17 @@ export type Handle = Corner | "rotate";
 const MIN_SIZE = 8;
 const corners: Corner[] = ["nw", "ne", "sw", "se"];
 
-const rotatePoint = (point: Point, center: Point, angle: number): Point => {
-  const dx = point.x - center.x;
-  const dy = point.y - center.y;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return {
-    x: center.x + dx * cos - dy * sin,
-    y: center.y + dx * sin + dy * cos,
-  };
+const rotatePoint = (
+  point: Point,
+  center: Point,
+  angle: ExcalidrawElement["angle"],
+): Point => {
+  const [x, y] = pointRotateRads(
+    pointFrom(point.x, point.y),
+    pointFrom(center.x, center.y),
+    angle,
+  );
+  return { x, y };
 };
 
 export function isBoxTransformable(
