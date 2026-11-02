@@ -7,6 +7,7 @@ import type {
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { nativeLabelBox } from "./boundText";
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 import { hitTest } from "./scene";
 
 import type { Point, SceneFile } from "./scene";
@@ -199,14 +200,6 @@ const attached = (
   });
 };
 
-const touch = <T extends ExcalidrawElement>(el: T, patch: Partial<T>): T => ({
-  ...el,
-  ...patch,
-  version: el.version + 1,
-  versionNonce: Math.floor(Math.random() * 2 ** 31),
-  updated: Date.now(),
-});
-
 /** Normalize two world endpoints to Excalidraw's local coordinate system. */
 function withEndpoints(
   arrow: ExcalidrawArrowElement,
@@ -222,7 +215,7 @@ function withEndpoints(
   }
   const x = Math.min(start.x, end.x);
   const y = Math.min(start.y, end.y);
-  return touch(arrow, {
+  return updateNativeElement(arrow, {
     x,
     y,
     width: Math.abs(end.x - start.x),
@@ -299,7 +292,7 @@ export function appendNativeArrow(
   const bound = { ...arrow, startBinding, endBinding };
   const elements = scene.elements.map((el) =>
     el.id === startBox?.id || el.id === endBox?.id
-      ? touch(el, {
+      ? updateNativeElement(el, {
           boundElements: [
             ...(el.boundElements ?? []),
             { id: element.id, type: "arrow" as const },
@@ -370,7 +363,7 @@ export function reconnectNativeEndpoint(
     endpoint === "start" ? target : before.start,
     endpoint === "end" ? target : before.end,
   );
-  const updated = touch(moved, {
+  const updated = updateNativeElement(moved, {
     [endpoint === "start" ? "startBinding" : "endBinding"]: binding,
   });
   const elements = scene.elements.map((item) => {
@@ -389,7 +382,7 @@ export function reconnectNativeEndpoint(
     if (has || linkedFromOtherEnd) {
       remaining.push({ id: arrowId, type: "arrow" });
     }
-    return touch(item, { boundElements: remaining.length ? remaining : null });
+    return updateNativeElement(item, { boundElements: remaining.length ? remaining : null });
   });
   return { ...scene, elements };
 }
@@ -409,7 +402,7 @@ export function detachDeletedNativeBindings(
       const clearStart = !!start && deletedIds.has(start.elementId);
       const clearEnd = !!end && deletedIds.has(end.elementId);
       if (deletedIds.has(element.id) || clearStart || clearEnd) {
-        return touch(element, {
+        return updateNativeElement(element, {
           startBinding: deletedIds.has(element.id) || clearStart ? null : start,
           endBinding: deletedIds.has(element.id) || clearEnd ? null : end,
         });
@@ -417,13 +410,13 @@ export function detachDeletedNativeBindings(
     }
     if (isSafeBoundBox(scene, element) && element.boundElements?.length) {
       if (deletedIds.has(element.id)) {
-        return touch(element, { boundElements: null });
+        return updateNativeElement(element, { boundElements: null });
       }
       const retained = element.boundElements.filter(
         (ref) => !deletedIds.has(ref.id),
       );
       if (retained.length !== element.boundElements.length) {
-        return touch(element, {
+        return updateNativeElement(element, {
           boundElements: retained.length ? retained : null,
         });
       }
