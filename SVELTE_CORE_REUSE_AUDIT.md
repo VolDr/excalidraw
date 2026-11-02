@@ -9,12 +9,13 @@ still an unverified draft.
 
 | Native adapter | Existing Excalidraw implementation | Current usage |
 | --- | --- | --- |
-| `native/scene.ts` | `@excalidraw/element`: `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | Element creation, text metrics, native pointer hit tests |
-| `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and group remapping |
+| `native/scene.ts` | `@excalidraw/element`: `newElement`, `newLinearElement`, `newArrowElement`, `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | All native shape constructors, text metrics, precise pointer hit tests |
+| `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Group membership and ID-array modifications |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Group bounds, simple line/arrow point scaling, center rotation and label limits |
 | `native/transforms.ts` | `@excalidraw/math`: `pointRotateRads` | Rotated shape handles |
-| `native/bindings.ts` | `@excalidraw/math`: `pointRotateRads`, `pointFrom` | World/local coordinates for bound endpoints |
+| `native/bindings.ts` | `@excalidraw/element`: `calculateFixedPointForNonElbowArrowBinding`, `getGlobalFixedPointForBindableElement`; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Official attachment ratios and anchor coordinates for safe simple arrows; coordinate rotations |
+| `native/coreAdapter.ts` | `@excalidraw/element`: `newElementWith` | Shared immutable mutation metadata and no-op detection, plus typed `ElementsMap` conversion for core APIs |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
@@ -24,7 +25,9 @@ They reject edits we cannot yet model safely.
 The native adapter deliberately retains append-order, `index: null`, and
 `version: 1` for duplicated elements as a **temporary policy** even though
 `duplicateElement` supplies the identity, deep copy, groups, seed and
-timestamps. Fractional-index and document-order parity is pending.
+timestamps. The original `fixDuplicatedBindingsAfterDuplication` now rewrites
+both sides of reciprocal label links on copies. Fractional-index and
+full document-order parity is pending.
 
 For native hit-testing the adapter passes
 `overrideShouldTestInside: true`: its selection UI currently allows
@@ -36,7 +39,7 @@ until the entire interaction policy is ported.
 
 | Area | Existing core | Why not swapped wholesale yet |
 | --- | --- | --- |
-| Arrow bindings (`native/bindings.ts`) | `packages/element/src/binding.ts`: `updateBoundElements`, `getGlobalFixedPoints`, `bindOrUnbindBindingElement`, `fixBindingsAfterDeletion` | Most methods require a `Scene`, mutable `ElementsMap`, binding strategies, and related state. The native scene is an immutable JSON snapshot. A tested adapter is needed to preserve reciprocal links. |
+| Remaining arrow binding lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`: `updateBoundElements`, `getGlobalFixedPoints`, `bindOrUnbindBindingElement`, `fixBindingsAfterDeletion` | Fixed-point coordinate computation is now shared; complete attach/detach/update lifecycle still requires a `Scene`, mutable `ElementsMap`, binding strategies, and additional state. The native scene remains an immutable JSON snapshot. |
 | Resize and rotation | `packages/element/src/resizeElements.ts`: `resizeSingleElement`, `resizeMultipleElements`, `transformElements` | Operations expect native `Scene`, original elements and canvas/editor context. Our limited transform is restricted to straightforward geometry. |
 | Dragging | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Requires the editor's `PointerDownState`, `Scene` and updates through mutable infrastructure. |
 | Full selection semantics | `packages/element/src/selection.ts`, `packages/element/src/bounds.ts` | Marquee geometry now uses `elementsOverlappingBBox`; selection state, nested groups, locked elements and frames still need a real Svelte state adapter. |
