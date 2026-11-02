@@ -3,6 +3,7 @@ import {
   fixBindingsAfterDeletion,
   getNextSingleWidthAndHeightFromPointer,
   resizeMultipleElements,
+  transformElements,
   resizeSingleElement,
   newElementWith,
   Scene,
@@ -219,6 +220,51 @@ export function resizeNativeBoxWithCore(
 }
 
 /**
+ * Framework-neutral edit policy for a complete plain group. Require every
+ * member and forbid even one orphaned external binding; core geometry must
+ * never receive a partially selected or malformed imported group.
+ */
+const isPlainNativeBoxGroup = (
+  scene: SceneFile,
+  ids: readonly string[],
+  allowRotated: boolean,
+): boolean => {
+  const selected = new Set(ids);
+  if (selected.size < 2 || selected.size !== ids.length) {
+    return false;
+  }
+  const roots = scene.elements.filter((element) => selected.has(element.id));
+  const groupId = roots[0]?.groupIds.length === 1 ? roots[0].groupIds[0] : null;
+  return !!groupId &&
+    roots.length === selected.size &&
+    roots.every((element) =>
+      ["rectangle", "ellipse", "diamond"].includes(element.type) &&
+      !element.isDeleted &&
+      !element.locked &&
+      element.frameId === null &&
+      element.groupIds.length === 1 &&
+      element.groupIds[0] === groupId &&
+      !element.boundElements?.length &&
+      (allowRotated || element.angle === 0) &&
+      element.width > 0 &&
+      element.height > 0 &&
+      Number.isFinite(element.width) &&
+      Number.isFinite(element.height) &&
+      Number.isFinite(element.angle),
+    ) &&
+    !scene.elements.some((element) =>
+      !element.isDeleted &&
+      ((!selected.has(element.id) && element.groupIds.includes(groupId)) ||
+        (element.type === "text" &&
+          element.containerId !== null &&
+          selected.has(element.containerId)) ||
+        (element.type === "arrow" &&
+          (!!element.startBinding && selected.has(element.startBinding.elementId) ||
+            !!element.endBinding && selected.has(element.endBinding.elementId)))),
+    );
+};
+
+/**
  * Use the original uniform multi-element resize for *plain* flat groups.
  * This is deliberately narrower than the native group's overall supported
  * shape set: labeled boxes, images and linear elements require their own
@@ -231,47 +277,13 @@ export function resizeNativeGroupWithCore(
   scale: number,
   bounds: { x: number; y: number; width: number; height: number },
 ): SceneFile {
-  const selected = new Set(ids);
   if (
-    selected.size < 2 ||
-    selected.size !== ids.length ||
+    !isPlainNativeBoxGroup(scene, ids, false) ||
     !Number.isFinite(scale) ||
     scale <= 0 ||
     ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) ||
     bounds.width <= 0 ||
     bounds.height <= 0
-  ) {
-    return scene;
-  }
-  const roots = scene.elements.filter((element) => selected.has(element.id));
-  const groupId = roots[0]?.groupIds.length === 1 ? roots[0].groupIds[0] : null;
-  if (
-    !groupId ||
-    roots.length !== selected.size ||
-    roots.some((element) =>
-      !["rectangle", "ellipse", "diamond"].includes(element.type) ||
-      element.isDeleted ||
-      element.locked ||
-      element.frameId !== null ||
-      element.groupIds.length !== 1 ||
-      element.groupIds[0] !== groupId ||
-      element.boundElements?.length ||
-      element.angle !== 0 ||
-      element.width <= 0 ||
-      element.height <= 0 ||
-      !Number.isFinite(element.width) ||
-      !Number.isFinite(element.height)
-    ) ||
-    scene.elements.some((element) =>
-      !element.isDeleted &&
-      (!selected.has(element.id) && element.groupIds.includes(groupId) ||
-        (element.type === "text" &&
-          element.containerId !== null &&
-          selected.has(element.containerId)) ||
-        (element.type === "arrow" &&
-          (element.startBinding && selected.has(element.startBinding.elementId) ||
-            element.endBinding && selected.has(element.endBinding.elementId)))),
-    )
   ) {
     return scene;
   }
@@ -314,6 +326,51 @@ export function resizeNativeGroupWithCore(
           height: bounds.height,
         },
       },
+    );
+  });
+}
+
+/**
+ * Original Excalidraw multi-selection rotation, restricted to a safe
+ * complete group of plain boxes. Uses the same rotation normalization and
+ * element-center calculation as the React editor.
+ */
+export function rotateNativeGroupWithCore(
+  scene: SceneFile,
+  ids: readonly string[],
+  pointer: { x: number; y: number },
+  bounds: { x: number; y: number; width: number; height: number },
+): SceneFile {
+  if (
+    !isPlainNativeBoxGroup(scene, ids, true) ||
+    ![pointer.x, pointer.y, bounds.x, bounds.y, bounds.width, bounds.height]
+      .every(Number.isFinite) ||
+    bounds.width <= 0 ||
+    bounds.height <= 0
+  ) {
+    return scene;
+  }
+  return withNativeCoreScene(scene, (core) => {
+    const originalElements = new Map<string, NonDeleted<ExcalidrawElement>>();
+    for (const element of core.getNonDeletedElements()) {
+      originalElements.set(element.id, structuredClone(element));
+    }
+    const selected = ids.map((id) => core.getNonDeletedElement(id));
+    if (selected.some((element) => !element)) {
+      return;
+    }
+    transformElements(
+      originalElements,
+      "rotation",
+      selected as NonDeletedExcalidrawElement[],
+      core,
+      false,
+      false,
+      true,
+      pointer.x,
+      pointer.y,
+      bounds.x + bounds.width / 2,
+      bounds.y + bounds.height / 2,
     );
   });
 }
