@@ -8,8 +8,6 @@ import type {
   ExcalidrawElement,
 } from "@excalidraw/element/types";
 
-import type { SceneFile } from "./scene";
-
 /**
  * Keep Excalidraw's version/nonce/timestamp and no-op semantics consistent
  * across the Svelte immutable scene adapter. Never hand-roll metadata bumps.
@@ -25,6 +23,6 @@ export const updateNativeElement = <T extends ExcalidrawElement>(
  * adapter builds the expected map without mounting the React editor.
  */
 export const nativeElementsMap = (
-  scene: Pick<SceneFile, "elements">,
+  scene: { readonly elements: readonly ExcalidrawElement[] },
 ): ElementsMap =>
   new Map(scene.elements.map((element) => [element.id, element])) as ElementsMap;
