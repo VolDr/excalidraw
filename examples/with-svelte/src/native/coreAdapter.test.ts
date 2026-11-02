@@ -18,10 +18,11 @@ import {
   dragNativeSelectionWithCore,
   withNativeCoreScene,
   nativeElementsMap,
+  resizeNativeBoxWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { blankScene, createShape } from "./scene";
-import { moveSelection } from "./transforms";
+import { handleLocations, moveSelection, rotateElement, transformSelected } from "./transforms";
 
 describe("Svelte scene adapter to original Excalidraw core", () => {
   it("uses native Excalidraw constructors for all supported primitives", () => {
@@ -213,6 +214,58 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
     expect(isNativeLinkedArrow(moved, moved.elements[2])).toBe(true);
     expect(moved.elements[1]).toBe(scene.elements[1]);
     expect(scene).toEqual(snapshot);
+  });
+
+  it("resizes unbound boxes with original Excalidraw Scene geometry", () => {
+    for (const type of ["rectangle", "ellipse", "diamond"] as const) {
+      const shape = createShape(type, { x: 10, y: 20 }, { x: 110, y: 70 });
+      const unrelated = {
+        ...createShape("rectangle", { x: 280, y: 100 }, { x: 350, y: 160 }),
+        customData: { external: true },
+      };
+      const source = { ...blankScene(), elements: [shape, unrelated] };
+      const snapshot = structuredClone(source);
+      const next = transformSelected(source, shape.id, "se", { x: 150, y: 100 });
+      expect(next.elements[0].x).toBeCloseTo(shape.x);
+      expect(next.elements[0].y).toBeCloseTo(shape.y);
+      expect(next.elements[0].width).toBeCloseTo(140);
+      expect(next.elements[0].height).toBeCloseTo(80);
+      expect(next.elements[0].version).toBe(shape.version + 1);
+      expect(next.elements[0].index).toBe(shape.index);
+      expect(next.elements[1]).toBe(unrelated);
+      expect(source).toEqual(snapshot);
+    }
+  });
+
+  it("keeps the opposite corner fixed on core resize of a rotated box", () => {
+    const initial = createShape("rectangle", { x: 50, y: 60 }, { x: 150, y: 110 });
+    const rotated = rotateElement(initial, { x: 150, y: 85 });
+    const fixed = handleLocations(rotated).nw;
+    const moving = handleLocations(rotated).se;
+    const scene = { ...blankScene(), elements: [rotated] };
+    const next = resizeNativeBoxWithCore(scene, rotated.id, "se", {
+      x: moving.x - 20,
+      y: moving.y + 40,
+    });
+    const result = handleLocations(next.elements[0]).nw;
+    expect(result.x).toBeCloseTo(fixed.x, 3);
+    expect(result.y).toBeCloseTo(fixed.y, 3);
+    expect(next.elements[0].width).toBeGreaterThan(rotated.width);
+    expect(next.elements[0].index).toBe(rotated.index);
+    expect(scene.elements[0]).toBe(rotated);
+  });
+
+  it("refuses to resize unsupported, locked and bound shapes inside the core adapter", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const other = createShape("rectangle", { x: 150, y: 20 }, { x: 250, y: 120 });
+    const scene = { ...blankScene(), elements: [
+      { ...box, locked: true },
+      { ...other, boundElements: [{ id: "external-arrow", type: "arrow" as const }] },
+    ] };
+    expect(resizeNativeBoxWithCore(scene, box.id, "se", { x: 300, y: 300 })).toBe(scene);
+    expect(resizeNativeBoxWithCore(scene, other.id, "nw", { x: 15, y: 15 })).toBe(scene);
+    expect(resizeNativeBoxWithCore(scene, "missing", "se", { x: 100, y: 100 })).toBe(scene);
+    expect(resizeNativeBoxWithCore(scene, box.id, "se", { x: NaN, y: 100 })).toBe(scene);
   });
 
   it("cleans up both reciprocal sides when deleting an arrow", () => {
