@@ -1,8 +1,14 @@
+import {
+  calculateFixedPointForNonElbowArrowBinding,
+  getGlobalFixedPointForBindableElement,
+} from "@excalidraw/element";
 import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type {
   ExcalidrawElement,
   ExcalidrawArrowElement,
+  ExcalidrawBindableElement,
+  NonDeleted,
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
@@ -175,13 +181,21 @@ const outline = (shape: Box, toward: Point): Point => {
   return world(shape, { x: c.x + dx / divisor, y: c.y + dy / divisor });
 };
 
-const fixedPoint = (shape: Box, at: Point): [number, number] => {
-  const p = local(shape, at);
-  return [
-    Math.max(0, Math.min(1, (p.x - shape.x) / shape.width)),
-    Math.max(0, Math.min(1, (p.y - shape.y) / shape.height)),
-  ];
-};
+/** Derive bindings using the original non-elbow arrow algorithm. */
+const fixedPoint = (
+  scene: SceneFile,
+  arrow: ExcalidrawArrowElement,
+  shape: Box,
+  at: Point,
+  endpoint: End,
+): [number, number] =>
+  calculateFixedPointForNonElbowArrowBinding(
+    arrow as NonDeleted<ExcalidrawArrowElement>,
+    shape as NonDeleted<ExcalidrawBindableElement>,
+    endpoint,
+    nativeElementsMap(scene),
+    pointFrom<GlobalPoint>(at.x, at.y),
+  ).fixedPoint;
 
 const attached = (
   scene: SceneFile,
@@ -191,13 +205,15 @@ const attached = (
     return null;
   }
   const shape = scene.elements.find((item) => item.id === binding.elementId);
-  if (!shape) {
+  if (!shape || !isBox(shape)) {
     return null;
   }
-  return world(shape, {
-    x: shape.x + shape.width * binding.fixedPoint[0],
-    y: shape.y + shape.height * binding.fixedPoint[1],
-  });
+  const [x, y] = getGlobalFixedPointForBindableElement(
+    binding.fixedPoint,
+    shape,
+    nativeElementsMap(scene),
+  );
+  return { x, y };
 };
 
 /** Normalize two world endpoints to Excalidraw's local coordinate system. */
@@ -279,14 +295,14 @@ export function appendNativeArrow(
   const startBinding = startBox
     ? {
         elementId: startBox.id,
-        fixedPoint: fixedPoint(startBox, start),
+        fixedPoint: fixedPoint(scene, arrow, startBox, start, "start"),
         mode: "inside" as const,
       }
     : null;
   const endBinding = endBox
     ? {
         elementId: endBox.id,
-        fixedPoint: fixedPoint(endBox, end),
+        fixedPoint: fixedPoint(scene, arrow, endBox, end, "end"),
         mode: "inside" as const,
       }
     : null;
@@ -355,7 +371,7 @@ export function reconnectNativeEndpoint(
   const binding = shape
     ? {
         elementId: shape.id,
-        fixedPoint: fixedPoint(shape, target),
+        fixedPoint: fixedPoint(scene, el, shape, target, endpoint),
         mode: "inside" as const,
       }
     : null;
