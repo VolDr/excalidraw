@@ -1,3 +1,8 @@
+import { intersectElementWithLineSegment } from "@excalidraw/element";
+import { lineSegment, pointFrom } from "@excalidraw/math";
+
+import type { GlobalPoint } from "@excalidraw/math";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +14,7 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { blankScene, createShape, parseScene, serializeScene } from "./scene";
+import { nativeElementsMap } from "./coreAdapter";
 import {
   deleteSelection,
   moveSelection,
@@ -30,6 +36,57 @@ const makeScene = () => {
 };
 
 describe("native reciprocal arrow binding", () => {
+  it("attaches to official rotated ellipse/diamond outlines rather than a custom approximation", () => {
+    for (const type of ["ellipse", "diamond"] as const) {
+      const base = createShape(type, { x: 50, y: 50 }, { x: 230, y: 170 });
+      const box = {
+        ...base,
+        angle: (Math.PI / 5) as typeof base.angle,
+      };
+      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const toward = { x: 510, y: center.y + 85 };
+      const start = pointFrom<GlobalPoint>(center.x, center.y);
+      const dx = toward.x - center.x;
+      const dy = toward.y - center.y;
+      const norm = Math.hypot(dx, dy);
+      const reach = Math.max(box.width, box.height, norm) * 4;
+      const boundary = intersectElementWithLineSegment(
+        box,
+        nativeElementsMap({ elements: [box] }),
+        lineSegment(
+          start,
+          pointFrom<GlobalPoint>(
+            center.x + (dx / norm) * reach,
+            center.y + (dy / norm) * reach,
+          ),
+        ),
+      );
+      expect(boundary.length).toBeGreaterThan(0);
+
+      const arrow = createShape("arrow", center, toward);
+      const scene = appendNativeArrow(
+        { ...blankScene(), elements: [box] },
+        arrow,
+        center,
+        toward,
+      );
+      const linked = scene.elements[1];
+      expect(isNativeLinkedArrow(scene, linked)).toBe(true);
+      const anchor = nativeLinkedEndpoints(scene, linked)!.start;
+      const nearest = boundary
+        .filter((point) => (point[0] - center.x) * dx + (point[1] - center.y) * dy >= 0)
+        .sort(
+          (a, b) =>
+            Math.hypot(a[0] - center.x, a[1] - center.y) -
+            Math.hypot(b[0] - center.x, b[1] - center.y),
+        )[0];
+      expect(nearest).toBeDefined();
+      expect(anchor.x).toBeCloseTo(nearest[0], 1);
+      expect(anchor.y).toBeCloseTo(nearest[1], 1);
+      expect(syncNativeBindings(scene)).toBe(scene);
+    }
+  });
+
   it("refuses to duplicate linked targets without duplicating their arrows", () => {
     const { left, scene } = makeScene();
     const duplicate = duplicateSelection(scene, [left.id]);
