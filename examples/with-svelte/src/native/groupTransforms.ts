@@ -1,15 +1,15 @@
 import {
   getBoundTextMaxHeight,
   getBoundTextMaxWidth,
+  getCommonBounds,
 } from "@excalidraw/element";
-import { pointFrom } from "@excalidraw/math";
+import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 import type { LocalPoint } from "@excalidraw/math";
 
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { editableSelection, safeGroupMembers } from "./groups";
-import { visualBounds } from "./selection";
 
 import type { Bounds } from "./selection";
 import type { Point, SceneFile } from "./scene";
@@ -100,11 +100,9 @@ export function transformableGroup(
   ) {
     return null;
   }
-  const visual = roots.map(visualBounds);
-  const x = Math.min(...visual.map((box) => box.x));
-  const y = Math.min(...visual.map((box) => box.y));
-  const right = Math.max(...visual.map((box) => box.x + box.width));
-  const bottom = Math.max(...visual.map((box) => box.y + box.height));
+  // Reuse the same type-aware bounds as Excalidraw (including rotated
+  // ellipses, diamonds and two-point arrows).
+  const [x, y, right, bottom] = getCommonBounds(roots);
   if (![x, y, right, bottom].every(Number.isFinite) || right <= x || bottom <= y) {
     return null;
   }
@@ -215,13 +213,14 @@ export function transformGroup(
       x: element.x + element.width / 2,
       y: element.y + element.height / 2,
     };
-    const dx = oldCenter.x - anchor.x;
-    const dy = oldCenter.y - anchor.y;
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
+    const [rotatedX, rotatedY] = pointRotateRads(
+      pointFrom(oldCenter.x, oldCenter.y),
+      pointFrom(anchor.x, anchor.y),
+      radians as ExcalidrawElement["angle"],
+    );
     const center = {
-      x: anchor.x + (dx * cos - dy * sin) * scale,
-      y: anchor.y + (dx * sin + dy * cos) * scale,
+      x: anchor.x + (rotatedX - anchor.x) * scale,
+      y: anchor.y + (rotatedY - anchor.y) * scale,
     };
     const width = element.width * scale;
     const height = element.height * scale;
