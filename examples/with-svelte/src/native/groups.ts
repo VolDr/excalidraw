@@ -264,6 +264,9 @@ export function ungroupSelection(
     (element) =>
       element.groupIds.length === 1 && allowed.has(element.groupIds[0]),
   );
+  const selectedGroupIds = Object.fromEntries(
+    [...allowed].map((groupId) => [groupId, true]),
+  );
   return {
     scene: {
       ...scene,
@@ -272,7 +275,7 @@ export function ungroupSelection(
           ? touch(element, {
               groupIds: removeFromSelectedGroups(
                 element.groupIds,
-                Object.fromEntries([...allowed].map((groupId) => [groupId, true])),
+                selectedGroupIds,
               ),
             })
           : element,
