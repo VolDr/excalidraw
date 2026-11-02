@@ -2,6 +2,7 @@ import {
   calculateFixedPointForNonElbowArrowBinding,
   getGlobalFixedPointForBindableElement,
   intersectElementWithLineSegment,
+  LinearElementEditor,
 } from "@excalidraw/element";
 import { lineSegment, pointFrom, pointRotateRads } from "@excalidraw/math";
 
@@ -132,18 +133,27 @@ const center = (shape: ExcalidrawElement): Point => ({
   y: shape.y + shape.height / 2,
 });
 
+/** Delegate linear geometry to the official editor, including rotation. */
 const worldEndpoints = (
   el: ExcalidrawArrowElement,
 ): { start: Point; end: Point } => {
-  const p = el.points;
+  const map = nativeElementsMap({ elements: [el] });
+  const [sx, sy] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    el,
+    0,
+    map,
+  );
+  const [ex, ey] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    el,
+    -1,
+    map,
+  );
   return {
-    start: world(el, { x: el.x + p[0][0], y: el.y + p[0][1] }),
-    end: world(el, {
-      x: el.x + p[p.length - 1][0],
-      y: el.y + p[p.length - 1][1],
-    }),
+    start: { x: sx, y: sy },
+    end: { x: ex, y: ey },
   };
 };
+
 
 /**
  * Use Excalidraw's actual shape boundary (including rotation and rounded
