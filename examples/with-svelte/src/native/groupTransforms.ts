@@ -12,7 +12,11 @@ import type {
 } from "@excalidraw/element/types";
 
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
-import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
+import {
+  nativeElementsMap,
+  resizeNativeGroupWithCore,
+  updateNativeElement,
+} from "./coreAdapter";
 import { editableSelection, safeGroupMembers } from "./groups";
 
 import type { Bounds } from "./selection";
@@ -214,6 +218,26 @@ export function transformGroup(
 
   if (Math.abs(scale - 1) < 1e-9 && Math.abs(radians) < 1e-9) {
     return scene;
+  }
+
+  // For a plain flat group the original Excalidraw multi-resize owns all
+  // element geometry. Do not route labels/images/lines through this branch
+  // until their core parity and original text/layout behavior are verified.
+  if (
+    handle !== "rotate" &&
+    roots.every((element) =>
+      ["rectangle", "ellipse", "diamond"].includes(element.type) &&
+      element.angle === 0 &&
+      !element.boundElements?.length
+    )
+  ) {
+    return resizeNativeGroupWithCore(
+      scene,
+      roots.map((element) => element.id),
+      handle,
+      scale,
+      bounds,
+    );
   }
 
   const byId = new Map<string, ExcalidrawElement>();
