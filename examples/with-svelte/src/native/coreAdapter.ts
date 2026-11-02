@@ -242,6 +242,13 @@ const acceptCoreLabelResult = (
     boxAfter.boundElements[0].type !== "text" ||
     labelAfter.containerId !== id ||
     labelAfter.originalText !== label.originalText ||
+    !labelAfter.autoResize ||
+    labelAfter.locked ||
+    labelAfter.frameId !== null ||
+    labelAfter.groupIds.length !== 0 ||
+    !Number.isFinite(labelAfter.fontSize) ||
+    Math.abs(Math.sin(labelAfter.angle - boxAfter.angle)) > 1e-6 ||
+    Math.abs(Math.cos(labelAfter.angle - boxAfter.angle) - 1) > 1e-6 ||
     ![boxAfter.x, boxAfter.y, boxAfter.width, boxAfter.height,
       labelAfter.x, labelAfter.y, labelAfter.width, labelAfter.height,
       labelAfter.angle, boxAfter.angle].every(Number.isFinite) ||
