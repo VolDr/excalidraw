@@ -9,6 +9,7 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { canEditIndependently, editableSelection } from "./groups";
+import { updateNativeElement } from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { nativeImageSource } from "./images";
 
@@ -148,16 +149,12 @@ export function resizeElement(
     x: fixed.x + centerOffset.x * cos - centerOffset.y * sin,
     y: fixed.y + centerOffset.x * sin + centerOffset.y * cos,
   };
-  return {
-    ...element,
+  return updateNativeElement(element, {
     x: center.x - width / 2,
     y: center.y - height / 2,
     width,
     height,
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  };
+  });
 }
 
 export function rotateElement(
@@ -174,13 +171,9 @@ export function rotateElement(
   if (angle > Math.PI) {
     angle -= Math.PI * 2;
   }
-  return {
-    ...element,
+  return updateNativeElement(element, {
     angle: angle as ExcalidrawElement["angle"],
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  };
+  });
 }
 
 export function moveSelection(
@@ -201,14 +194,10 @@ export function moveSelection(
       ...scene,
       elements: scene.elements.map((element) =>
         selected.has(element.id)
-          ? {
-              ...element,
+          ? updateNativeElement(element, {
               x: element.x + dx,
               y: element.y + dy,
-              version: element.version + 1,
-              versionNonce: Math.floor(Math.random() * 2 ** 31),
-              updated: Date.now(),
-            }
+            })
           : element,
       ),
     }),
@@ -241,13 +230,7 @@ export function deleteSelection(
     ...unlinked,
     elements: unlinked.elements.map((element) =>
       selected.has(element.id)
-        ? {
-            ...element,
-            isDeleted: true,
-            version: element.version + 1,
-            versionNonce: Math.floor(Math.random() * 2 ** 31),
-            updated: Date.now(),
-          }
+        ? updateNativeElement(element, { isDeleted: true })
         : element,
     ),
   };
@@ -303,13 +286,7 @@ export function flipNativeImage(
     ...scene,
     elements: scene.elements.map((item) =>
       item.id === id
-        ? {
-            ...element,
-            scale: nextScale,
-            version: element.version + 1,
-            versionNonce: Math.floor(Math.random() * 2 ** 31),
-            updated: Date.now(),
-          }
+        ? updateNativeElement(element, { scale: nextScale })
         : item,
     ),
   };
