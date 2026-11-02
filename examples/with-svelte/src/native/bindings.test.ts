@@ -80,7 +80,9 @@ describe("native reciprocal arrow binding", () => {
             Math.hypot(a[0] - center.x, a[1] - center.y) -
             Math.hypot(b[0] - center.x, b[1] - center.y),
         )[0];
-      expect(nearest).toBeDefined();
+      if (!nearest) {
+        throw new Error("Expected the official outline to intersect the ray");
+      }
       expect(anchor.x).toBeCloseTo(nearest[0], 1);
       expect(anchor.y).toBeCloseTo(nearest[1], 1);
       expect(syncNativeBindings(scene)).toBe(scene);
