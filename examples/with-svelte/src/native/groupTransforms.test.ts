@@ -269,6 +269,15 @@ describe("native flat group transforms", () => {
           pointFrom<LocalPoint>(arrow.width, arrow.height),
         ],
       },
+      // Imported points that fail to span their declared width and height
+      // must not be normalized by Excalidraw's rescalePointsInElement.
+      {
+        ...arrow,
+        points: [
+          pointFrom<LocalPoint>(10, 10),
+          pointFrom<LocalPoint>(arrow.width - 10, arrow.height - 10),
+        ],
+      },
     ];
     const routed = {
       ...arrow,
