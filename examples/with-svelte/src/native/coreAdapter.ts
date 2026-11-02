@@ -186,6 +186,76 @@ const safeResizeLabel = (
   return label;
 };
 
+/** Shared safety boundary for core rotation and resize of native boxes. */
+const canCoreTransformBox = (
+  scene: SceneFile,
+  element: ExcalidrawElement,
+  label: ExcalidrawTextElement | null | undefined,
+): boolean =>
+  ["rectangle", "ellipse", "diamond"].includes(element.type) &&
+  !element.isDeleted &&
+  !element.locked &&
+  !element.frameId &&
+  element.groupIds.length === 0 &&
+  label !== undefined &&
+  Number.isFinite(element.width) &&
+  Number.isFinite(element.height) &&
+  element.width > 0 &&
+  element.height > 0 &&
+  !scene.elements.some(
+    (other) =>
+      other.id !== element.id &&
+      !other.isDeleted &&
+      ((other.type === "text" &&
+        other.id !== label?.id &&
+        other.containerId === element.id) ||
+        (other.type === "arrow" &&
+          (other.startBinding?.elementId === element.id ||
+            other.endBinding?.elementId === element.id))),
+  );
+
+/**
+ * Check that core reflow preserved both ends of the only text binding. This
+ * atomic postcondition is shared by native resize and rotation.
+ */
+const acceptCoreLabelResult = (
+  source: SceneFile,
+  result: SceneFile,
+  id: string,
+  label: ExcalidrawTextElement | null,
+): SceneFile => {
+  if (!label || result === source) {
+    return result;
+  }
+  const boxAfter = result.elements.find((item) => item.id === id);
+  const labelAfter = result.elements.find((item) => item.id === label.id);
+  if (
+    !boxAfter ||
+    !labelAfter ||
+    labelAfter.type !== "text" ||
+    boxAfter.isDeleted ||
+    labelAfter.isDeleted ||
+    boxAfter.width <= 20 ||
+    boxAfter.height <= 20 ||
+    boxAfter.boundElements?.length !== 1 ||
+    boxAfter.boundElements[0].id !== label.id ||
+    boxAfter.boundElements[0].type !== "text" ||
+    labelAfter.containerId !== id ||
+    labelAfter.originalText !== label.originalText ||
+    ![boxAfter.x, boxAfter.y, boxAfter.width, boxAfter.height,
+      labelAfter.x, labelAfter.y, labelAfter.width, labelAfter.height,
+      labelAfter.angle, boxAfter.angle].every(Number.isFinite) ||
+    labelAfter.width > getBoundTextMaxWidth(boxAfter, labelAfter) + 0.5 ||
+    labelAfter.height > getBoundTextMaxHeight(
+      boxAfter,
+      labelAfter as ExcalidrawTextElementWithContainer,
+    ) + 0.5
+  ) {
+    return source;
+  }
+  return result;
+};
+
 /**
  * Core single-element resize for plain unbound native boxes. The safety
  * restrictions are intentionally duplicated at this boundary: callers
@@ -203,25 +273,7 @@ export function resizeNativeBoxWithCore(
   const label = element ? safeResizeLabel(scene, element) : undefined;
   if (
     !element ||
-    !["rectangle", "ellipse", "diamond"].includes(element.type) ||
-    element.isDeleted ||
-    element.locked ||
-    element.frameId ||
-    element.groupIds.length ||
-    label === undefined ||
-    !Number.isFinite(element.width) ||
-    !Number.isFinite(element.height) ||
-    element.width <= 0 ||
-    element.height <= 0 ||
-    scene.elements.some(
-      (other) =>
-        other.id !== id &&
-        !other.isDeleted &&
-        ((other.type === "text" && other.id !== label?.id && other.containerId === id) ||
-          (other.type === "arrow" &&
-            (other.startBinding?.elementId === id ||
-              other.endBinding?.elementId === id))),
-    ) ||
+    !canCoreTransformBox(scene, element, label) ||
     !Number.isFinite(pointer.x) ||
     !Number.isFinite(pointer.y)
   ) {
@@ -267,38 +319,53 @@ export function resizeNativeBoxWithCore(
       },
     );
   });
-  if (!label || resized === scene) {
-    return resized;
-  }
-  // The core may resize the text and its container. Commit only if the
-  // original reciprocal relationship and text still fit the final geometry.
-  const boxAfter = resized.elements.find((item) => item.id === id);
-  const labelAfter = resized.elements.find((item) => item.id === label.id);
+  return acceptCoreLabelResult(scene, resized, id, label);
+
+}
+
+/**
+ * Let Excalidraw rotate a single native box and its reciprocal label in one
+ * core Scene transaction; never split text from its container on rotation.
+ */
+export function rotateNativeBoxWithCore(
+  scene: SceneFile,
+  id: string,
+  pointer: { x: number; y: number },
+): SceneFile {
+  const element = scene.elements.find((item) => item.id === id);
+  const label = element ? safeResizeLabel(scene, element) : undefined;
   if (
-    !boxAfter ||
-    !labelAfter ||
-    labelAfter.type !== "text" ||
-    boxAfter.isDeleted ||
-    labelAfter.isDeleted ||
-    boxAfter.width <= 20 ||
-    boxAfter.height <= 20 ||
-    boxAfter.boundElements?.length !== 1 ||
-    boxAfter.boundElements[0].id !== label.id ||
-    boxAfter.boundElements[0].type !== "text" ||
-    labelAfter.containerId !== id ||
-    labelAfter.originalText !== label.originalText ||
-    ![boxAfter.x, boxAfter.y, boxAfter.width, boxAfter.height,
-      labelAfter.x, labelAfter.y, labelAfter.width, labelAfter.height]
-      .every(Number.isFinite) ||
-    labelAfter.width > getBoundTextMaxWidth(boxAfter, labelAfter) + 0.5 ||
-    labelAfter.height > getBoundTextMaxHeight(
-      boxAfter,
-      labelAfter as ExcalidrawTextElementWithContainer,
-    ) + 0.5
+    !element ||
+    !canCoreTransformBox(scene, element, label) ||
+    !Number.isFinite(pointer.x) ||
+    !Number.isFinite(pointer.y)
   ) {
     return scene;
   }
-  return resized;
+  const rotated = withNativeCoreScene(scene, (core) => {
+    const target = core.getNonDeletedElement(id);
+    if (!target) {
+      return;
+    }
+    const originals = new Map<string, NonDeleted<ExcalidrawElement>>();
+    for (const item of core.getNonDeletedElements()) {
+      originals.set(item.id, structuredClone(item));
+    }
+    transformElements(
+      originals,
+      "rotation",
+      [target],
+      core,
+      false,
+      false,
+      false,
+      pointer.x,
+      pointer.y,
+      element.x + element.width / 2,
+      element.y + element.height / 2,
+    );
+  });
+  return acceptCoreLabelResult(scene, rotated, id, label);
 }
 
 /**
