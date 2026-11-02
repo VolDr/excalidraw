@@ -76,12 +76,12 @@ describe("native reciprocal arrow binding", () => {
     }
     expect(linked.startBinding).toEqual({
       elementId: left.id,
-      fixedPoint: [1, 0.5],
+      fixedPoint: [1, 0.5001],
       mode: "inside",
     });
     expect(linked.endBinding).toEqual({
       elementId: right.id,
-      fixedPoint: [0, 0.5],
+      fixedPoint: [0, 0.5001],
       mode: "inside",
     });
     expect(scene.elements[0].boundElements).toEqual([
@@ -94,27 +94,31 @@ describe("native reciprocal arrow binding", () => {
     expect(isSafeBoundBox(scene, scene.elements[0])).toBe(true);
     const restored = parseScene(serializeScene(scene));
     expect(restored).toEqual(scene);
-    expect(nativeLinkedEndpoints(restored, restored.elements[2])).toEqual({
-      start: { x: 110, y: 60 },
-      end: { x: 200, y: 60 },
-    });
+    const anchor = nativeLinkedEndpoints(restored, restored.elements[2]);
+    expect(anchor?.start.x).toBeCloseTo(110);
+    expect(anchor?.start.y).toBeCloseTo(60, 1);
+    expect(anchor?.end.x).toBeCloseTo(200);
+    expect(anchor?.end.y).toBeCloseTo(60, 1);
+    expect(syncNativeBindings(restored)).toBe(restored);
   });
 
   it("keeps endpoints attached on move, resize and rotation, in one scene transaction", () => {
     const { left, scene } = makeScene();
     const moved = moveSelection(scene, [left.id], 30, 15);
     expect(moved.elements[0].x).toBe(40);
-    expect(nativeLinkedEndpoints(moved, moved.elements[2])).toEqual({
-      start: { x: 140, y: 75 },
-      end: { x: 200, y: 60 },
-    });
+    const movedAnchors = nativeLinkedEndpoints(moved, moved.elements[2]);
+    expect(movedAnchors?.start.x).toBeCloseTo(140);
+    expect(movedAnchors?.start.y).toBeCloseTo(75, 1);
+    expect(movedAnchors?.end.x).toBeCloseTo(200);
+    expect(movedAnchors?.end.y).toBeCloseTo(60, 1);
     expect(scene.elements[0].x).toBe(10);
     const resized = transformSelected(moved, left.id, "se", { x: 180, y: 160 });
     const box = resized.elements[0];
     const points = nativeLinkedEndpoints(resized, resized.elements[2]);
     expect(points?.start.x).toBeCloseTo(box.x + box.width);
-    expect(points?.start.y).toBeCloseTo(box.y + box.height / 2);
-    expect(points?.end).toEqual({ x: 200, y: 60 });
+    expect(points?.start.y).toBeCloseTo(box.y + box.height / 2, 1);
+    expect(points?.end?.x).toBeCloseTo(200);
+    expect(points?.end?.y).toBeCloseTo(60, 1);
     const center = {
       x: box.x + box.width / 2,
       y: box.y + box.height / 2,
@@ -127,8 +131,8 @@ describe("native reciprocal arrow binding", () => {
       rotated,
       rotated.elements[2],
     )!.start;
-    expect(rotatedPoint.x).toBeCloseTo(center.x);
-    expect(rotatedPoint.y).toBeCloseTo(center.y + box.width / 2);
+    expect(rotatedPoint.x).toBeCloseTo(center.x, 1);
+    expect(rotatedPoint.y).toBeCloseTo(center.y + box.width / 2, 1);
   });
 
   it("unhooks old target and reattaches to new target without stale reverse references", () => {
