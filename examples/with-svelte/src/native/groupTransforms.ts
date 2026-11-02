@@ -15,6 +15,7 @@ import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import {
   nativeElementsMap,
   resizeNativeGroupWithCore,
+  rotateNativeGroupWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { editableSelection, safeGroupMembers } from "./groups";
@@ -218,6 +219,24 @@ export function transformGroup(
 
   if (Math.abs(scale - 1) < 1e-9 && Math.abs(radians) < 1e-9) {
     return scene;
+  }
+
+  // Excalidraw's original multi-selection rotation also applies directly
+  // to a complete group of plain boxes, including previously rotated boxes.
+  // For labels/images/lines, retain native safety policies until parity.
+  if (
+    handle === "rotate" &&
+    roots.every((element) =>
+      ["rectangle", "ellipse", "diamond"].includes(element.type) &&
+      !element.boundElements?.length
+    )
+  ) {
+    return rotateNativeGroupWithCore(
+      scene,
+      roots.map((element) => element.id),
+      point,
+      bounds,
+    );
   }
 
   // For a plain flat group the original Excalidraw multi-resize owns all
