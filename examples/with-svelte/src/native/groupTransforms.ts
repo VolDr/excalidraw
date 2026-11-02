@@ -254,7 +254,7 @@ export function transformGroup(
         }),
       );
     } else {
-      byId.set(element.id, touch(element, geometry));
+      byId.set(element.id, updateNativeElement(element, geometry));
     }
   }
   const updated = {
