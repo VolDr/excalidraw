@@ -1,6 +1,8 @@
 import {
   dragSelectedElements,
   fixBindingsAfterDeletion,
+  getBoundTextMaxHeight,
+  getBoundTextMaxWidth,
   getNextSingleWidthAndHeightFromPointer,
   resizeMultipleElements,
   transformElements,
@@ -15,6 +17,7 @@ import type {
   ExcalidrawElement,
   NonDeleted,
   NonDeletedExcalidrawElement,
+  ExcalidrawTextElement,
 } from "@excalidraw/element/types";
 import type { PointerDownState } from "@excalidraw/excalidraw/types";
 
@@ -138,6 +141,46 @@ export function dragNativeSelectionWithCore(
 }
 
 /**
+ * A single reciprocal label is safe for core's built-in text-resize handler.
+ * Reject malformed imported links and foreign/locked text before mutation.
+ * Returns null for an independent box and undefined for an unsafe binding.
+ */
+const safeResizeLabel = (
+  scene: SceneFile,
+  element: ExcalidrawElement,
+): ExcalidrawTextElement | null | undefined => {
+  const refs = element.boundElements;
+  if (!refs?.length) {
+    return null;
+  }
+  if (refs.length !== 1 || refs[0].type !== "text") {
+    return undefined;
+  }
+  const label = scene.elements.find((item) => item.id === refs[0].id);
+  if (
+    !label ||
+    label.type !== "text" ||
+    label.isDeleted ||
+    label.locked ||
+    label.frameId ||
+    label.groupIds.length !== 0 ||
+    label.containerId !== element.id ||
+    !label.autoResize ||
+    label.boundElements?.length ||
+    !Number.isFinite(label.fontSize) ||
+    !Number.isFinite(label.width) ||
+    !Number.isFinite(label.height) ||
+    label.width < 0 ||
+    label.height < 0 ||
+    element.width <= 20 ||
+    element.height <= 20
+  ) {
+    return undefined;
+  }
+  return label;
+};
+
+/**
  * Core single-element resize for plain unbound native boxes. The safety
  * restrictions are intentionally duplicated at this boundary: callers
  * may not pass a complex imported element into a Scene mutator.
@@ -151,6 +194,7 @@ export function resizeNativeBoxWithCore(
   pointer: { x: number; y: number },
 ): SceneFile {
   const element = scene.elements.find((item) => item.id === id);
+  const label = element ? safeResizeLabel(scene, element) : undefined;
   if (
     !element ||
     !["rectangle", "ellipse", "diamond"].includes(element.type) ||
@@ -158,7 +202,7 @@ export function resizeNativeBoxWithCore(
     element.locked ||
     element.frameId ||
     element.groupIds.length ||
-    element.boundElements?.length ||
+    label === undefined ||
     !Number.isFinite(element.width) ||
     !Number.isFinite(element.height) ||
     element.width <= 0 ||
@@ -167,7 +211,7 @@ export function resizeNativeBoxWithCore(
       (other) =>
         other.id !== id &&
         !other.isDeleted &&
-        ((other.type === "text" && other.containerId === id) ||
+        ((other.type === "text" && other.id !== label?.id && other.containerId === id) ||
           (other.type === "arrow" &&
             (other.startBinding?.elementId === id ||
               other.endBinding?.elementId === id))),
@@ -187,8 +231,8 @@ export function resizeNativeBoxWithCore(
   if (!Number.isFinite(nextWidth) || !Number.isFinite(nextHeight)) {
     return scene;
   }
-  const minSize = 8;
-  return withNativeCoreScene(scene, (core) => {
+  const minSize = label ? 21 : 8;
+  const resized = withNativeCoreScene(scene, (core) => {
     const latest = core.getNonDeletedElement(id);
     if (!latest) {
       return;
@@ -217,6 +261,35 @@ export function resizeNativeBoxWithCore(
       },
     );
   });
+  if (!label || resized === scene) {
+    return resized;
+  }
+  // The core may resize the text and its container. Commit only if the
+  // original reciprocal relationship and text still fit the final geometry.
+  const boxAfter = resized.elements.find((item) => item.id === id);
+  const labelAfter = resized.elements.find((item) => item.id === label.id);
+  if (
+    !boxAfter ||
+    !labelAfter ||
+    labelAfter.type !== "text" ||
+    boxAfter.isDeleted ||
+    labelAfter.isDeleted ||
+    boxAfter.width <= 20 ||
+    boxAfter.height <= 20 ||
+    boxAfter.boundElements?.length !== 1 ||
+    boxAfter.boundElements[0].id !== label.id ||
+    boxAfter.boundElements[0].type !== "text" ||
+    labelAfter.containerId !== id ||
+    labelAfter.originalText !== label.originalText ||
+    ![boxAfter.x, boxAfter.y, boxAfter.width, boxAfter.height,
+      labelAfter.x, labelAfter.y, labelAfter.width, labelAfter.height]
+      .every(Number.isFinite) ||
+    labelAfter.width > getBoundTextMaxWidth(boxAfter, labelAfter) + 0.5 ||
+    labelAfter.height > getBoundTextMaxHeight(boxAfter, labelAfter) + 0.5
+  ) {
+    return scene;
+  }
+  return resized;
 }
 
 /**
