@@ -48,6 +48,70 @@ describe("native flat group transforms", () => {
     expect(transformableGroup(scene, [box.id, sibling.id, "unknown"])).toBeNull();
   });
 
+  it("uses the original multi-resize for a plain box group without touching other objects", () => {
+    const first = createShape("rectangle", { x: 20, y: 30 }, { x: 120, y: 90 });
+    const second = createShape("ellipse", { x: 200, y: 70 }, { x: 280, y: 170 });
+    const foreign = {
+      ...createShape("diamond", { x: 500, y: 300 }, { x: 590, y: 380 }),
+      customData: { source: "imported", untouched: true },
+    };
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [first, second, foreign] },
+      [first.id, second.id],
+    );
+    const before = structuredClone(grouped.scene);
+    const bounds = transformableGroup(grouped.scene, grouped.ids)!.bounds;
+    const resized = transformGroup(grouped.scene, grouped.ids, "se", {
+      x: bounds.x + bounds.width * 1.5,
+      y: bounds.y + bounds.height * 1.5,
+    });
+    expect(resized).not.toBe(grouped.scene);
+    expect(resized.elements[0].x).toBeCloseTo(20);
+    expect(resized.elements[0].y).toBeCloseTo(30);
+    expect(resized.elements[0].width).toBeCloseTo(150);
+    expect(resized.elements[0].height).toBeCloseTo(90);
+    expect(resized.elements[1].x).toBeCloseTo(290);
+    expect(resized.elements[1].y).toBeCloseTo(90);
+    expect(resized.elements[1].width).toBeCloseTo(120);
+    expect(resized.elements[1].height).toBeCloseTo(150);
+    expect(resized.elements[0].version).toBe(grouped.scene.elements[0].version + 1);
+    expect(resized.elements[1].version).toBe(grouped.scene.elements[1].version + 1);
+    expect(resized.elements[0].index).toBe(grouped.scene.elements[0].index);
+    expect(resized.elements[1].index).toBe(grouped.scene.elements[1].index);
+    expect(resized.elements[2]).toBe(foreign);
+    expect(grouped.scene).toEqual(before);
+    const history = new SceneHistory();
+    history.commit(grouped.scene);
+    expect(history.undo(resized)).toEqual(grouped.scene);
+    expect(history.redo(grouped.scene)).toEqual(resized);
+  });
+
+  it("rejects direct multi-resize when imported group has external relationships", () => {
+    const first = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
+    const second = createShape("diamond", { x: 150, y: 30 }, { x: 250, y: 130 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [first, second] },
+      [first.id, second.id],
+    );
+    const linked = {
+      ...createShape("arrow", { x: 110, y: 60 }, { x: 150, y: 60 }),
+      startBinding: {
+        elementId: first.id,
+        fixedPoint: [1, 0.5] as [number, number],
+        mode: "inside" as const,
+      },
+    };
+    const malformed = {
+      ...grouped.scene,
+      elements: [...grouped.scene.elements, linked],
+    };
+    const bounds = transformableGroup(grouped.scene, grouped.ids)!.bounds;
+    expect(transformGroup(malformed, grouped.ids, "se", {
+      x: bounds.x + bounds.width * 1.5,
+      y: bounds.y + bounds.height * 1.5,
+    })).toBe(malformed);
+  });
+
   it("resizes members uniformly and reflows the reciprocal bound label", () => {
     const { box, sibling, label, scene, ids } = example();
     const { bounds } = transformableGroup(scene, ids)!;
