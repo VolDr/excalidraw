@@ -1,12 +1,7 @@
 import { newElementWith } from "@excalidraw/element";
 
-import type {
-  ElementUpdate,
-} from "@excalidraw/element";
-import type {
-  ElementsMap,
-  ExcalidrawElement,
-} from "@excalidraw/element/types";
+import type { ElementUpdate } from "@excalidraw/element";
+import type { ElementsMap, ExcalidrawElement } from "@excalidraw/element/types";
 
 /**
  * Keep Excalidraw's version/nonce/timestamp and no-op semantics consistent
