@@ -158,8 +158,10 @@ export function isNativeOrbitLinkedArrow(
     el.frameId !== null ||
     el.groupIds.length !== 0 ||
     el.boundElements?.length ||
-    el.fixedSegments?.length ||
+    (el.fixedSegments != null &&
+      (!Array.isArray(el.fixedSegments) || el.fixedSegments.length !== 0)) ||
     el.angle !== 0 ||
+    !Array.isArray(el.points) ||
     el.points.length < 2 ||
     el.points.length > 128 ||
     ![el.x, el.y, el.width, el.height].every(Number.isFinite) ||
@@ -175,10 +177,10 @@ export function isNativeOrbitLinkedArrow(
     return false;
   }
   const refs = [el.startBinding, el.endBinding].filter(
-    (binding) => binding !== null,
+    (binding): binding is NonNullable<typeof el.startBinding> => !!binding,
   );
   if (
-    new Set(refs.map((binding) => binding!.elementId)).size !== refs.length
+    new Set(refs.map((binding) => binding.elementId)).size !== refs.length
   ) {
     return false;
   }
