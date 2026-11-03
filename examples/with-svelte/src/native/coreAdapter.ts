@@ -220,7 +220,17 @@ export function reconnectNativeArrowWithCore(
 
     // Always unbind before binding (including on the same target) so the
     // reciprocal target list cannot accumulate duplicate arrow references.
+    const previousBinding =
+      current[endpoint === "start" ? "startBinding" : "endBinding"];
     unbindBindingElement(current, endpoint, core);
+    const previousTarget = previousBinding
+      ? core.getNonDeletedElement(previousBinding.elementId)
+      : null;
+    // Native scenes represent an empty reverse list with null. Excalidraw's
+    // unbind helper leaves [] in this case; normalize only that representation.
+    if (previousTarget?.boundElements?.length === 0) {
+      core.mutateElement(previousTarget, { boundElements: null });
+    }
     if (nextTarget) {
       // Zoom is only relevant to elbow-arrow snapping; native editor only
       // permits simple non-elbow arrows here and supplies an explicit focus.
@@ -242,7 +252,7 @@ export function reconnectNativeArrowWithCore(
       if (activeBinding) {
         const [x, y] = getGlobalFixedPointForBindableElement(
           activeBinding.fixedPoint,
-          nextTarget,
+          nextTarget as NonDeleted<ExcalidrawBindableElement>,
           core.getNonDeletedElementsMap(),
         );
         const anchoredLocal = LinearElementEditor.createPointAt(
