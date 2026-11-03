@@ -320,6 +320,42 @@ describe("native reciprocal arrow binding", () => {
     }, box.id)).toBe(scene);
   });
 
+  it("refuses malformed imported orphan, duplicate or nonfinite connections", () => {
+    const { left, arrow, scene } = makeScene();
+    const orphan = {
+      ...scene,
+      elements: scene.elements.map((item) =>
+        item.id === left.id ? { ...item, boundElements: null } : item,
+      ),
+    };
+    expect(isSafeBoundBox(orphan, orphan.elements[0])).toBe(false);
+    expect(reconnectNativeEndpoint(orphan, arrow.id, "end", {
+      x: 410, y: 180,
+    })).toBe(orphan);
+
+    const duplicate = {
+      ...scene,
+      elements: scene.elements.map((item) =>
+        item.id === left.id
+          ? {
+              ...item,
+              boundElements: [
+                ...(item.boundElements ?? []),
+                { id: arrow.id, type: "arrow" as const },
+              ],
+            }
+          : item,
+      ),
+    };
+    expect(isSafeBoundBox(duplicate, duplicate.elements[0])).toBe(false);
+    expect(reconnectNativeEndpoint(duplicate, arrow.id, "end", {
+      x: 410, y: 180,
+    })).toBe(duplicate);
+    expect(reconnectNativeEndpoint(scene, arrow.id, "end", {
+      x: Number.NaN, y: 40,
+    })).toBe(scene);
+  });
+
   it("leaves imported complex/orbit arrow bindings untouched", () => {
     const { left, arrow, scene } = makeScene();
     const imported = {
