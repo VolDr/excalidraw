@@ -6,6 +6,7 @@ import {
   getBoundTextMaxHeight,
   getBoundTextMaxWidth,
   getNextSingleWidthAndHeightFromPointer,
+  isElbowArrow,
   LinearElementEditor,
   resizeMultipleElements,
   transformElements,
@@ -752,9 +753,7 @@ export function reconnectNativeOrbitElbowWithCore(
     ? scene.elements.find((item) => item.id === targetId)
     : null;
   if (
-    !arrow ||
-    arrow.type !== "arrow" ||
-    !arrow.elbowed ||
+    !isElbowArrow(arrow) ||
     arrow.isDeleted ||
     arrow.locked ||
     arrow.frameId !== null ||
@@ -779,7 +778,7 @@ export function reconnectNativeOrbitElbowWithCore(
   try {
     return withNativeCoreScene(scene, (core) => {
       const current = core.getNonDeletedElement(arrowId);
-      if (!current || current.type !== "arrow" || !current.elbowed) {
+      if (!current || !isElbowArrow(current)) {
         return;
       }
 
@@ -855,8 +854,7 @@ export function reconnectNativeOrbitElbowWithCore(
 export const canEditNativeElbowArrow = (
   element: ExcalidrawElement,
 ): element is ExcalidrawElbowArrowElement =>
-  element.type === "arrow" &&
-  element.elbowed === true &&
+  isElbowArrow(element) &&
   !element.isDeleted &&
   !element.locked &&
   element.frameId === null &&
@@ -1030,7 +1028,7 @@ export function moveNativeElbowEndpointWithCore(
   try {
     projected = withNativeCoreScene(scene, (core) => {
       const current = core.getNonDeletedElement(id);
-      if (!current || current.type !== "arrow" || !current.elbowed) {
+      if (!current || !isElbowArrow(current)) {
         return;
       }
       const point = LinearElementEditor.createPointAt(
