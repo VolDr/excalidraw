@@ -22,9 +22,13 @@
   import {
     appendNativeArrow,
     isNativeLinkedArrow,
+    isNativeOrbitLinkedArrow,
     nativeLinkedEndpoints,
+    nativeOrbitEndpoints,
     pickNativeLinkedEndpoint,
+    pickNativeOrbitEndpoint,
     reconnectNativeEndpoint,
+    reconnectNativeOrbitEndpoint,
   } from "./native/bindings";
   import {
     createShape,
@@ -699,9 +703,10 @@
       }
       if (selectedId === element.id) {
         const linked = nativeLinkedEndpoints(scene, element);
+        const orbit = nativeOrbitEndpoints(scene, element);
         const elbow = elbowEndpointLocations(element);
-        const points = linked
-          ? [linked.start, linked.end]
+        const points = linked ?? orbit
+          ? [(linked ?? orbit)!.start, (linked ?? orbit)!.end]
           : elbow
             ? [elbow.start, elbow.end]
             : linearPointLocations(element);
@@ -720,7 +725,7 @@
           }
           ctx.restore();
         }
-        if (!linked && !elbow) {
+        if (!linked && !orbit && !elbow) {
           const midpoints = linearSegmentMidpoints(element);
           if (midpoints) {
             ctx.save();
@@ -866,6 +871,7 @@
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
         ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
+           pickNativeOrbitEndpoint(scene, selected, start, 9 / zoom) ??
            pickElbowEndpoint(selected, start, 9 / zoom)) : null;
       pointIndex = !event.shiftKey && selected && !endpoint
         ? pickLinearPoint(selected, start, 9 / zoom) : null;
@@ -979,6 +985,8 @@
         const next = g.endpoint && element &&
           isNativeLinkedArrow(g.original, element)
           ? reconnectNativeEndpoint(g.original, g.id, g.endpoint, point)
+          : g.endpoint && element && isNativeOrbitLinkedArrow(g.original, element)
+            ? reconnectNativeOrbitEndpoint(g.original, g.id, g.endpoint, point)
           : g.endpoint && element && canEditElbowEndpoints(element)
             ? updateElbowEndpoint(g.original, g.id, g.endpoint, point)
             : g.pointIndex !== null
@@ -1266,8 +1274,9 @@
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
     {#if selectedId && scene.elements.some((element) => element.id === selectedId && canEditLinearPoints(element))}
       <span class="zoom">Alt+клик: добавить точку на маркере сегмента / удалить внутренний узел</span>
-    {:else if selectedId && scene.elements.some((element) => element.id === selectedId && canEditElbowEndpoints(element))}
-      <span class="zoom">Угловая стрелка: перетаскивайте конечные маркеры</span>
+    {:else if selectedId && scene.elements.some((element) => element.id === selectedId &&
+      (canEditElbowEndpoints(element) || isNativeOrbitLinkedArrow(scene, element)))}
+      <span class="zoom">Угловая стрелка: перетащите конец на фигуру для orbit-привязки</span>
     {/if}
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
   </div>
