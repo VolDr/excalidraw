@@ -570,6 +570,8 @@ const acceptCoreImageTransform = (
     image.fileId !== prev.fileId ||
     image.status !== prev.status ||
     image.crop !== null ||
+    !Array.isArray(image.scale) ||
+    image.scale.length !== 2 ||
     image.scale[0] !== prev.scale[0] ||
     image.scale[1] !== prev.scale[1] ||
     image.groupIds.length !== 0 ||
@@ -578,6 +580,7 @@ const acceptCoreImageTransform = (
       .every(Number.isFinite) ||
     image.width <= 0 ||
     image.height <= 0 ||
+    Math.abs(image.width / image.height - prev.width / prev.height) > 1e-6 ||
     next.files !== source.files ||
     next.elements.some((item, index) =>
       item.id !== id && item !== source.elements[index]
@@ -624,6 +627,13 @@ export function resizeNativeImageWithCore(
   const scale = nextWidth <= 0 || nextHeight <= 0
     ? minScale
     : Math.max(minScale, nextWidth / image.width);
+  if (
+    !Number.isFinite(scale) ||
+    !Number.isFinite(image.width * scale) ||
+    !Number.isFinite(image.height * scale)
+  ) {
+    return scene;
+  }
   const resized = withNativeCoreScene(scene, (core) => {
     const target = core.getNonDeletedElement(id);
     if (!target || target.type !== "image") {
@@ -715,6 +725,7 @@ const canCoreTransformImage = (scene: SceneFile, id: string): boolean => {
       .every(Number.isFinite) &&
     element.width > 0 &&
     element.height > 0 &&
+    Array.isArray(element.scale) &&
     element.scale.length === 2 &&
     element.scale.every((value) => value === 1 || value === -1) &&
     !scene.elements.some((other) =>
