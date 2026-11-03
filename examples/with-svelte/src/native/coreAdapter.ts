@@ -33,8 +33,6 @@ import type { GlobalPoint } from "@excalidraw/math";
 
 import { nativeImageSource } from "./images";
 
-import { nativeImageSource } from "./images";
-
 import type { SceneFile } from "./scene";
 
 /**
