@@ -14,7 +14,9 @@ import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 import { nativeLabelBox } from "./boundText";
 import {
   bindNewNativeArrowWithCore,
+  canEditNativeElbowArrow,
   nativeElementsMap,
+  reconnectNativeOrbitElbowWithCore,
   reconnectNativeArrowWithCore,
   updateNativeElement,
 } from "./coreAdapter";
@@ -98,9 +100,9 @@ export function isSafeBoundBox(
     return (
       ref.type === "arrow" &&
       !!arrow &&
-      isTwoPointArrow(arrow) &&
-      validBinding(arrow.startBinding) &&
-      validBinding(arrow.endBinding) &&
+      (isTwoPointArrow(arrow) && validBinding(arrow.startBinding) &&
+        validBinding(arrow.endBinding) ||
+        isNativeOrbitLinkedArrow(scene, arrow)) &&
       (arrow.startBinding?.elementId === el.id ||
         arrow.endBinding?.elementId === el.id)
     );
@@ -135,6 +137,87 @@ export function isNativeLinkedArrow(
     }
   }
   return true;
+}
+
+/**
+ * Safe native support for *orbit*-bound, unpinned elbow routes. This
+ * intentionally excludes mixed/malformed imports and multiple arrows per
+ * target until full binding parity is tested. Excalidraw itself owns the
+ * anchor calculation, routing and reciprocal mutation.
+ */
+export function isNativeOrbitLinkedArrow(
+  scene: SceneFile,
+  el: ExcalidrawElement,
+): el is Extract<ExcalidrawArrowElement, { elbowed: true }> {
+  if (
+    el.type !== "arrow" ||
+    !el.elbowed ||
+    el.isDeleted ||
+    el.locked ||
+    el.frameId !== null ||
+    el.groupIds.length !== 0 ||
+    el.boundElements?.length ||
+    el.fixedSegments?.length ||
+    el.angle !== 0 ||
+    el.points.length < 2 ||
+    el.points.length > 128 ||
+    ![el.x, el.y, el.width, el.height].every(Number.isFinite) ||
+    !el.points.every((p) =>
+      p.length === 2 && p.every(Number.isFinite)
+    ) ||
+    !el.points.slice(1).every((p, i) =>
+      Math.abs(p[0] - el.points[i][0]) < 1e-6 ||
+      Math.abs(p[1] - el.points[i][1]) < 1e-6
+    ) ||
+    (!el.startBinding && !el.endBinding)
+  ) {
+    return false;
+  }
+  const refs = [el.startBinding, el.endBinding].filter(
+    (binding) => binding !== null,
+  );
+  if (
+    new Set(refs.map((binding) => binding!.elementId)).size !== refs.length
+  ) {
+    return false;
+  }
+  return refs.every((binding) => {
+    if (
+      !binding ||
+      binding.mode !== "orbit" ||
+      !Array.isArray(binding.fixedPoint) ||
+      binding.fixedPoint.length !== 2 ||
+      !binding.fixedPoint.every(
+        (n) => Number.isFinite(n) && n >= -10 && n <= 10,
+      )
+    ) {
+      return false;
+    }
+    const box = scene.elements.find((item) =>
+      item.id === binding.elementId
+    );
+    return !!box &&
+      isBox(box) &&
+      !box.isDeleted &&
+      !box.locked &&
+      box.frameId === null &&
+      box.groupIds.length === 0 &&
+      box.width >= 8 &&
+      box.height >= 8 &&
+      Number.isFinite(box.angle) &&
+      Array.isArray(box.boundElements) &&
+      box.boundElements.length === 1 &&
+      box.boundElements[0].id === el.id &&
+      box.boundElements[0].type === "arrow" &&
+      !scene.elements.some((other) =>
+        !other.isDeleted &&
+        other.id !== el.id &&
+        ((other.type === "arrow" &&
+          (other.startBinding?.elementId === box.id ||
+            other.endBinding?.elementId === box.id)) ||
+          (other.type === "text" && other.containerId === box.id))
+      );
+  });
 }
 
 const world = (shape: ExcalidrawElement, point: Point): Point => {
