@@ -1,4 +1,4 @@
-import { intersectElementWithLineSegment } from "@excalidraw/element";
+import { intersectElementWithLineSegment, LinearElementEditor } from "@excalidraw/element";
 import { lineSegment, pointFrom } from "@excalidraw/math";
 
 import type { GlobalPoint } from "@excalidraw/math";
@@ -14,7 +14,9 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { blankScene, createShape, parseScene, serializeScene } from "./scene";
-import { nativeElementsMap } from "./coreAdapter";
+import { nativeElementsMap, reconnectNativeArrowWithCore } from "./coreAdapter";
+import { canEditEndpoints } from "./lines";
+import { SceneHistory } from "./history";
 import {
   deleteSelection,
   moveSelection,
@@ -220,6 +222,102 @@ describe("native reciprocal arrow binding", () => {
     expect(isNativeLinkedArrow(reconnected, linked)).toBe(true);
     expect(reconnected.elements[1].boundElements?.[0].id).toBe(arrow.id);
     expect(reconnected.elements[0].boundElements?.[0].id).toBe(arrow.id);
+  });
+
+  it("uses original bind/unbind lifecycle to reconnect to a third shape", () => {
+    const { left, right, arrow, scene } = makeScene();
+    const third = createShape("diamond", { x: 400, y: 20 }, { x: 530, y: 160 });
+    const source = { ...scene, elements: [...scene.elements, third] };
+    const snapshot = structuredClone(source);
+    const changed = reconnectNativeEndpoint(source, arrow.id, "end", {
+      x: third.x + third.width / 2,
+      y: third.y + third.height / 2,
+    });
+    const result = changed.elements[2];
+    expect(result.type).toBe("arrow");
+    if (result.type !== "arrow") {
+      throw new Error("Expected original arrow");
+    }
+    expect(result.startBinding?.elementId).toBe(left.id);
+    expect(result.endBinding?.elementId).toBe(third.id);
+    expect(result.endBinding?.mode).toBe("inside");
+    expect(changed.elements[0].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    expect(changed.elements[1].boundElements).toBeNull();
+    expect(changed.elements[3].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    expect(isNativeLinkedArrow(changed, result)).toBe(true);
+    expect(syncNativeBindings(changed)).toBe(changed);
+    expect(source).toEqual(snapshot);
+    const history = new SceneHistory();
+    history.commit(source);
+    expect(history.undo(changed)).toEqual(source);
+    expect(history.redo(source)).toEqual(changed);
+    expect(parseScene(serializeScene(changed))).toEqual(changed);
+    expect(source.elements[1].boundElements?.[0].id).toBe(arrow.id);
+    expect(source.elements[2].id).toBe(result.id);
+  });
+
+  it("can remove the last bound end without leaving an orphan relationship", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const arrow = createShape("arrow", { x: 110, y: 65 }, { x: 270, y: 65 });
+    const scene = appendNativeArrow(
+      { ...blankScene(), elements: [box] },
+      arrow,
+      { x: 110, y: 65 },
+      { x: 270, y: 65 },
+    );
+    expect(isNativeLinkedArrow(scene, scene.elements[1])).toBe(true);
+    const disconnected = reconnectNativeEndpoint(scene, arrow.id, "start", {
+      x: 160, y: 175,
+    });
+    const result = disconnected.elements[1];
+    expect(result.type).toBe("arrow");
+    if (result.type !== "arrow") {
+      throw new Error("Expected fully detached native arrow");
+    }
+    expect(result.startBinding).toBeNull();
+    expect(result.endBinding).toBeNull();
+    expect(disconnected.elements[0].boundElements).toBeNull();
+    expect(canEditEndpoints(result)).toBe(true);
+    expect(disconnected.elements[0].id).toBe(box.id);
+    expect(disconnected.elements[0].x).toBe(box.x);
+    expect(scene.elements[0].boundElements?.[0].id).toBe(arrow.id);
+    const [start, end] = [
+      LinearElementEditor.getPointAtIndexGlobalCoordinates(
+        result,
+        0,
+        nativeElementsMap(disconnected),
+      ),
+      LinearElementEditor.getPointAtIndexGlobalCoordinates(
+        result,
+        -1,
+        nativeElementsMap(disconnected),
+      ),
+    ];
+    expect(start[0]).toBeCloseTo(160);
+    expect(start[1]).toBeCloseTo(175);
+    expect(end[0]).toBeCloseTo(270);
+    expect(end[1]).toBeCloseTo(65);
+  });
+
+  it("does not issue a Scene mutation when dragging an already free endpoint nowhere", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const arrow = createShape("arrow", { x: 110, y: 65 }, { x: 270, y: 65 });
+    const scene = appendNativeArrow(
+      { ...blankScene(), elements: [box] },
+      arrow,
+      { x: 110, y: 65 },
+      { x: 270, y: 65 },
+    );
+    expect(reconnectNativeEndpoint(scene, arrow.id, "end", { x: 270, y: 65 }))
+      .toBe(scene);
+    expect(reconnectNativeArrowWithCore(scene, arrow.id, "start", {
+      x: Number.NaN,
+      y: 10,
+    }, box.id)).toBe(scene);
   });
 
   it("leaves imported complex/orbit arrow bindings untouched", () => {
