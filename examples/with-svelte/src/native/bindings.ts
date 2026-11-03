@@ -427,7 +427,13 @@ export function reconnectNativeEndpoint(
     return scene;
   }
   const resultArrow = updated.elements.find((item) => item.id === arrowId);
-  if (!resultArrow || !isNativeLinkedArrow(updated, resultArrow)) {
+  if (
+    !resultArrow ||
+    (!isNativeLinkedArrow(updated, resultArrow) &&
+      !(isTwoPointArrow(resultArrow) &&
+        !resultArrow.startBinding &&
+        !resultArrow.endBinding))
+  ) {
     return scene;
   }
   const retained =
