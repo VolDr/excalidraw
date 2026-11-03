@@ -1,19 +1,24 @@
 import {
+  bindBindingElement,
   dragSelectedElements,
   fixBindingsAfterDeletion,
   getBoundTextMaxHeight,
   getBoundTextMaxWidth,
   getNextSingleWidthAndHeightFromPointer,
+  LinearElementEditor,
   resizeMultipleElements,
   transformElements,
   resizeSingleElement,
   newElementWith,
   Scene,
+  unbindBindingElement,
 } from "@excalidraw/element";
 
 import type { ElementUpdate } from "@excalidraw/element";
 import type {
   ElementsMap,
+  ExcalidrawArrowElement,
+  ExcalidrawBindableElement,
   ExcalidrawElement,
   NonDeleted,
   NonDeletedExcalidrawElement,
@@ -21,6 +26,9 @@ import type {
   ExcalidrawTextElementWithContainer,
 } from "@excalidraw/element/types";
 import type { PointerDownState } from "@excalidraw/excalidraw/types";
+import { pointFrom } from "@excalidraw/math";
+
+import type { GlobalPoint } from "@excalidraw/math";
 
 import type { SceneFile } from "./scene";
 
@@ -138,6 +146,93 @@ export function dragNativeSelectionWithCore(
       { x: 0, y: 0 },
       null,
     );
+  });
+}
+
+/**
+ * Reconnect one endpoint of a *validated* ordinary two-point arrow using
+ * Excalidraw's own local point editor and reciprocal binding lifecycle.
+ *
+ * This adapter does not hit-test or decide whether a foreign scene is safe
+ * to edit. Those remain responsibilities of native/bindings.ts. It never
+ * modifies the input scene and refuses missing/deleted/non-simple targets.
+ */
+export function reconnectNativeArrowWithCore(
+  scene: SceneFile,
+  arrowId: string,
+  endpoint: "start" | "end",
+  worldPoint: { x: number; y: number },
+  targetId: string | null,
+): SceneFile {
+  if (!Number.isFinite(worldPoint.x) || !Number.isFinite(worldPoint.y)) {
+    return scene;
+  }
+  const arrow = scene.elements.find((item) => item.id === arrowId);
+  const target = targetId
+    ? scene.elements.find((item) => item.id === targetId)
+    : null;
+  if (
+    !arrow ||
+    arrow.type !== "arrow" ||
+    arrow.isDeleted ||
+    arrow.locked ||
+    arrow.elbowed ||
+    arrow.points.length !== 2 ||
+    arrow.groupIds.length !== 0 ||
+    arrow.frameId !== null ||
+    arrow.boundElements?.length ||
+    (targetId !== null &&
+      (!target ||
+        target.isDeleted ||
+        target.locked ||
+        target.frameId !== null ||
+        target.groupIds.length !== 0 ||
+        !["rectangle", "ellipse", "diamond"].includes(target.type))) ||
+    (targetId !== null &&
+      targetId ===
+        arrow[endpoint === "start" ? "endBinding" : "startBinding"]?.elementId)
+  ) {
+    return scene;
+  }
+  return withNativeCoreScene(scene, (core) => {
+    const current = core.getNonDeletedElement(arrowId);
+    if (!current || current.type !== "arrow") {
+      return;
+    }
+    const nextTarget = targetId ? core.getNonDeletedElement(targetId) : null;
+    const map = core.getNonDeletedElementsMap();
+
+    // Core owns local-coordinate normalization, including when the first
+    // point moves and the second point must stay fixed in world coordinates.
+    const localPoint = LinearElementEditor.createPointAt(
+      current,
+      map,
+      worldPoint.x,
+      worldPoint.y,
+      null,
+    );
+    LinearElementEditor.movePoints(
+      current,
+      core,
+      new Map([[endpoint === "start" ? 0 : 1, { point: localPoint }]]),
+    );
+
+    // Always unbind before binding (including on the same target) so the
+    // reciprocal target list cannot accumulate duplicate arrow references.
+    unbindBindingElement(current, endpoint, core);
+    if (nextTarget) {
+      // Zoom is only relevant to elbow-arrow snapping; native editor only
+      // permits simple non-elbow arrows here and supplies an explicit focus.
+      bindBindingElement(
+        current as NonDeleted<ExcalidrawArrowElement>,
+        nextTarget as NonDeleted<ExcalidrawBindableElement>,
+        "inside",
+        endpoint,
+        core,
+        { value: 1 } as Parameters<typeof bindBindingElement>[5],
+        pointFrom<GlobalPoint>(worldPoint.x, worldPoint.y),
+      );
+    }
   });
 }
 
