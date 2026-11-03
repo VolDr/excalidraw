@@ -67,7 +67,6 @@
     pickLinearPoint,
     pickLinearSegmentMidpoint,
     pickElbowEndpoint,
-    updateElbowEndpoint,
     updateLinearPoint,
     type Endpoint,
   } from "./native/lines";
@@ -988,7 +987,7 @@
           : g.endpoint && element && isNativeOrbitLinkedArrow(g.original, element)
             ? reconnectNativeOrbitEndpoint(g.original, g.id, g.endpoint, point)
           : g.endpoint && element && canEditElbowEndpoints(element)
-            ? updateElbowEndpoint(g.original, g.id, g.endpoint, point)
+            ? reconnectNativeOrbitEndpoint(g.original, g.id, g.endpoint, point)
             : g.pointIndex !== null
               ? updateLinearPoint(g.original, g.id, g.pointIndex, point)
               : g.original;
