@@ -15,7 +15,11 @@ import type {
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { nativeLabelBox } from "./boundText";
-import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
+import {
+  nativeElementsMap,
+  reconnectNativeArrowWithCore,
+  updateNativeElement,
+} from "./coreAdapter";
 import { hitTest } from "./scene";
 
 import type { Point, SceneFile } from "./scene";
@@ -394,43 +398,64 @@ export function reconnectNativeEndpoint(
   const opposite = endpoint === "start" ? "end" : "start";
   const before = worldEndpoints(el);
   const oldBinding = endpoint === "start" ? el.startBinding : el.endBinding;
-  const otherBinding = opposite === "start" ? el.startBinding : el.endBinding;
+  const otherBinding =
+    opposite === "start" ? el.startBinding : el.endBinding;
   const found = findTarget(scene, pointer);
   const shape = found?.id === otherBinding?.elementId ? null : found;
   const target = shape ? outline(scene, shape, before[opposite]) : pointer;
-  const binding = shape
-    ? {
-        elementId: shape.id,
-        fixedPoint: fixedPoint(scene, el, shape, target, endpoint),
-        mode: "inside" as const,
-      }
-    : null;
-  const anchoredTarget = (binding && attached(scene, binding)) || target;
-  const moved = withEndpoints(
-    el,
-    endpoint === "start" ? anchoredTarget : before.start,
-    endpoint === "end" ? anchoredTarget : before.end,
+  if (
+    !shape &&
+    !oldBinding &&
+    Math.hypot(
+      before[endpoint].x - target.x,
+      before[endpoint].y - target.y,
+    ) < EPS
+  ) {
+    return scene;
+  }
+
+  // Excalidraw owns both endpoint normalization and reciprocal binding
+  // updates. The native layer only chooses an eligible target/outline.
+  const updated = reconnectNativeArrowWithCore(
+    scene,
+    arrowId,
+    endpoint,
+    target,
+    shape?.id ?? null,
   );
-  const updated = updateNativeElement(moved, {
-    [endpoint === "start" ? "startBinding" : "endBinding"]: binding,
-  });
-  const elements = scene.elements.map((item) => {
-    if (item.id === arrowId) {
-      return updated;
-    }
-    const had = item.id === oldBinding?.elementId;
-    const has = item.id === shape?.id;
-    if (!had && !has) {
-      return item;
-    }
-    const linkedFromOtherEnd = otherBinding?.elementId === item.id;
-    const remaining = (item.boundElements ?? []).filter(
-      (ref) => ref.id !== arrowId,
-    );
-    if (has || linkedFromOtherEnd) {
-      remaining.push({ id: arrowId, type: "arrow" });
-    }
-    return updateNativeElement(item, { boundElements: remaining.length ? remaining : null });
-  });
-  return { ...scene, elements };
+  if (updated === scene) {
+    return scene;
+  }
+  const resultArrow = updated.elements.find((item) => item.id === arrowId);
+  if (!resultArrow || !isNativeLinkedArrow(updated, resultArrow)) {
+    return scene;
+  }
+  const retained =
+    opposite === "start" ? resultArrow.startBinding : resultArrow.endBinding;
+  if (
+    JSON.stringify(retained) !== JSON.stringify(otherBinding) ||
+    (shape && (endpoint === "start"
+      ? resultArrow.startBinding?.elementId
+      : resultArrow.endBinding?.elementId) !== shape.id) ||
+    (!shape &&
+      (endpoint === "start" ? resultArrow.startBinding : resultArrow.endBinding))
+  ) {
+    return scene;
+  }
+  // The core transaction is adopted only after validating both sides of the
+  // arrow and keeping every unrelated element unchanged.
+  const affected = new Set([
+    arrowId,
+    oldBinding?.elementId,
+    shape?.id,
+  ]);
+  if (
+    updated.elements.some(
+      (item, index) =>
+        !affected.has(item.id) && item !== scene.elements[index],
+    )
+  ) {
+    return scene;
+  }
+  return updated;
 }
