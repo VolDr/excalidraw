@@ -1,6 +1,7 @@
 import {
   getGlobalFixedPointForBindableElement,
   intersectElementWithLineSegment,
+  isElbowArrow,
   LinearElementEditor,
 } from "@excalidraw/element";
 import { lineSegment, pointFrom, pointRotateRads } from "@excalidraw/math";
@@ -151,8 +152,7 @@ export function isNativeOrbitLinkedArrow(
   el: ExcalidrawElement,
 ): el is ExcalidrawElbowArrowElement {
   if (
-    el.type !== "arrow" ||
-    !el.elbowed ||
+    !isElbowArrow(el) ||
     el.isDeleted ||
     el.locked ||
     el.frameId !== null ||
