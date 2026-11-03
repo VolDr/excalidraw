@@ -10,7 +10,17 @@ import {
 import {
   appendNativeArrow,
   isNativeLinkedArrow,
+  isNativeOrbitLinkedArrow,
+  nativeOrbitEndpoints,
+  pickNativeOrbitEndpoint,
+  reconnectNativeOrbitEndpoint,
 } from "./bindings";
+import {
+  deleteSelection,
+  isBoxTransformable,
+  moveSelection,
+  transformSelected,
+} from "./transforms";
 import { SceneHistory } from "./history";
 import { blankScene, createShape, parseScene, serializeScene } from "./scene";
 
@@ -174,6 +184,186 @@ describe("Svelte core-routed unbound elbow arrows", () => {
     const linked = bound.elements.find((item) => item.type === "arrow")!;
     expect(isNativeLinkedArrow(bound, linked)).toBe(true);
     expect(convertArrowToElbow(bound, linked.id)).toBe(bound);
+  });
+
+  it("connects both routed ends through reciprocal orbit links and follows target drag", () => {
+    const left = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const right = createShape("ellipse", { x: 440, y: 20 }, { x: 560, y: 150 });
+    const plain = createShape("arrow", { x: 155, y: 85 }, { x: 410, y: 100 });
+    const source = {
+      ...blankScene(),
+      elements: [left, right, plain],
+      appState: { viewBackgroundColor: "#ffffff", imported: "keep" },
+    };
+    const snapshot = structuredClone(source);
+    const initial = convertArrowToElbow(source, plain.id);
+    expect(initial).not.toBe(source);
+
+    const first = reconnectNativeOrbitEndpoint(
+      initial, plain.id, "start", { x: 70, y: 70 },
+    );
+    expect(first).not.toBe(initial);
+    const singlyLinked = first.elements[2];
+    expect(isNativeOrbitLinkedArrow(first, singlyLinked)).toBe(true);
+    if (singlyLinked.type !== "arrow") {
+      throw new Error("Expected routed arrow");
+    }
+    expect(singlyLinked.startBinding?.mode).toBe("orbit");
+    expect(singlyLinked.startBinding?.elementId).toBe(left.id);
+    expect(singlyLinked.endBinding).toBeNull();
+    expect(first.elements[0].boundElements).toEqual([
+      { id: plain.id, type: "arrow" },
+    ]);
+    expect(first.elements[1]).toBe(right);
+
+    const connected = reconnectNativeOrbitEndpoint(
+      first, plain.id, "end", { x: 495, y: 84 },
+    );
+    expect(connected).not.toBe(first);
+    const linked = connected.elements[2];
+    ortho(linked);
+    expect(isNativeOrbitLinkedArrow(connected, linked)).toBe(true);
+    if (linked.type !== "arrow") {
+      throw new Error("Expected core-bound elbow");
+    }
+    expect(linked.startBinding?.mode).toBe("orbit");
+    expect(linked.endBinding?.mode).toBe("orbit");
+    expect(linked.startBinding?.elementId).toBe(left.id);
+    expect(linked.endBinding?.elementId).toBe(right.id);
+    expect(connected.elements[0].boundElements).toEqual([
+      { id: plain.id, type: "arrow" },
+    ]);
+    expect(connected.elements[1].boundElements).toEqual([
+      { id: plain.id, type: "arrow" },
+    ]);
+    expect(nativeOrbitEndpoints(connected, linked)).not.toBeNull();
+    const start = nativeOrbitEndpoints(connected, linked)!.start;
+    expect(pickNativeOrbitEndpoint(connected, linked, start)).toBe("start");
+    expect(isBoxTransformable(connected.elements[0], connected)).toBe(false);
+
+    const dragged = moveSelection(connected, [left.id], 50, 25);
+    expect(dragged).not.toBe(connected);
+    expect(dragged.elements[0].x).toBeCloseTo(left.x + 50);
+    expect(dragged.elements[0].y).toBeCloseTo(left.y + 25);
+    expect(isNativeOrbitLinkedArrow(dragged, dragged.elements[2])).toBe(true);
+    ortho(dragged.elements[2]);
+    const newStart = nativeOrbitEndpoints(dragged, dragged.elements[2])!.start;
+    expect(Math.hypot(newStart.x - start.x, newStart.y - start.y))
+      .toBeGreaterThan(10);
+    expect(dragged.elements[1]).toBe(connected.elements[1]);
+    expect(connected.elements[0].x).toBe(left.x);
+    expect(source).toEqual(snapshot);
+    const history = new SceneHistory();
+    history.commit(connected);
+    expect(history.undo(dragged)).toEqual(connected);
+    expect(history.redo(connected)).toEqual(dragged);
+    expect(parseScene(serializeScene(dragged))).toEqual(dragged);
+  });
+
+  it("rebinds to a new target and detaches the original orbit reference", () => {
+    const firstBox = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const secondBox = createShape("diamond", { x: 300, y: 25 }, { x: 420, y: 135 });
+    const thirdBox = createShape("ellipse", { x: 530, y: 25 }, { x: 670, y: 150 });
+    const arrow = createShape("arrow", { x: 155, y: 75 }, { x: 270, y: 85 });
+    const source = {
+      ...blankScene(),
+      elements: [firstBox, secondBox, thirdBox, arrow],
+    };
+    const routed = convertArrowToElbow(source, arrow.id);
+    const first = reconnectNativeOrbitEndpoint(
+      routed, arrow.id, "start", { x: 60, y: 70 },
+    );
+    const withSecond = reconnectNativeOrbitEndpoint(
+      first, arrow.id, "end", { x: 360, y: 80 },
+    );
+    expect(isNativeOrbitLinkedArrow(withSecond, withSecond.elements[3]))
+      .toBe(true);
+    const moved = reconnectNativeOrbitEndpoint(
+      withSecond, arrow.id, "end", { x: 600, y: 80 },
+    );
+    expect(moved).not.toBe(withSecond);
+    expect(moved.elements[1].boundElements).toBeNull();
+    expect(moved.elements[2].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    expect(isNativeOrbitLinkedArrow(moved, moved.elements[3])).toBe(true);
+    if (moved.elements[3].type !== "arrow") {
+      throw new Error("Expected orbit arrow");
+    }
+    expect(moved.elements[3].endBinding?.elementId).toBe(thirdBox.id);
+    expect(moved.elements[3].startBinding?.elementId).toBe(firstBox.id);
+
+    const detached = reconnectNativeOrbitEndpoint(
+      moved, arrow.id, "end", { x: 455, y: 240 },
+    );
+    expect(detached).not.toBe(moved);
+    expect(detached.elements[2].boundElements).toBeNull();
+    expect(isNativeOrbitLinkedArrow(detached, detached.elements[3])).toBe(true);
+    const unbound = reconnectNativeOrbitEndpoint(
+      detached, arrow.id, "start", { x: 160, y: 225 },
+    );
+    expect(unbound).not.toBe(detached);
+    expect(unbound.elements[0].boundElements).toBeNull();
+    expect(canEditElbowEndpoints(unbound.elements[3])).toBe(true);
+    expect(unbound.elements[3].type).toBe("arrow");
+    const deletedArrow = deleteSelection(moved, [arrow.id]);
+    expect(deletedArrow.elements[3].isDeleted).toBe(true);
+    expect(deletedArrow.elements[0].boundElements).toBeNull();
+    expect(deletedArrow.elements[2].boundElements).toBeNull();
+    const removedBox = deleteSelection(moved, [thirdBox.id]);
+    expect(removedBox.elements[2].isDeleted).toBe(true);
+    expect(removedBox.elements[3].type).toBe("arrow");
+    if (removedBox.elements[3].type === "arrow") {
+      expect(removedBox.elements[3].endBinding).toBeNull();
+      expect(removedBox.elements[3].startBinding?.elementId).toBe(firstBox.id);
+    }
+  });
+
+  it("refuses foreign orbit references, invalid target types and box resizing", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const arrow = createShape("arrow", { x: 155, y: 75 }, { x: 340, y: 85 });
+    const initial = convertArrowToElbow(
+      { ...blankScene(), elements: [box, arrow] },
+      arrow.id,
+    );
+    const orphan = {
+      ...initial,
+      elements: [
+        { ...box, boundElements: [{ id: arrow.id, type: "arrow" as const }] },
+        initial.elements[1],
+      ],
+    };
+    expect(reconnectNativeOrbitEndpoint(
+      orphan, arrow.id, "start", { x: 70, y: 75 },
+    )).toBe(orphan);
+    expect(reconnectNativeOrbitEndpoint(
+      initial, arrow.id, "end", { x: Number.NaN, y: 75 },
+    )).toBe(initial);
+    const linked = reconnectNativeOrbitEndpoint(
+      initial, arrow.id, "start", { x: 70, y: 75 },
+    );
+    expect(isNativeOrbitLinkedArrow(linked, linked.elements[1])).toBe(true);
+    expect(transformSelected(
+      linked, box.id, "se", { x: 240, y: 190 },
+    )).toBe(linked);
+    const corrupt = {
+      ...linked,
+      elements: [
+        linked.elements[0],
+        {
+          ...linked.elements[1],
+          startBinding: {
+            elementId: box.id,
+            mode: "inside" as const,
+            fixedPoint: [1, 0.5] as [number, number],
+          },
+        },
+      ],
+    };
+    expect(isNativeOrbitLinkedArrow(corrupt, corrupt.elements[1])).toBe(false);
+    expect(reconnectNativeOrbitEndpoint(
+      corrupt, arrow.id, "start", { x: 200, y: 80 },
+    )).toBe(corrupt);
   });
 
   it("rejects manually fixed elbow segments and foreign references", () => {
