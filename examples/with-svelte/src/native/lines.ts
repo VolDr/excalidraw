@@ -1,10 +1,9 @@
 import { LinearElementEditor } from "@excalidraw/element";
-import { pointFrom } from "@excalidraw/math";
-
 import type { ExcalidrawElement } from "@excalidraw/element/types";
-import type { LocalPoint } from "@excalidraw/math";
 
-import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
+import { moveNativeLinearEndpointWithCore, nativeElementsMap } from "./coreAdapter";
+
+import { blankScene } from "./scene";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -21,9 +20,13 @@ export function canEditEndpoints(element: ExcalidrawElement): boolean {
     !element.boundElements?.length &&
     !element.startBinding &&
     !element.endBinding &&
-    (element.type === "line" ||
-      ("elbowed" in element && element.elbowed === false)) &&
-    element.points.length === 2
+    (element.type === "line"
+      ? !element.polygon
+      : element.elbowed === false) &&
+    element.points.length === 2 &&
+    [element.x, element.y, element.width, element.height, element.angle]
+      .every(Number.isFinite) &&
+    element.points.every((point) => point.every(Number.isFinite))
   );
 }
 
@@ -72,45 +75,37 @@ export function pickEndpoint(
 }
 
 /**
- * Rewrite endpoints in world space and normalize to an unrotated, two-point
- * Excalidraw element. The endpoint opposite the dragged one stays fixed.
+ * Framework-neutral compatibility wrapper around the core Scene point
+ * editor. Direct callers still receive an element; scene callers preserve
+ * all unrelated objects, index metadata and the original snapshot.
  */
 export function moveEndpoint(
   element: ExcalidrawElement,
   endpoint: Endpoint,
   target: Point,
 ): ExcalidrawElement {
-  const points = endpointLocations(element);
-  if (!points || (element.type !== "line" && element.type !== "arrow")) {
+  if (!canEditEndpoints(element)) {
     return element;
   }
-  const start = endpoint === "start" ? target : points.start;
-  const end = endpoint === "end" ? target : points.end;
-  const x = Math.min(start.x, end.x);
-  const y = Math.min(start.y, end.y);
-  return updateNativeElement(element, {
-    x,
-    y,
-    width: Math.abs(end.x - start.x),
-    height: Math.abs(end.y - start.y),
-    angle: 0 as ExcalidrawElement["angle"],
-    points: [
-      pointFrom<LocalPoint>(start.x - x, start.y - y),
-      pointFrom<LocalPoint>(end.x - x, end.y - y),
-    ],
-  });
+  const source = { ...blankScene(), elements: [element] };
+  const updated = moveNativeLinearEndpointWithCore(
+    source,
+    element.id,
+    endpoint,
+    target,
+  );
+  return updated.elements[0];
 }
 
+/** Edit the selected line inside an isolated original Excalidraw Scene. */
 export function updateLineEndpoint(
   scene: SceneFile,
   id: string,
   endpoint: Endpoint,
   target: Point,
 ): SceneFile {
-  return {
-    ...scene,
-    elements: scene.elements.map((element) =>
-      element.id === id ? moveEndpoint(element, endpoint, target) : element,
-    ),
-  };
+  const item = scene.elements.find((element) => element.id === id);
+  return item && canEditEndpoints(item)
+    ? moveNativeLinearEndpointWithCore(scene, id, endpoint, target)
+    : scene;
 }
