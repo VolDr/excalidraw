@@ -369,6 +369,140 @@ export function reconnectNativeArrowWithCore(
 }
 
 /**
+ * Move the endpoint of a canonical two-point linear element using the
+ * original LinearElementEditor, rather than reconstructing world/local
+ * geometry or version metadata in Svelte.
+ *
+ * Excalidraw's point editor assumes the first local point is [0,0].
+ * Imported and newly drawn reversed lines may not satisfy that invariant;
+ * its own normalization helper fixes this on the private Scene before
+ * invoking movePoints. Only the resulting geometry is adopted, with a
+ * single official newElementWith metadata update.
+ */
+export function moveNativeLinearEndpointWithCore(
+  scene: SceneFile,
+  id: string,
+  endpoint: "start" | "end",
+  pointer: { x: number; y: number },
+): SceneFile {
+  const original = scene.elements.find((item) => item.id === id);
+  if (
+    !original ||
+    (original.type !== "line" && original.type !== "arrow") ||
+    original.isDeleted ||
+    original.locked ||
+    original.frameId !== null ||
+    original.groupIds.length !== 0 ||
+    original.boundElements?.length ||
+    original.startBinding ||
+    original.endBinding ||
+    (original.type === "line" && original.polygon) ||
+    (original.type === "arrow" && original.elbowed) ||
+    original.points.length !== 2 ||
+    !Number.isFinite(original.x) ||
+    !Number.isFinite(original.y) ||
+    !Number.isFinite(original.width) ||
+    !Number.isFinite(original.height) ||
+    !Number.isFinite(original.angle) ||
+    original.points.some((point) => !point.every(Number.isFinite)) ||
+    !Number.isFinite(pointer.x) ||
+    !Number.isFinite(pointer.y)
+  ) {
+    return scene;
+  }
+  const sourceMap = nativeElementsMap(scene);
+  const sourcePoints = [
+    LinearElementEditor.getPointAtIndexGlobalCoordinates(original, 0, sourceMap),
+    LinearElementEditor.getPointAtIndexGlobalCoordinates(original, -1, sourceMap),
+  ] as const;
+  const index = endpoint === "start" ? 0 : 1;
+  const other = index === 0 ? 1 : 0;
+  if (
+    Math.hypot(
+      sourcePoints[index][0] - pointer.x,
+      sourcePoints[index][1] - pointer.y,
+    ) < 1e-8
+  ) {
+    return scene;
+  }
+
+  const projected = withNativeCoreScene(scene, (core) => {
+    const current = core.getNonDeletedElement(id);
+    if (!current || (current.type !== "line" && current.type !== "arrow")) {
+      return;
+    }
+    // Original Excalidraw normalization, preserving world-space geometry.
+    if (Math.abs(current.points[0][0]) > 1e-8 ||
+        Math.abs(current.points[0][1]) > 1e-8) {
+      const normalized =
+        LinearElementEditor.getNormalizeElementPointsAndCoords(current);
+      core.mutateElement(current, normalized);
+    }
+    const point = LinearElementEditor.createPointAt(
+      current,
+      core.getNonDeletedElementsMap(),
+      pointer.x,
+      pointer.y,
+      null,
+    );
+    LinearElementEditor.movePoints(
+      current,
+      core,
+      new Map([[index, { point }]]),
+    );
+  });
+  if (projected === scene) {
+    return scene;
+  }
+  const changed = projected.elements.find((item) => item.id === id);
+  if (!changed || (changed.type !== "line" && changed.type !== "arrow")) {
+    return scene;
+  }
+  const changedMap = nativeElementsMap(projected);
+  const afterPoints = [
+    LinearElementEditor.getPointAtIndexGlobalCoordinates(changed, 0, changedMap),
+    LinearElementEditor.getPointAtIndexGlobalCoordinates(changed, -1, changedMap),
+  ] as const;
+  // Never adopt an unexpected core point migration if either endpoint drifts.
+  if (
+    Math.hypot(
+      afterPoints[other][0] - sourcePoints[other][0],
+      afterPoints[other][1] - sourcePoints[other][1],
+    ) > 0.01 ||
+    Math.hypot(
+      afterPoints[index][0] - pointer.x,
+      afterPoints[index][1] - pointer.y,
+    ) > 0.01 ||
+    !Number.isFinite(changed.x) ||
+    !Number.isFinite(changed.y) ||
+    !Number.isFinite(changed.width) ||
+    !Number.isFinite(changed.height) ||
+    changed.points.some((point) => !point.every(Number.isFinite)) ||
+    projected.elements.some((item, idx) =>
+      item.id !== id && item !== scene.elements[idx]
+    )
+  ) {
+    return scene;
+  }
+  const updated = updateNativeElement(original, {
+    x: changed.x,
+    y: changed.y,
+    width: changed.width,
+    height: changed.height,
+    angle: changed.angle,
+    points: changed.points,
+  });
+  return updated === original
+    ? scene
+    : {
+        ...scene,
+        elements: scene.elements.map((item) =>
+          item.id === id ? updated : item,
+        ),
+      };
+}
+
+/**
  * A single reciprocal label is safe for core's built-in text-resize handler.
  * Reject malformed imported links and foreign/locked text before mutation.
  * Returns null for an independent box and undefined for an unsafe binding.
