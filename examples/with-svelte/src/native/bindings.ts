@@ -1,5 +1,4 @@
 import {
-  calculateFixedPointForNonElbowArrowBinding,
   getGlobalFixedPointForBindableElement,
   intersectElementWithLineSegment,
   LinearElementEditor,
@@ -9,13 +8,12 @@ import { lineSegment, pointFrom, pointRotateRads } from "@excalidraw/math";
 import type {
   ExcalidrawElement,
   ExcalidrawArrowElement,
-  ExcalidrawBindableElement,
-  NonDeleted,
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
 import { nativeLabelBox } from "./boundText";
 import {
+  bindNewNativeArrowWithCore,
   nativeElementsMap,
   reconnectNativeArrowWithCore,
   updateNativeElement,
@@ -228,22 +226,6 @@ const outline = (scene: SceneFile, shape: Box, toward: Point): Point => {
   });
 };
 
-/** Derive bindings using the original non-elbow arrow algorithm. */
-const fixedPoint = (
-  scene: SceneFile,
-  arrow: ExcalidrawArrowElement,
-  shape: Box,
-  at: Point,
-  endpoint: End,
-): [number, number] =>
-  calculateFixedPointForNonElbowArrowBinding(
-    arrow as NonDeleted<ExcalidrawArrowElement>,
-    shape as NonDeleted<ExcalidrawBindableElement>,
-    endpoint,
-    nativeElementsMap(scene),
-    pointFrom<GlobalPoint>(at.x, at.y),
-  ).fixedPoint;
-
 const attached = (
   scene: SceneFile,
   binding: ExcalidrawArrowElement["startBinding"],
@@ -339,39 +321,26 @@ export function appendNativeArrow(
     ? outline(scene, endBox, startBox ? center(startBox) : startAt)
     : endAt;
   const arrow = withEndpoints(element, start, end);
-  const startBinding = startBox
-    ? {
-        elementId: startBox.id,
-        fixedPoint: fixedPoint(scene, arrow, startBox, start, "start"),
-        mode: "inside" as const,
-      }
-    : null;
-  const endBinding = endBox
-    ? {
-        elementId: endBox.id,
-        fixedPoint: fixedPoint(scene, arrow, endBox, end, "end"),
-        mode: "inside" as const,
-      }
-    : null;
-  const bound = { ...arrow, startBinding, endBinding };
-  // Match the official normalized fixed points immediately so the first
-  // subsequent sync is a no-op (and cannot make the arrow visibly jump).
-  const anchored = withEndpoints(
-    bound,
-    (startBinding && attached(scene, startBinding)) || start,
-    (endBinding && attached(scene, endBinding)) || end,
+  const created = {
+    ...scene,
+    elements: [...scene.elements, arrow],
+  };
+  if (!startBox && !endBox) {
+    return created;
+  }
+  const linked = bindNewNativeArrowWithCore(
+    created,
+    arrow.id,
+    startBox?.id ?? null,
+    endBox?.id ?? null,
+    { start, end },
   );
-  const elements = scene.elements.map((el) =>
-    el.id === startBox?.id || el.id === endBox?.id
-      ? updateNativeElement(el, {
-          boundElements: [
-            ...(el.boundElements ?? []),
-            { id: element.id, type: "arrow" as const },
-          ],
-        })
-      : el,
-  );
-  return { ...scene, elements: [...elements, anchored] };
+  const result = linked.elements.find((item) => item.id === arrow.id);
+  // Do not export inconsistent links in the event core rejects a malformed
+  // imported target. Preserve the user's new arrow as an unbound shape.
+  return result && isNativeLinkedArrow(linked, result)
+    ? linked
+    : created;
 }
 
 export function pickNativeLinkedEndpoint(
