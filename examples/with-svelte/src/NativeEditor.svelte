@@ -52,8 +52,13 @@
     type Handle,
   } from "./native/transforms";
   import {
+    canEditLinearPoints,
+    deleteLinearMidpoint,
+    insertLinearMidpoint,
     linearPointLocations,
+    linearSegmentMidpoints,
     pickLinearPoint,
+    pickLinearSegmentMidpoint,
     updateLinearPoint,
     type Endpoint,
   } from "./native/lines";
@@ -707,6 +712,22 @@
           }
           ctx.restore();
         }
+        if (!linked) {
+          const midpoints = linearSegmentMidpoints(element);
+          if (midpoints) {
+            ctx.save();
+            ctx.fillStyle = theme === "dark" ? "#b9b6fc" : "#6965db";
+            ctx.strokeStyle = theme === "dark" ? "#282637" : "#fff";
+            ctx.lineWidth = 1 / zoom;
+            for (const p of midpoints) {
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, 3.5 / zoom, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+        }
       }
     }
     const selectedGroup = transformableGroup(scene, selectedIds);
@@ -769,6 +790,40 @@
     }
     viewport.focus({ preventScroll: true });
     const start = getPoint(event);
+    // Alt-click on a selected internal point removes it; Alt-click on a
+    // visible segment midpoint inserts a point. Both are atomic history
+    // operations, not drag gestures, and are implemented by core Scene APIs.
+    if (
+      tool === "selection" &&
+      event.button === 0 &&
+      event.altKey &&
+      !event.shiftKey &&
+      selectedId
+    ) {
+      const selected = scene.elements.find((element) => element.id === selectedId);
+      if (selected && canEditLinearPoints(selected)) {
+        const vertex = pickLinearPoint(selected, start, 9 / zoom);
+        if (vertex !== null) {
+          event.preventDefault();
+          if (vertex > 0 && vertex < selected.points.length - 1) {
+            const next = deleteLinearMidpoint(scene, selectedId, vertex);
+            if (next !== scene) {
+              commit(scene, next);
+            }
+          }
+          return;
+        }
+        const segment = pickLinearSegmentMidpoint(selected, start, 9 / zoom);
+        if (segment !== null) {
+          event.preventDefault();
+          const next = insertLinearMidpoint(scene, selectedId, segment);
+          if (next !== scene) {
+            commit(scene, next);
+          }
+          return;
+        }
+      }
+    }
     if (tool === "text" && event.button === 0) {
       // A click normally shifts focus back to the viewport after pointerdown,
       // immediately blurring (and committing) the newly mounted textarea.
@@ -1181,6 +1236,9 @@
     <button disabled={!selectedIds.length} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
     <span class="zoom">{Math.round(zoom * 100)}%</span>
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
+    {#if selectedId && scene.elements.some((element) => element.id === selectedId && canEditLinearPoints(element))}
+      <span class="zoom">Alt+клик: добавить точку на маркере сегмента / удалить внутренний узел</span>
+    {/if}
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
   </div>
 
