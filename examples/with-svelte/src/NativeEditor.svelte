@@ -52,9 +52,9 @@
     type Handle,
   } from "./native/transforms";
   import {
-    endpointLocations,
-    pickEndpoint,
-    updateLineEndpoint,
+    linearPointLocations,
+    pickLinearPoint,
+    updateLinearPoint,
     type Endpoint,
   } from "./native/lines";
   import {
@@ -185,6 +185,7 @@
     ids: string[];
     handle: Handle | null;
     endpoint: Endpoint | null;
+    pointIndex: number | null;
     initialSelection: string[];
     draft: ExcalidrawElement | null;
     changed: boolean;
@@ -687,15 +688,20 @@
         ctx.stroke();
       }
       if (selectedId === element.id) {
-        const locations = nativeLinkedEndpoints(scene, element) ?? endpointLocations(element);
-        if (locations) {
+        const linked = nativeLinkedEndpoints(scene, element);
+        const points = linked
+          ? [linked.start, linked.end]
+          : linearPointLocations(element);
+        if (points) {
           ctx.save();
           ctx.fillStyle = theme === "dark" ? "#282637" : "#fff";
           ctx.strokeStyle = "#6965db";
           ctx.lineWidth = 1.5 / zoom;
-          for (const p of [locations.start, locations.end]) {
+          for (const [pointIndex, p] of points.entries()) {
+            const radius = pointIndex === 0 || pointIndex === points.length - 1
+              ? 5 : 4;
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 5 / zoom, 0, Math.PI * 2);
+            ctx.arc(p.x, p.y, radius / zoom, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
           }
@@ -783,6 +789,7 @@
     let ids: string[] = [];
     let handle: Handle | null = null;
     let endpoint: Endpoint | null = null;
+    let pointIndex: number | null = null;
     const initialSelection = [...selectedIds];
     let draft: ExcalidrawElement | null = null;
 
@@ -795,8 +802,9 @@
         : null;
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
-        ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
-            pickEndpoint(selected, start, 9 / zoom)) : null;
+        ? pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) : null;
+      pointIndex = !event.shiftKey && selected && !endpoint
+        ? pickLinearPoint(selected, start, 9 / zoom) : null;
       handle = !event.shiftKey && selected
         ? pickHandle(selected, start, 9 / zoom, scene) : null;
       if (groupHandle && group) {
@@ -804,7 +812,7 @@
         id = group.id;
         handle = groupHandle;
         ids = [...selectedIds];
-      } else if (endpoint && selectedId) {
+      } else if ((endpoint || pointIndex !== null) && selectedId) {
         action = "endpoint";
         id = selectedId;
         ids = [selectedId];
@@ -850,6 +858,7 @@
       ids,
       handle,
       endpoint,
+      pointIndex,
       initialSelection,
       draft,
       changed: false,
@@ -899,13 +908,20 @@
           onChange(next);
         }
       }
-    } else if (g.action === "endpoint" && g.id && g.endpoint) {
+    } else if (g.action === "endpoint" && g.id &&
+               (g.endpoint || g.pointIndex !== null)) {
       if (Math.hypot(dx, dy) > 0.2) {
-        g.changed = true;
         const element = g.original.elements.find((item) => item.id === g.id);
-        onChange(element && isNativeLinkedArrow(g.original, element)
+        const next = g.endpoint && element &&
+          isNativeLinkedArrow(g.original, element)
           ? reconnectNativeEndpoint(g.original, g.id, g.endpoint, point)
-          : updateLineEndpoint(g.original, g.id, g.endpoint, point));
+          : g.pointIndex !== null
+            ? updateLinearPoint(g.original, g.id, g.pointIndex, point)
+            : g.original;
+        if (next !== g.original) {
+          g.changed = true;
+          onChange(next);
+        }
       }
     } else if (g.action === "select") {
       if (Math.hypot(dx, dy) > 4 / zoom) {
