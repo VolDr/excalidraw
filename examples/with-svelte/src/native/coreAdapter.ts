@@ -838,8 +838,6 @@ export function reconnectNativeOrbitElbowWithCore(
         current,
         {
           points: [...current.points],
-          startBinding: current.startBinding,
-          endBinding: current.endBinding,
         },
         { isBindingEnabled: false },
       );
