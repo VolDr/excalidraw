@@ -112,6 +112,9 @@ describe("Svelte core-routed unbound elbow arrows", () => {
 
   it("rejects unsafe imports, bindings and unchanged endpoints without edits", () => {
     const arrow = createShape("arrow", { x: 30, y: 40 }, { x: 280, y: 170 });
+    if (arrow.type !== "arrow") {
+      throw new Error("Expected arrow");
+    }
     const scene = { ...blankScene(), elements: [arrow] };
     const routed = convertArrowToElbow(scene, arrow.id);
     const result = routed.elements[0];
@@ -192,7 +195,7 @@ describe("Svelte core-routed unbound elbow arrows", () => {
           start: [0, 0],
           end: [50, 0],
         }],
-      }],
+      } as typeof routed],
     };
     expect(canEditElbowEndpoints(withFixed.elements[0])).toBe(false);
     expect(updateElbowEndpoint(withFixed, arrow.id, "end", { x: 350, y: 250 }))
