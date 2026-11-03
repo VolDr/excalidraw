@@ -14,7 +14,7 @@ still an unverified draft.
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Group membership and ID-array modifications |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Flat box groups with intact reciprocal captions now delegate uniform resize/rotation and text scaling/placement to core; image/linear groups remain guarded native paths |
 | `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
-| `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | All safe open linear vertices (2–128 points) use `getPointsGlobalCoordinates`, `getNormalizeElementPointsAndCoords`, `createPointAt` and `movePoints` in core `Scene`, including reversed/rotated paths |
+| `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official global-point geometry and `movePoints`; segment midpoint insertion uses `addMidpoint`, interior deletion uses `deletePoints`, all in isolated `Scene` |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Official endpoint and outline geometry; creation and reconnect of simple arrows now use the same core binding lifecycle, with strict native target selection |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `LinearElementEditor.createPointAt`/`movePoints`/`getNormalizeElementPointsAndCoords`, `bindBindingElement`, `unbindBindingElement`, `getNextSingleWidthAndHeightFromPointer`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes/groups/uncropped images, straight line/arrow endpoints and reciprocal simple-arrow bindings, preserving native metadata and unrelated elements |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
@@ -40,7 +40,7 @@ until the entire interaction policy is ported.
 
 | Area | Existing core | Why not swapped wholesale yet |
 | --- | --- | --- |
-| Remaining complex arrow lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`: `bindOrUnbindBindingElement`, `updateBoundElements`, `getGlobalFixedPoints` | Native Svelte can move individual points of unbound open multi-point lines/non-elbow arrows via core `LinearElementEditor`. Binding/rebinding remains restricted to safe two-point non-elbow arrows; elbow routing, multipoint bindings, labels and imported orbit bindings remain unsupported. |
+| Remaining complex arrow lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`: `bindOrUnbindBindingElement`, `updateBoundElements`, `getGlobalFixedPoints` | Native Svelte can move, insert and delete internal vertices of unbound open multi-point lines/non-elbow arrows via core `LinearElementEditor`. Binding/rebinding remains restricted to safe two-point non-elbow arrows; elbow routing, multipoint bindings, labels and orbit bindings remain unsupported. |
 | Remaining resize and rotation | `packages/element/src/resizeElements.ts` | `resizeSingleElement`/`transformElements` now handle boxes, reciprocal text and uncropped embedded images; `resizeMultipleElements` handles flat box groups with their captions. Cropped images, mixed linear groups, frames and unsupported imported bindings still need parity work. |
 | Drag interaction completeness | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Basic native movement now delegates to this original engine with an isolated synthetic original-elements pointer snapshot; grid snapping, modifiers, nested frame interactions and the full React pointer state have not been ported. |
 | Full selection semantics | `packages/element/src/selection.ts`, `packages/element/src/bounds.ts` | Marquee geometry now uses `elementsOverlappingBBox`; selection state, nested groups, locked elements and frames still need a real Svelte state adapter. |
@@ -150,6 +150,21 @@ nonfinite geometry and external orphan references remain uneditable.
 Regression fixtures for middle-vertex motion, reversed/rotated arrows,
 out-of-range indices, imports, metadata and Undo/Redo have been added
 **without executing tests or CI**.
+
+Native polyline topology editing now also reuses the original
+`LinearElementEditor.addMidpoint` / `deletePoints` methods. The
+`coreAdapter.ts` bridge supplies only the minimal React editor state
+fields those methods inspect; all mutations occur on a private `Scene`.
+The official `getSegmentMidPoint` supplies each segment marker's world
+position. An Alt-click on the selected line's midpoint marker inserts one
+vertex; Alt-click on an internal vertex deletes it. The Svelte toolbar
+shows the shortcut when an eligible line/arrow is selected.
+Every surviving world-space vertex, the element type, foreign object
+identity, metadata and the 2–128-point limit are checked before adopting a
+mutation. First and last vertices cannot be deleted. Unsupported polygon,
+bound, grouped, elbow and malformed imported paths remain read-only.
+Regression fixtures for insertion, deletion, rotation, undo/redo, no-op
+gestures and corrupt imports were authored **without execution**.
 
 The clipboard's maximum element count is shared between copy and paste, so
 cutting 1001 or more elements no longer deletes content that cannot be pasted
