@@ -50,6 +50,7 @@ const validBinding = (
 ): boolean =>
   !binding ||
   (binding.mode === "inside" &&
+    Array.isArray(binding.fixedPoint) &&
     binding.fixedPoint.length === 2 &&
     binding.fixedPoint.every((v) => Number.isFinite(v) && v >= 0 && v <= 1));
 
@@ -72,7 +73,26 @@ export function isSafeBoundBox(
   ) {
     return false;
   }
-  return (el.boundElements ?? []).every((ref) => {
+  const reverse = el.boundElements ?? [];
+  if (new Set(reverse.map((ref) => ref.id)).size !== reverse.length) {
+    return false;
+  }
+  // A foreign or damaged import may reference this box from its arrow/text
+  // while the reverse list is missing. Do not treat it as an independent,
+  // safe target and silently overwrite half of the original relationship.
+  if (scene.elements.some((item) =>
+    !item.isDeleted &&
+    ((item.type === "arrow" &&
+      (item.startBinding?.elementId === el.id ||
+        item.endBinding?.elementId === el.id) &&
+      !reverse.some((ref) => ref.id === item.id && ref.type === "arrow")) ||
+      (item.type === "text" &&
+        item.containerId === el.id &&
+        !reverse.some((ref) => ref.id === item.id && ref.type === "text")))
+  )) {
+    return false;
+  }
+  return reverse.every((ref) => {
     const arrow = scene.elements.find((item) => item.id === ref.id);
     if (ref.type === "text") {
       return !!arrow && nativeLabelBox(scene, arrow)?.id === el.id;
@@ -391,6 +411,9 @@ export function reconnectNativeEndpoint(
   endpoint: End,
   pointer: Point,
 ): SceneFile {
+  if (!Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) {
+    return scene;
+  }
   const el = scene.elements.find((item) => item.id === arrowId);
   if (!el || !isNativeLinkedArrow(scene, el)) {
     return scene;
