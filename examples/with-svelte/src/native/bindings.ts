@@ -8,6 +8,7 @@ import { lineSegment, pointFrom, pointRotateRads } from "@excalidraw/math";
 import type {
   ExcalidrawElement,
   ExcalidrawArrowElement,
+  ExcalidrawElbowArrowElement,
 } from "@excalidraw/element/types";
 import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
@@ -148,7 +149,7 @@ export function isNativeLinkedArrow(
 export function isNativeOrbitLinkedArrow(
   scene: SceneFile,
   el: ExcalidrawElement,
-): el is Extract<ExcalidrawArrowElement, { elbowed: true }> {
+): el is ExcalidrawElbowArrowElement {
   if (
     el.type !== "arrow" ||
     !el.elbowed ||
@@ -218,6 +219,160 @@ export function isNativeOrbitLinkedArrow(
           (other.type === "text" && other.containerId === box.id))
       );
   });
+}
+
+/** World-space ends of a validated orbit-routed elbow. */
+export function nativeOrbitEndpoints(
+  scene: SceneFile,
+  element: ExcalidrawElement,
+): { start: Point; end: Point } | null {
+  if (!isNativeOrbitLinkedArrow(scene, element)) {
+    return null;
+  }
+  const map = nativeElementsMap(scene);
+  const [sx, sy] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element, 0, map,
+  );
+  const [ex, ey] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element, -1, map,
+  );
+  return [sx, sy, ex, ey].every(Number.isFinite)
+    ? { start: { x: sx, y: sy }, end: { x: ex, y: ey } }
+    : null;
+}
+
+export function pickNativeOrbitEndpoint(
+  scene: SceneFile,
+  element: ExcalidrawElement,
+  at: Point,
+  tolerance = 9,
+): End | null {
+  if (![at.x, at.y, tolerance].every(Number.isFinite) || tolerance < 0) {
+    return null;
+  }
+  const points = nativeOrbitEndpoints(scene, element);
+  if (!points) {
+    return null;
+  }
+  for (const endpoint of ["end", "start"] as const) {
+    const p = points[endpoint];
+    if (Math.hypot(at.x - p.x, at.y - p.y) <= tolerance) {
+      return endpoint;
+    }
+  }
+  return null;
+}
+
+/**
+ * Rebind only an unpinned, ungrouped elbow to one independent safe box.
+ * The Excalidraw core owns orbit snapping, reciprocal links and rerouting.
+ */
+export function reconnectNativeOrbitEndpoint(
+  scene: SceneFile,
+  arrowId: string,
+  endpoint: End,
+  pointer: Point,
+): SceneFile {
+  if (![pointer.x, pointer.y].every(Number.isFinite)) {
+    return scene;
+  }
+  const arrow = scene.elements.find((item) => item.id === arrowId);
+  if (!arrow || (
+    !canEditNativeElbowArrow(arrow) &&
+    !isNativeOrbitLinkedArrow(scene, arrow)
+  )) {
+    return scene;
+  }
+  // A dangling reverse reference to an otherwise unbound arrow must not be
+  // silently turned into a valid relationship during this operation.
+  if (scene.elements.some((item) =>
+    !item.isDeleted &&
+    item.id !== arrowId &&
+    item.boundElements?.some((ref) => ref.id === arrowId) &&
+    !(
+      (arrow.startBinding?.elementId === item.id ||
+        arrow.endBinding?.elementId === item.id) &&
+      isNativeOrbitLinkedArrow(scene, arrow)
+    )
+  )) {
+    return scene;
+  }
+
+  const oppositeBinding = arrow[
+    endpoint === "start" ? "endBinding" : "startBinding"
+  ];
+  const previousBinding = arrow[
+    endpoint === "start" ? "startBinding" : "endBinding"
+  ];
+  let selected: Box | null = null;
+  const map = nativeElementsMap(scene);
+  for (let i = scene.elements.length - 1; i >= 0; i--) {
+    const item = scene.elements[i];
+    if (!isBox(item) || item.isDeleted || !hitTest(item, pointer, 10, map)) {
+      continue;
+    }
+    // Do not detach on top of a non-editable/malformed target.
+    if (!isSafeBoundBox(scene, item) ||
+        (item.boundElements?.some((ref) => ref.id !== arrowId))) {
+      return scene;
+    }
+    selected = item;
+    break;
+  }
+  if (selected?.id === oppositeBinding?.elementId) {
+    return scene;
+  }
+
+  const before = nativeOrbitEndpoints(scene, arrow);
+  const next = reconnectNativeOrbitElbowWithCore(
+    scene,
+    arrowId,
+    endpoint,
+    pointer,
+    selected?.id ?? null,
+  );
+  if (next === scene) {
+    return scene;
+  }
+  const updated = next.elements.find((item) => item.id === arrowId);
+  if (
+    !updated ||
+    (!canEditNativeElbowArrow(updated) &&
+      !isNativeOrbitLinkedArrow(next, updated)) ||
+    (updated.type === "arrow" &&
+      JSON.stringify(updated[
+        endpoint === "start" ? "endBinding" : "startBinding"
+      ]) !== JSON.stringify(oppositeBinding)) ||
+    (selected &&
+      (updated.type !== "arrow" || updated[
+        endpoint === "start" ? "startBinding" : "endBinding"
+      ]?.elementId !== selected.id)) ||
+    (!selected &&
+      updated.type === "arrow" &&
+      updated[endpoint === "start" ? "startBinding" : "endBinding"]) ||
+    next.elements.some((item, index) =>
+      item.id !== arrowId &&
+      item.id !== previousBinding?.elementId &&
+      item.id !== selected?.id &&
+      item !== scene.elements[index]
+    )
+  ) {
+    return scene;
+  }
+  // No opposite endpoint drift while adjusting an unbound-to-bound arrow.
+  if (!oppositeBinding && before) {
+    const after = nativeOrbitEndpoints(next, updated);
+    if (after) {
+      const opposite = endpoint === "start" ? "end" : "start";
+      if (Math.hypot(
+        before[opposite].x - after[opposite].x,
+        before[opposite].y - after[opposite].y,
+      ) > 0.5) {
+        return scene;
+      }
+    }
+  }
+  return next;
 }
 
 const world = (shape: ExcalidrawElement, point: Point): Point => {
