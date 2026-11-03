@@ -6,7 +6,11 @@ import {
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import { isSafeBoundBox, isNativeLinkedArrow } from "./bindings";
+import {
+  isSafeBoundBox,
+  isNativeLinkedArrow,
+  isNativeOrbitLinkedArrow,
+} from "./bindings";
 import { updateNativeElement } from "./coreAdapter";
 import { nativeEditableLabel, nativeLabelBox } from "./boundText";
 import { nativeImageSource } from "./images";
@@ -144,6 +148,7 @@ export function selectionUnit(scene: SceneFile, id: string): string[] {
   }
   if (
     isNativeLinkedArrow(scene, element) ||
+    isNativeOrbitLinkedArrow(scene, element) ||
     (isSafeBoundBox(scene, element) && !!element.boundElements?.length)
   ) {
     return [id];
