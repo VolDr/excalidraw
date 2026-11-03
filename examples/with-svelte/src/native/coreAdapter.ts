@@ -26,7 +26,7 @@ import type {
   ExcalidrawTextElement,
   ExcalidrawTextElementWithContainer,
 } from "@excalidraw/element/types";
-import type { PointerDownState } from "@excalidraw/excalidraw/types";
+import type { AppClassProperties, PointerDownState } from "@excalidraw/excalidraw/types";
 import { pointFrom } from "@excalidraw/math";
 
 import type { GlobalPoint } from "@excalidraw/math";
@@ -553,6 +553,185 @@ export function moveNativeLinearEndpointWithCore(
     pointer,
   );
 }
+
+/**
+ * Insert a midpoint in a safe unbound linear path, or remove an internal
+ * vertex. Both operations call Excalidraw's original LinearElementEditor
+ * methods in the isolated Scene and validate every surviving world vertex.
+ *
+ * The Excalidraw methods read only the fields supplied here from the React
+ * editor state: addMidpoint needs elementId and initialState.segmentMidpoint,
+ * while deletePoints needs app.scene and app.state.selectedLinearElement.
+ * No React editor is instantiated, and snap-to-grid is explicitly disabled.
+ */
+function editNativeLinearTopologyWithCore(
+  scene: SceneFile,
+  id: string,
+  index: number,
+  action: "insert" | "remove",
+): SceneFile {
+  const original = scene.elements.find((item) => item.id === id);
+  if (
+    !original ||
+    !canEditNativeLinearPoints(original) ||
+    !Number.isInteger(index) ||
+    (action === "insert"
+      ? index < 0 || index >= original.points.length - 1 ||
+        original.points.length >= 128
+      : index <= 0 || index >= original.points.length - 1 ||
+        original.points.length <= 2) ||
+    scene.elements.some(
+      (other) =>
+        !other.isDeleted &&
+        other.id !== id &&
+        ((other.type === "text" && other.containerId === id) ||
+          other.boundElements?.some((ref) => ref.id === id)),
+    )
+  ) {
+    return scene;
+  }
+  const map = nativeElementsMap(scene);
+  let before: ReturnType<typeof LinearElementEditor.getPointsGlobalCoordinates>;
+  let midpoint: ReturnType<typeof LinearElementEditor.getSegmentMidPoint> | null = null;
+  try {
+    before = LinearElementEditor.getPointsGlobalCoordinates(original, map);
+    if (action === "insert") {
+      midpoint = LinearElementEditor.getSegmentMidPoint(original, index + 1, map);
+    }
+  } catch {
+    return scene;
+  }
+  if (
+    !before.every((p) => p.every(Number.isFinite)) ||
+    (midpoint !== null && !midpoint.every(Number.isFinite))
+  ) {
+    return scene;
+  }
+  const expected = action === "insert" && midpoint
+    ? [
+        ...before.slice(0, index + 1),
+        midpoint,
+        ...before.slice(index + 1),
+      ]
+    : before.filter((_, i) => i !== index);
+
+  let projected: SceneFile;
+  try {
+    projected = withNativeCoreScene(scene, (core) => {
+      const current = core.getNonDeletedElement(id);
+      if (!current || (current.type !== "line" && current.type !== "arrow")) {
+        return;
+      }
+      if (
+        Math.abs(current.points[0][0]) > 1e-8 ||
+        Math.abs(current.points[0][1]) > 1e-8
+      ) {
+        core.mutateElement(
+          current,
+          LinearElementEditor.getNormalizeElementPointsAndCoords(current),
+        );
+      }
+
+      if (action === "insert" && midpoint) {
+        // Original addMidpoint obtains its point through createPointAt
+        // and inserts it at initialState.segmentMidpoint.index.
+        const editor = {
+          elementId: id,
+          selectedPointsIndices: null,
+          initialState: {
+            segmentMidpoint: { index: index + 1, added: false },
+            lastClickedPoint: null,
+          },
+        } as unknown as LinearElementEditor;
+        LinearElementEditor.addMidpoint(
+          editor,
+          { x: midpoint[0], y: midpoint[1] } as Parameters<
+            typeof LinearElementEditor.addMidpoint
+          >[1],
+          {} as AppClassProperties,
+          false,
+          core,
+        );
+      } else if (action === "remove") {
+        LinearElementEditor.deletePoints(
+          current,
+          {
+            scene: core,
+            state: { selectedLinearElement: null },
+          } as AppClassProperties,
+          [index],
+        );
+      }
+    });
+  } catch {
+    // Invalid third-party imported geometry must not partially edit a scene.
+    return scene;
+  }
+  if (projected === scene) {
+    return scene;
+  }
+  const changed = projected.elements.find((item) => item.id === id);
+  if (
+    !changed ||
+    !canEditNativeLinearPoints(changed) ||
+    changed.points.length !== expected.length ||
+    projected.elements.some((item, i) =>
+      item.id !== id && item !== scene.elements[i]
+    )
+  ) {
+    return scene;
+  }
+  let after: ReturnType<typeof LinearElementEditor.getPointsGlobalCoordinates>;
+  try {
+    after = LinearElementEditor.getPointsGlobalCoordinates(
+      changed,
+      nativeElementsMap(projected),
+    );
+  } catch {
+    return scene;
+  }
+  if (
+    after.length !== expected.length ||
+    after.some(
+      (point, i) =>
+        !point.every(Number.isFinite) ||
+        Math.hypot(
+          point[0] - expected[i][0],
+          point[1] - expected[i][1],
+        ) > 0.01,
+    )
+  ) {
+    return scene;
+  }
+  const updated = updateNativeElement(original, {
+    x: changed.x,
+    y: changed.y,
+    width: changed.width,
+    height: changed.height,
+    angle: changed.angle,
+    points: changed.points,
+  });
+  return updated === original
+    ? scene
+    : {
+        ...scene,
+        elements: scene.elements.map((item) =>
+          item.id === id ? updated : item,
+        ),
+      };
+}
+
+export const insertNativeLinearMidpointWithCore = (
+  scene: SceneFile,
+  id: string,
+  segmentIndex: number,
+): SceneFile => editNativeLinearTopologyWithCore(scene, id, segmentIndex, "insert");
+
+export const deleteNativeLinearMidpointWithCore = (
+  scene: SceneFile,
+  id: string,
+  pointIndex: number,
+): SceneFile => editNativeLinearTopologyWithCore(scene, id, pointIndex, "remove");
 
 /**
  * An uncropped embedded raster image can use the Excalidraw transform engine
