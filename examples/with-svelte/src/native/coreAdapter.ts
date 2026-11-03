@@ -389,7 +389,8 @@ export const canEditNativeLinearPoints = (
   !element.endBinding &&
   (element.type === "line"
     ? !element.polygon
-    : !element.elbowed && !element.fixedSegments?.length) &&
+    : !element.elbowed &&
+      !("fixedSegments" in element && element.fixedSegments != null)) &&
   element.points.length >= 2 &&
   element.points.length <= 128 &&
   [element.x, element.y, element.width, element.height, element.angle]
