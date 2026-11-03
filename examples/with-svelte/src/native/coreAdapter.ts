@@ -373,58 +373,80 @@ export function reconnectNativeArrowWithCore(
 }
 
 /**
- * Move the endpoint of a canonical two-point linear element using the
- * original LinearElementEditor, rather than reconstructing world/local
- * geometry or version metadata in Svelte.
- *
- * Excalidraw's point editor assumes the first local point is [0,0].
- * Imported and newly drawn reversed lines may not satisfy that invariant;
- * its own normalization helper fixes this on the private Scene before
- * invoking movePoints. Only the resulting geometry is adopted, with a
- * single official newElementWith metadata update.
+ * Safe scope for editing nodes of unbound open lines and non-elbow arrows.
+ * An imported path with an unsupported relationship remains read-only.
  */
-export function moveNativeLinearEndpointWithCore(
+export const canEditNativeLinearPoints = (
+  element: ExcalidrawElement,
+): element is Extract<ExcalidrawElement, { type: "line" | "arrow" }> =>
+  (element.type === "line" || element.type === "arrow") &&
+  !element.isDeleted &&
+  !element.locked &&
+  element.frameId === null &&
+  element.groupIds.length === 0 &&
+  !element.boundElements?.length &&
+  !element.startBinding &&
+  !element.endBinding &&
+  (element.type === "line"
+    ? !element.polygon
+    : !element.elbowed && !element.fixedSegments?.length) &&
+  element.points.length >= 2 &&
+  element.points.length <= 128 &&
+  [element.x, element.y, element.width, element.height, element.angle]
+    .every(Number.isFinite) &&
+  element.width >= 0 &&
+  element.height >= 0 &&
+  element.points.every(
+    (point) =>
+      point.length === 2 &&
+      Number.isFinite(point[0]) &&
+      Number.isFinite(point[1]),
+  );
+
+/**
+ * Move any point of an ordinary unbound polyline/arrow using Excalidraw's
+ * original `LinearElementEditor` point normalization and motion.
+ *
+ * This generic point handler also supports the former two-endpoint workflow.
+ * It validates *all* other world points rather than merely the opposite end
+ * to catch unintended geometry drift in rotated and reversed imports.
+ */
+export function moveNativeLinearPointWithCore(
   scene: SceneFile,
   id: string,
-  endpoint: "start" | "end",
+  pointIndex: number,
   pointer: { x: number; y: number },
 ): SceneFile {
   const original = scene.elements.find((item) => item.id === id);
   if (
     !original ||
-    (original.type !== "line" && original.type !== "arrow") ||
-    original.isDeleted ||
-    original.locked ||
-    original.frameId !== null ||
-    original.groupIds.length !== 0 ||
-    original.boundElements?.length ||
-    original.startBinding ||
-    original.endBinding ||
-    (original.type === "line" && original.polygon) ||
-    (original.type === "arrow" && original.elbowed) ||
-    original.points.length !== 2 ||
-    !Number.isFinite(original.x) ||
-    !Number.isFinite(original.y) ||
-    !Number.isFinite(original.width) ||
-    !Number.isFinite(original.height) ||
-    !Number.isFinite(original.angle) ||
-    original.points.some((point) => !point.every(Number.isFinite)) ||
+    !canEditNativeLinearPoints(original) ||
+    !Number.isInteger(pointIndex) ||
+    pointIndex < 0 ||
+    pointIndex >= original.points.length ||
     !Number.isFinite(pointer.x) ||
-    !Number.isFinite(pointer.y)
+    !Number.isFinite(pointer.y) ||
+    scene.elements.some(
+      (item) =>
+        item.id !== id &&
+        !item.isDeleted &&
+        ((item.type === "text" && item.containerId === id) ||
+          item.boundElements?.some((ref) => ref.id === id)),
+    )
   ) {
     return scene;
   }
+
   const sourceMap = nativeElementsMap(scene);
-  const sourcePoints = [
-    LinearElementEditor.getPointAtIndexGlobalCoordinates(original, 0, sourceMap),
-    LinearElementEditor.getPointAtIndexGlobalCoordinates(original, -1, sourceMap),
-  ] as const;
-  const index = endpoint === "start" ? 0 : 1;
-  const other = index === 0 ? 1 : 0;
+  const before = LinearElementEditor.getPointsGlobalCoordinates(
+    original,
+    sourceMap,
+  );
   if (
+    !before.every((p) => p.every(Number.isFinite)) ||
     Math.hypot(
-      sourcePoints[index][0] - pointer.x,
-      sourcePoints[index][1] - pointer.y,
+      before[pointIndex][0] - pointer.x,
+      before[pointIndex][1] - pointer.y,
     ) < 1e-8
   ) {
     return scene;
@@ -435,14 +457,17 @@ export function moveNativeLinearEndpointWithCore(
     if (!current || (current.type !== "line" && current.type !== "arrow")) {
       return;
     }
-    // Original Excalidraw normalization, preserving world-space geometry.
-    if (Math.abs(current.points[0][0]) > 1e-8 ||
-        Math.abs(current.points[0][1]) > 1e-8) {
+    // Excalidraw's own normalization puts the first local point at [0, 0].
+    // Required for source/imported reversed polylines as well as native ones.
+    if (
+      Math.abs(current.points[0][0]) > 1e-8 ||
+      Math.abs(current.points[0][1]) > 1e-8
+    ) {
       const normalized =
         LinearElementEditor.getNormalizeElementPointsAndCoords(current);
       core.mutateElement(current, normalized);
     }
-    const point = LinearElementEditor.createPointAt(
+    const local = LinearElementEditor.createPointAt(
       current,
       core.getNonDeletedElementsMap(),
       pointer.x,
@@ -452,42 +477,44 @@ export function moveNativeLinearEndpointWithCore(
     LinearElementEditor.movePoints(
       current,
       core,
-      new Map([[index, { point }]]),
+      new Map([[pointIndex, { point: local }]]),
     );
   });
   if (projected === scene) {
     return scene;
   }
   const changed = projected.elements.find((item) => item.id === id);
-  if (!changed || (changed.type !== "line" && changed.type !== "arrow")) {
-    return scene;
-  }
-  const changedMap = nativeElementsMap(projected);
-  const afterPoints = [
-    LinearElementEditor.getPointAtIndexGlobalCoordinates(changed, 0, changedMap),
-    LinearElementEditor.getPointAtIndexGlobalCoordinates(changed, -1, changedMap),
-  ] as const;
-  // Never adopt an unexpected core point migration if either endpoint drifts.
   if (
-    Math.hypot(
-      afterPoints[other][0] - sourcePoints[other][0],
-      afterPoints[other][1] - sourcePoints[other][1],
-    ) > 0.01 ||
-    Math.hypot(
-      afterPoints[index][0] - pointer.x,
-      afterPoints[index][1] - pointer.y,
-    ) > 0.01 ||
-    !Number.isFinite(changed.x) ||
-    !Number.isFinite(changed.y) ||
-    !Number.isFinite(changed.width) ||
-    !Number.isFinite(changed.height) ||
-    changed.points.some((point) => !point.every(Number.isFinite)) ||
-    projected.elements.some((item, idx) =>
-      item.id !== id && item !== scene.elements[idx]
+    !changed ||
+    (changed.type !== "line" && changed.type !== "arrow") ||
+    changed.points.length !== original.points.length ||
+    !canEditNativeLinearPoints(changed) ||
+    projected.elements.some(
+      (item, index) => item.id !== id && item !== scene.elements[index],
     )
   ) {
     return scene;
   }
+  const after = LinearElementEditor.getPointsGlobalCoordinates(
+    changed,
+    nativeElementsMap(projected),
+  );
+  if (
+    after.length !== before.length ||
+    after.some(
+      (point, i) =>
+        !point.every(Number.isFinite) ||
+        Math.hypot(
+          point[0] - (i === pointIndex ? pointer.x : before[i][0]),
+          point[1] - (i === pointIndex ? pointer.y : before[i][1]),
+        ) > 0.01,
+    )
+  ) {
+    return scene;
+  }
+
+  // Apply the verified core geometry once with official metadata/version
+  // logic, keeping the original imported extension fields and file/order.
   const updated = updateNativeElement(original, {
     x: changed.x,
     y: changed.y,
@@ -504,6 +531,26 @@ export function moveNativeLinearEndpointWithCore(
           item.id === id ? updated : item,
         ),
       };
+}
+
+/** Backwards-compatible two-point endpoint adapter. */
+export function moveNativeLinearEndpointWithCore(
+  scene: SceneFile,
+  id: string,
+  endpoint: "start" | "end",
+  pointer: { x: number; y: number },
+): SceneFile {
+  const element = scene.elements.find((item) => item.id === id);
+  if (!element || !canEditNativeLinearPoints(element) ||
+      element.points.length !== 2) {
+    return scene;
+  }
+  return moveNativeLinearPointWithCore(
+    scene,
+    id,
+    endpoint === "start" ? 0 : element.points.length - 1,
+    pointer,
+  );
 }
 
 /**
