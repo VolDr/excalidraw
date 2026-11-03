@@ -1,7 +1,12 @@
 import { LinearElementEditor } from "@excalidraw/element";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
-import { moveNativeLinearEndpointWithCore, nativeElementsMap } from "./coreAdapter";
+import {
+  canEditNativeLinearPoints,
+  moveNativeLinearEndpointWithCore,
+  moveNativeLinearPointWithCore,
+  nativeElementsMap,
+} from "./coreAdapter";
 
 import { blankScene } from "./scene";
 
@@ -9,24 +14,66 @@ import type { Point, SceneFile } from "./scene";
 
 export type Endpoint = "start" | "end";
 
+/**
+ * Index-based handles for every vertex of an open polyline or simple arrow.
+ * Bound arrows and elbow routes remain outside native point editing.
+ */
+export const canEditLinearPoints = canEditNativeLinearPoints;
+
+export function linearPointLocations(
+  element: ExcalidrawElement,
+): Point[] | null {
+  if (!canEditLinearPoints(element)) {
+    return null;
+  }
+  const map = nativeElementsMap({ elements: [element] });
+  const points = LinearElementEditor.getPointsGlobalCoordinates(element, map);
+  return points.every((point) => point.every(Number.isFinite))
+    ? points.map(([x, y]) => ({ x, y }))
+    : null;
+}
+
+/** Prefer the last (topmost) vertex if handles overlap. */
+export function pickLinearPoint(
+  element: ExcalidrawElement,
+  location: Point,
+  tolerance = 9,
+): number | null {
+  if (!Number.isFinite(location.x) || !Number.isFinite(location.y) ||
+      !Number.isFinite(tolerance) || tolerance < 0) {
+    return null;
+  }
+  const points = linearPointLocations(element);
+  if (!points) {
+    return null;
+  }
+  for (let i = points.length - 1; i >= 0; --i) {
+    const point = points[i];
+    if (Math.hypot(point.x - location.x, point.y - location.y) <= tolerance) {
+      return i;
+    }
+  }
+  return null;
+}
+
+/** Move a selected polyline vertex through the original core point editor. */
+export function updateLinearPoint(
+  scene: SceneFile,
+  id: string,
+  index: number,
+  target: Point,
+): SceneFile {
+  const element = scene.elements.find((item) => item.id === id);
+  return element && canEditLinearPoints(element)
+    ? moveNativeLinearPointWithCore(scene, id, index, target)
+    : scene;
+}
+
 /** Limit native line editing to two-point, unbound, ungrouped straight lines. */
 export function canEditEndpoints(element: ExcalidrawElement): boolean {
   return (
-    (element.type === "line" || element.type === "arrow") &&
-    !element.isDeleted &&
-    !element.locked &&
-    !element.frameId &&
-    !element.groupIds.length &&
-    !element.boundElements?.length &&
-    !element.startBinding &&
-    !element.endBinding &&
-    (element.type === "line"
-      ? !element.polygon
-      : element.elbowed === false) &&
-    element.points.length === 2 &&
-    [element.x, element.y, element.width, element.height, element.angle]
-      .every(Number.isFinite) &&
-    element.points.every((point) => point.every(Number.isFinite))
+    canEditLinearPoints(element) &&
+    element.points.length === 2
   );
 }
 
