@@ -5,6 +5,7 @@ import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
   isNativeLinkedArrow,
+  isNativeOrbitLinkedArrow,
   isSafeBoundBox,
   syncNativeBindings,
 } from "./bindings";
@@ -59,6 +60,10 @@ export function isBoxTransformable(
     !element.locked &&
     !element.frameId &&
     element.groupIds.length === 0 &&
+    !(scene && element.boundElements?.some((ref) => {
+      const arrow = scene.elements.find((item) => item.id === ref.id);
+      return !!arrow && isNativeOrbitLinkedArrow(scene, arrow);
+    })) &&
     (!element.boundElements?.length ||
       (!!scene && isSafeBoundBox(scene, element)))
   );
@@ -206,10 +211,22 @@ export function moveSelection(
   }
   // Core owns group movement, bound labels and reciprocal arrow updates.
   // Native policy has already narrowed this to valid editable roots/groups.
-  return syncNativeBoundLabels(
+  const moved = syncNativeBoundLabels(
     dragNativeSelectionWithCore(scene, selected, dx, dy),
     selected,
   );
+  // The core drag engine calls updateBoundElements for moved boxes. Refuse
+  // the whole gesture if it ever breaks a reciprocal orbit relationship.
+  if (moved !== scene && scene.elements.some((element) =>
+    isNativeOrbitLinkedArrow(scene, element) &&
+    !isNativeOrbitLinkedArrow(
+      moved,
+      moved.elements.find((item) => item.id === element.id) ?? element,
+    )
+  )) {
+    return scene;
+  }
+  return moved;
 }
 
 export function deleteSelection(
@@ -219,7 +236,9 @@ export function deleteSelection(
   const selected = new Set(editableSelection(scene, ids));
   const wanted = new Set(ids);
   for (const element of scene.elements) {
-    if (wanted.has(element.id) && isNativeLinkedArrow(scene, element)) {
+    if (wanted.has(element.id) &&
+      (isNativeLinkedArrow(scene, element) ||
+        isNativeOrbitLinkedArrow(scene, element))) {
       selected.add(element.id);
     }
   }
