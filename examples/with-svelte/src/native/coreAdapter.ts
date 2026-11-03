@@ -751,8 +751,10 @@ export const canEditNativeElbowArrow = (
   !element.startBinding &&
   !element.endBinding &&
   !element.boundElements?.length &&
-  !element.fixedSegments?.length &&
+  (element.fixedSegments == null ||
+    (Array.isArray(element.fixedSegments) && element.fixedSegments.length === 0)) &&
   element.angle === 0 &&
+  Array.isArray(element.points) &&
   element.points.length >= 2 &&
   element.points.length <= 128 &&
   [element.x, element.y, element.width, element.height].every(Number.isFinite) &&
