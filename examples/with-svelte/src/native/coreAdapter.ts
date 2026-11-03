@@ -735,6 +735,121 @@ export const deleteNativeLinearMidpointWithCore = (
 ): SceneFile => editNativeLinearTopologyWithCore(scene, id, pointIndex, "remove");
 
 /**
+ * Native Svelte's safe orbit-binding bridge. The binding policy (including
+ * orphan checks) is enforced by native/bindings.ts before invoking this
+ * adapter; this function only delegates core point motion, bind/unbind and
+ * rerouting. No custom fixed-point ratios or hand-authored bend geometry.
+ */
+export function reconnectNativeOrbitElbowWithCore(
+  scene: SceneFile,
+  arrowId: string,
+  endpoint: "start" | "end",
+  pointer: { x: number; y: number },
+  targetId: string | null,
+): SceneFile {
+  const arrow = scene.elements.find((item) => item.id === arrowId);
+  const target = targetId
+    ? scene.elements.find((item) => item.id === targetId)
+    : null;
+  if (
+    !arrow ||
+    arrow.type !== "arrow" ||
+    !arrow.elbowed ||
+    arrow.isDeleted ||
+    arrow.locked ||
+    arrow.frameId !== null ||
+    arrow.groupIds.length !== 0 ||
+    arrow.fixedSegments?.length ||
+    arrow.boundElements?.length ||
+    arrow.points.length < 2 ||
+    ![pointer.x, pointer.y].every(Number.isFinite) ||
+    (targetId !== null &&
+      (!target ||
+        target.isDeleted ||
+        target.locked ||
+        target.frameId !== null ||
+        target.groupIds.length !== 0 ||
+        !["rectangle", "ellipse", "diamond"].includes(target.type))) ||
+    (targetId !== null &&
+      arrow[endpoint === "start" ? "endBinding" : "startBinding"]
+        ?.elementId === targetId)
+  ) {
+    return scene;
+  }
+  try {
+    return withNativeCoreScene(scene, (core) => {
+      const current = core.getNonDeletedElement(arrowId);
+      if (!current || current.type !== "arrow" || !current.elbowed) {
+        return;
+      }
+
+      // Break the previous reciprocal link first. When moving a bound
+      // endpoint, its old target must not influence the next router pass.
+      const previousBinding = current[
+        endpoint === "start" ? "startBinding" : "endBinding"
+      ];
+      if (previousBinding) {
+        unbindBindingElement(current, endpoint, core);
+        const previousTarget = core.getNonDeletedElement(
+          previousBinding.elementId,
+        );
+        if (previousTarget?.boundElements?.length === 0) {
+          core.mutateElement(previousTarget, { boundElements: null });
+        }
+      }
+
+      const point = LinearElementEditor.createPointAt(
+        current,
+        core.getNonDeletedElementsMap(),
+        pointer.x,
+        pointer.y,
+        null,
+      );
+      LinearElementEditor.movePoints(
+        current,
+        core,
+        new Map([[
+          endpoint === "start" ? 0 : current.points.length - 1,
+          { point },
+        ]]),
+        undefined,
+        { isBindingEnabled: false },
+      );
+
+      if (targetId) {
+        const nextTarget = core.getNonDeletedElement(targetId);
+        if (!nextTarget) {
+          throw new Error("Orbit binding target disappeared");
+        }
+        bindBindingElement(
+          current,
+          nextTarget as NonDeleted<ExcalidrawBindableElement>,
+          "orbit",
+          endpoint,
+          core,
+          { value: 1 } as Parameters<typeof bindBindingElement>[5],
+        );
+      }
+
+      // A binding-only mutation need not reroute an elbow: the Scene point
+      // update asks Excalidraw to recalculate its orthogonal route and
+      // anchor locations using the newly linked target.
+      core.mutateElement(
+        current,
+        {
+          points: [...current.points],
+          startBinding: current.startBinding,
+          endBinding: current.endBinding,
+        },
+        { isBindingEnabled: false },
+      );
+    });
+  } catch {
+    return scene;
+  }
+}
+
+/**
  * Scope of native elbow work: a well-formed orthogonal, unbound elbow
  * with no fixed segments, labels, groups or foreign references. Binding an
  * elbow uses orbit semantics and must not reuse the ordinary inside-link UI.
