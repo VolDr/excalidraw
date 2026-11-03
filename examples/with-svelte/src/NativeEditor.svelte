@@ -52,13 +52,18 @@
     type Handle,
   } from "./native/transforms";
   import {
+    canEditElbowEndpoints,
     canEditLinearPoints,
+    convertArrowToElbow,
     deleteLinearMidpoint,
+    elbowEndpointLocations,
     insertLinearMidpoint,
     linearPointLocations,
     linearSegmentMidpoints,
     pickLinearPoint,
     pickLinearSegmentMidpoint,
+    pickElbowEndpoint,
+    updateElbowEndpoint,
     updateLinearPoint,
     type Endpoint,
   } from "./native/lines";
@@ -694,9 +699,12 @@
       }
       if (selectedId === element.id) {
         const linked = nativeLinkedEndpoints(scene, element);
+        const elbow = elbowEndpointLocations(element);
         const points = linked
           ? [linked.start, linked.end]
-          : linearPointLocations(element);
+          : elbow
+            ? [elbow.start, elbow.end]
+            : linearPointLocations(element);
         if (points) {
           ctx.save();
           ctx.fillStyle = theme === "dark" ? "#282637" : "#fff";
@@ -712,7 +720,7 @@
           }
           ctx.restore();
         }
-        if (!linked) {
+        if (!linked && !elbow) {
           const midpoints = linearSegmentMidpoints(element);
           if (midpoints) {
             ctx.save();
@@ -857,7 +865,8 @@
         : null;
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
-        ? pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) : null;
+        ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
+           pickElbowEndpoint(selected, start, 9 / zoom)) : null;
       pointIndex = !event.shiftKey && selected && !endpoint
         ? pickLinearPoint(selected, start, 9 / zoom) : null;
       handle = !event.shiftKey && selected
@@ -970,9 +979,11 @@
         const next = g.endpoint && element &&
           isNativeLinkedArrow(g.original, element)
           ? reconnectNativeEndpoint(g.original, g.id, g.endpoint, point)
-          : g.pointIndex !== null
-            ? updateLinearPoint(g.original, g.id, g.pointIndex, point)
-            : g.original;
+          : g.endpoint && element && canEditElbowEndpoints(element)
+            ? updateElbowEndpoint(g.original, g.id, g.endpoint, point)
+            : g.pointIndex !== null
+              ? updateLinearPoint(g.original, g.id, g.pointIndex, point)
+              : g.original;
         if (next !== g.original) {
           g.changed = true;
           onChange(next);
@@ -1229,6 +1240,23 @@
       <button onclick={() => flipSelectedImage("horizontal")} title="Отразить выбранное изображение по горизонтали">↔ Отразить</button>
       <button onclick={() => flipSelectedImage("vertical")} title="Отразить выбранное изображение по вертикали">↕ Отразить</button>
     {/if}
+    {#if selectedId && scene.elements.some((element) =>
+      element.id === selectedId &&
+      element.type === "arrow" &&
+      element.points.length === 2 &&
+      canEditLinearPoints(element))}
+      <button
+        onclick={() => {
+          if (selectedId) {
+            const updated = convertArrowToElbow(scene, selectedId);
+            if (updated !== scene) {
+              commit(scene, updated);
+            }
+          }
+        }}
+        title="Преобразовать обычную стрелку в маршрутизируемую через ядро Excalidraw"
+      >↳ Угловая стрелка</button>
+    {/if}
     <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
@@ -1238,6 +1266,8 @@
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
     {#if selectedId && scene.elements.some((element) => element.id === selectedId && canEditLinearPoints(element))}
       <span class="zoom">Alt+клик: добавить точку на маркере сегмента / удалить внутренний узел</span>
+    {:else if selectedId && scene.elements.some((element) => element.id === selectedId && canEditElbowEndpoints(element))}
+      <span class="zoom">Угловая стрелка: перетаскивайте конечные маркеры</span>
     {/if}
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
   </div>
