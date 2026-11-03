@@ -13,10 +13,10 @@ still an unverified draft.
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Group membership and ID-array modifications |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Flat box groups with intact reciprocal captions now delegate uniform resize/rotation and text scaling/placement to core; image/linear groups remain guarded native paths |
-| `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging and single-box resize/rotation delegate to core, including one reciprocal bound-text label; raster images and complex links retain guarded legacy behavior |
-| `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Official world-space linear endpoint geometry, normalized lines and version/nonce updates |
+| `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
+| `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Two-point unbound line/arrow endpoint edits now delegate to `getNormalizeElementPointsAndCoords`, `createPointAt` and `movePoints` in core `Scene`, including reversed/rotated paths |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Official endpoint and outline geometry; creation and reconnect of simple arrows now use the same core binding lifecycle, with strict native target selection |
-| `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `LinearElementEditor.movePoints`, `bindBindingElement`, `unbindBindingElement`, `getNextSingleWidthAndHeightFromPointer`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes/groups, simple-arrow creation/reconnect/point normalization and reciprocal cleanup, with immutable scene and index/version protections |
+| `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `LinearElementEditor.createPointAt`/`movePoints`/`getNormalizeElementPointsAndCoords`, `bindBindingElement`, `unbindBindingElement`, `getNextSingleWidthAndHeightFromPointer`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes/groups/uncropped images, straight line/arrow endpoints and reciprocal simple-arrow bindings, preserving native metadata and unrelated elements |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
@@ -41,7 +41,7 @@ until the entire interaction policy is ported.
 | Area | Existing core | Why not swapped wholesale yet |
 | --- | --- | --- |
 | Remaining complex arrow lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`: `bindOrUnbindBindingElement`, `updateBoundElements`, `getGlobalFixedPoints` | Two-point non-elbow arrow creation, endpoint moving, attaching and detaching now use `LinearElementEditor.movePoints` and core `bindBindingElement`/`unbindBindingElement` in a private `Scene`. Full pointer strategy, arbitrary multi-point/elbow arrows, labels, and imported orbit bindings remain unsupported. |
-| Remaining resize and rotation | `packages/element/src/resizeElements.ts` | `resizeSingleElement` and `transformElements` handle independent and singly labeled boxes; `resizeMultipleElements`/`transformElements` also handle flat box groups with their reciprocal captions. Images, mixed linear elements, frames, external bindings and malformed imports still need additional parity work. |
+| Remaining resize and rotation | `packages/element/src/resizeElements.ts` | `resizeSingleElement`/`transformElements` now handle boxes, reciprocal text and uncropped embedded images; `resizeMultipleElements` handles flat box groups with their captions. Cropped images, mixed linear groups, frames and unsupported imported bindings still need parity work. |
 | Drag interaction completeness | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Basic native movement now delegates to this original engine with an isolated synthetic original-elements pointer snapshot; grid snapping, modifiers, nested frame interactions and the full React pointer state have not been ported. |
 | Full selection semantics | `packages/element/src/selection.ts`, `packages/element/src/bounds.ts` | Marquee geometry now uses `elementsOverlappingBBox`; selection state, nested groups, locked elements and frames still need a real Svelte state adapter. |
 | Undo/redo | `packages/element/src/store.ts` plus the original editor's history | The current snapshot history is intentionally independent, not granular Excalidraw history. |
@@ -52,9 +52,9 @@ until the entire interaction policy is ported.
 1. Validate the already integrated `withNativeCoreScene` paths (deletion,
    dragging, resizing, rotating, simple arrow creation/reconnection) against
    the React editor with actual executed parity tests.
-2. Replace the complex arrow binding strategy (multi-point/elbow/orbit),
-   raster-image transforms and **mixed/grouped linear** transforms with
-   supported core algorithms after cross-editor tests.
+2. Replace complex arrow binding (multi-point/elbow/orbit), cropped raster
+   transforms and **mixed/grouped linear** transforms with the relevant core
+   algorithms after cross-editor parity tests.
 3. Reuse Excalidraw's fractional indexing, source element-order handling,
    and native history transaction semantics.
 4. Reuse the official rendering and hit-test pipeline where possible; test
@@ -117,6 +117,24 @@ the last binding leaves an ordinary editable unbound arrow.
 New fixtures cover third-target reattachment, same-target deduplication,
 last-end detach, no-op gestures, link integrity and undo snapshots. **They
 have not been executed.**
+
+Native two-point unbound lines and arrows now delegate endpoint edits
+to Excalidraw's `LinearElementEditor.movePoints` in a private `Scene`.
+The original normalization method first handles reverse-direction input with
+nonzero first local points. After a move, the adapter checks that the dragged
+endpoint hit the pointer and the opposite endpoint did not drift, then uses
+`newElementWith` to create a single versioned immutable update. Polygon
+lines, bound/complex arrows and nonfinite imported paths are refused.
+
+Uncropped embedded raster images now use core `resizeSingleElement` with
+the official aspect-ratio pointer projection, and `transformElements` for
+rotation. The native no-flip/minimum-size policy is retained. Preflight
+checks require a valid local raster, finite positive geometry, no crop and
+no foreign links. Postflight checks preserve binary records, source file ID,
+flip scale, crop, original aspect ratio and unrelated element identity.
+Cropped images intentionally retain the restricted legacy transform path.
+Regression fixtures for rotated/reversed line edits and uncropped raster
+resize/rotation have been authored **but not executed**.
 
 The clipboard's maximum element count is shared between copy and paste, so
 cutting 1001 or more elements no longer deletes content that cannot be pasted
