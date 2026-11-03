@@ -11,6 +11,7 @@ import {
 } from "./images";
 import {
   blankScene,
+  createShape,
   parseScene,
   serializeScene,
   unsupportedCount,
@@ -27,6 +28,8 @@ import {
   transformSelected,
 } from "./transforms";
 import { duplicateSelection } from "./selection";
+import { resizeNativeImageWithCore, rotateNativeImageWithCore } from "./coreAdapter";
+import { SceneHistory } from "./history";
 
 const sample = "data:image/png;base64,AAAA";
 const setup = () =>
@@ -119,6 +122,106 @@ describe("native Excalidraw raster images", () => {
         { x: 0, y: 0 },
       ),
     ).toThrow();
+  });
+
+  it("uses core aspect-locked resize for uncropped embedded images", () => {
+    const { scene, element } = setup();
+    const flipped = {
+      ...element,
+      scale: [-1, 1] as [number, number],
+    };
+    const unrelated = {
+      ...flipped,
+      id: "unrelated-imported-image",
+      x: 900,
+      customData: { preserve: "opaque" },
+    };
+    const source = { ...scene, elements: [flipped, unrelated] };
+    const original = structuredClone(source);
+    const corners = handleLocations(flipped);
+    const next = transformSelected(source, flipped.id, "se", {
+      x: corners.se.x + 110,
+      y: corners.se.y + 55,
+    });
+    expect(next).not.toBe(source);
+    const image = next.elements[0];
+    expect(image.type).toBe("image");
+    if (image.type !== "image") {
+      throw new Error("Expected image element");
+    }
+    expect(image.width / image.height).toBeCloseTo(2);
+    expect(image.width).toBeGreaterThan(flipped.width);
+    expect(image.scale).toEqual([-1, 1]);
+    expect(image.crop).toBeNull();
+    expect(image.fileId).toBe(flipped.fileId);
+    expect(image.index).toBe(flipped.index);
+    expect(image.version).toBeGreaterThan(flipped.version);
+    expect(handleLocations(image).nw.x).toBeCloseTo(corners.nw.x);
+    expect(handleLocations(image).nw.y).toBeCloseTo(corners.nw.y);
+    expect(next.elements[1]).toBe(unrelated);
+    expect(next.files).toBe(source.files);
+    expect(source).toEqual(original);
+    const history = new SceneHistory();
+    history.commit(source);
+    expect(history.undo(next)).toEqual(source);
+    expect(history.redo(source)).toEqual(next);
+  });
+
+  it("uses original core rotation for an uncropped image without changing pixels", () => {
+    const { scene, element } = setup();
+    const before = structuredClone(scene);
+    const center = {
+      x: element.x + element.width / 2,
+      y: element.y + element.height / 2,
+    };
+    const next = transformSelected(scene, element.id, "rotate", {
+      x: center.x + 150,
+      y: center.y,
+    });
+    expect(next).not.toBe(scene);
+    expect(next.elements[0].angle).toBeCloseTo(Math.PI / 2);
+    expect(next.elements[0].type).toBe("image");
+    if (next.elements[0].type !== "image") {
+      throw new Error("Expected image");
+    }
+    expect(next.elements[0].scale).toEqual(element.scale);
+    expect(next.elements[0].fileId).toBe(element.fileId);
+    expect(next.elements[0].crop).toBeNull();
+    expect(next.files).toBe(scene.files);
+    expect(scene).toEqual(before);
+  });
+
+  it("keeps cropped, locked, externally referenced and unsupported images away from core", () => {
+    const { scene, element } = setup();
+    const crop = {
+      x: 0, y: 0, width: 80, height: 60,
+      naturalWidth: 100, naturalHeight: 100,
+    };
+    const cropped = { ...scene, elements: [{ ...element, crop }] };
+    const pointer = { x: element.x + element.width + 30, y: element.y + element.height + 20 };
+    expect(resizeNativeImageWithCore(cropped, element.id, "se", pointer))
+      .toBe(cropped);
+    expect(rotateNativeImageWithCore(cropped, element.id, pointer)).toBe(cropped);
+    const locked = { ...scene, elements: [{ ...element, locked: true }] };
+    expect(resizeNativeImageWithCore(locked, element.id, "se", pointer))
+      .toBe(locked);
+    const missing = { ...scene, files: {} };
+    expect(rotateNativeImageWithCore(missing, element.id, pointer)).toBe(missing);
+    const arrow = {
+      ...createShape("arrow", { x: 600, y: 100 }, { x: 700, y: 120 }),
+      startBinding: {
+        elementId: element.id,
+        mode: "inside" as const,
+        fixedPoint: [1, 0.5] as [number, number],
+      },
+    };
+    const orphan = { ...scene, elements: [element, arrow] };
+    expect(resizeNativeImageWithCore(orphan, element.id, "se", pointer))
+      .toBe(orphan);
+    expect(rotateNativeImageWithCore(orphan, element.id, pointer))
+      .toBe(orphan);
+    expect(resizeNativeImageWithCore(scene, element.id, "se", { x: NaN, y: 0 }))
+      .toBe(scene);
   });
 
   it("resizes images proportionally, preserving file, crop and flips", () => {
