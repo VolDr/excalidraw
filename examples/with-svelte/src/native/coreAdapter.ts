@@ -151,6 +151,131 @@ export function dragNativeSelectionWithCore(
 }
 
 /**
+ * Bind and snap a simple arrow endpoint with Excalidraw's own fixed-point
+ * computation. Called by both arrow creation and endpoint reconnection.
+ */
+const bindAndAnchorNativeArrowEndpoint = (
+  arrow: NonDeleted<ExcalidrawArrowElement>,
+  target: NonDeleted<ExcalidrawBindableElement>,
+  endpoint: "start" | "end",
+  worldPoint: { x: number; y: number },
+  core: Scene,
+): void => {
+  // Zoom affects elbow midpoint snapping, which is not enabled in this
+  // limited native path; non-elbow arrows use the explicit focusPoint.
+  bindBindingElement(
+    arrow,
+    target,
+    "inside",
+    endpoint,
+    core,
+    { value: 1 } as Parameters<typeof bindBindingElement>[5],
+    pointFrom<GlobalPoint>(worldPoint.x, worldPoint.y),
+  );
+  const binding = arrow[endpoint === "start" ? "startBinding" : "endBinding"];
+  if (binding) {
+    const [x, y] = getGlobalFixedPointForBindableElement(
+      binding.fixedPoint,
+      target,
+      core.getNonDeletedElementsMap(),
+    );
+    const local = LinearElementEditor.createPointAt(
+      arrow,
+      core.getNonDeletedElementsMap(),
+      x,
+      y,
+      null,
+    );
+    LinearElementEditor.movePoints(
+      arrow,
+      core,
+      new Map([[endpoint === "start" ? 0 : 1, { point: local }]]),
+    );
+  }
+};
+
+/**
+ * Bind a new two-point arrow in a private Scene instead of composing hand-
+ * written arrow/box boundElements and fixedPoint structures.
+ */
+export function bindNewNativeArrowWithCore(
+  scene: SceneFile,
+  arrowId: string,
+  startTargetId: string | null,
+  endTargetId: string | null,
+  anchors: {
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+  },
+): SceneFile {
+  if (
+    (!startTargetId && !endTargetId) ||
+    (!!startTargetId && startTargetId === endTargetId) ||
+    ![anchors.start.x, anchors.start.y, anchors.end.x, anchors.end.y]
+      .every(Number.isFinite)
+  ) {
+    return scene;
+  }
+  const arrow = scene.elements.find((item) => item.id === arrowId);
+  if (
+    !arrow ||
+    arrow.type !== "arrow" ||
+    arrow.isDeleted ||
+    arrow.locked ||
+    arrow.elbowed ||
+    arrow.points.length !== 2 ||
+    arrow.startBinding ||
+    arrow.endBinding ||
+    arrow.boundElements?.length ||
+    arrow.frameId !== null ||
+    arrow.groupIds.length !== 0
+  ) {
+    return scene;
+  }
+  for (const id of [startTargetId, endTargetId]) {
+    if (!id) {
+      continue;
+    }
+    const target = scene.elements.find((item) => item.id === id);
+    if (
+      !target ||
+      target.isDeleted ||
+      target.locked ||
+      target.frameId !== null ||
+      target.groupIds.length !== 0 ||
+      !["rectangle", "ellipse", "diamond"].includes(target.type)
+    ) {
+      return scene;
+    }
+  }
+  return withNativeCoreScene(scene, (core) => {
+    const current = core.getNonDeletedElement(arrowId);
+    if (!current || current.type !== "arrow") {
+      return;
+    }
+    for (const [endpoint, targetId] of [
+      ["start", startTargetId],
+      ["end", endTargetId],
+    ] as const) {
+      if (!targetId) {
+        continue;
+      }
+      const target = core.getNonDeletedElement(targetId);
+      if (!target) {
+        return;
+      }
+      bindAndAnchorNativeArrowEndpoint(
+        current,
+        target as NonDeleted<ExcalidrawBindableElement>,
+        endpoint,
+        anchors[endpoint],
+        core,
+      );
+    }
+  });
+}
+
+/**
  * Reconnect one endpoint of a *validated* ordinary two-point arrow using
  * Excalidraw's own local point editor and reciprocal binding lifecycle.
  *
@@ -232,42 +357,13 @@ export function reconnectNativeArrowWithCore(
       core.mutateElement(previousTarget, { boundElements: null });
     }
     if (nextTarget) {
-      // Zoom is only relevant to elbow-arrow snapping; native editor only
-      // permits simple non-elbow arrows here and supplies an explicit focus.
-      bindBindingElement(
-        current as NonDeleted<ExcalidrawArrowElement>,
+      bindAndAnchorNativeArrowEndpoint(
+        current,
         nextTarget as NonDeleted<ExcalidrawBindableElement>,
-        "inside",
         endpoint,
+        worldPoint,
         core,
-        { value: 1 } as Parameters<typeof bindBindingElement>[5],
-        pointFrom<GlobalPoint>(worldPoint.x, worldPoint.y),
       );
-
-      // Core normalizes fixed ratios to avoid exact 0.5 edge singularities.
-      // Align the actual endpoint with that canonical anchor so another
-      // binding sync does not cause a visible post-drag jump.
-      const activeBinding =
-        current[endpoint === "start" ? "startBinding" : "endBinding"];
-      if (activeBinding) {
-        const [x, y] = getGlobalFixedPointForBindableElement(
-          activeBinding.fixedPoint,
-          nextTarget as NonDeleted<ExcalidrawBindableElement>,
-          core.getNonDeletedElementsMap(),
-        );
-        const anchoredLocal = LinearElementEditor.createPointAt(
-          current,
-          core.getNonDeletedElementsMap(),
-          x,
-          y,
-          null,
-        );
-        LinearElementEditor.movePoints(
-          current,
-          core,
-          new Map([[endpoint === "start" ? 0 : 1, { point: anchoredLocal }]]),
-        );
-      }
     }
   });
 }
