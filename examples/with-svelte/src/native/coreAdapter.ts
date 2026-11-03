@@ -374,48 +374,188 @@ export function rotateNativeBoxWithCore(
 }
 
 /**
- * Framework-neutral edit policy for a complete plain group. Require every
- * member and forbid even one orphaned external binding; core geometry must
- * never receive a partially selected or malformed imported group.
+ * A group can be transformed by core only if its complete flat membership
+ * consists of supported box roots and, optionally, one exact reciprocal text
+ * label per box. Returning the labels lets the caller validate every core
+ * mutation before adopting it into the immutable Svelte scene.
+ *
+ * Unsupported/foreign links, unselected members, nested groups, invalid
+ * geometry and arrow references all fail closed.
  */
-const isPlainNativeBoxGroup = (
+const getSafeCoreGroupLabels = (
   scene: SceneFile,
   ids: readonly string[],
   allowRotated: boolean,
-): boolean => {
+): ExcalidrawTextElement[] | null => {
   const selected = new Set(ids);
   if (selected.size < 2 || selected.size !== ids.length) {
-    return false;
+    return null;
   }
   const roots = scene.elements.filter((element) => selected.has(element.id));
   const groupId = roots[0]?.groupIds.length === 1 ? roots[0].groupIds[0] : null;
-  return !!groupId &&
-    roots.length === selected.size &&
-    roots.every((element) =>
-      ["rectangle", "ellipse", "diamond"].includes(element.type) &&
-      !element.isDeleted &&
-      !element.locked &&
-      element.frameId === null &&
-      element.groupIds.length === 1 &&
-      element.groupIds[0] === groupId &&
-      !element.boundElements?.length &&
-      (allowRotated || element.angle === 0) &&
-      element.width > 0 &&
-      element.height > 0 &&
-      Number.isFinite(element.width) &&
-      Number.isFinite(element.height) &&
-      Number.isFinite(element.angle),
-    ) &&
-    !scene.elements.some((element) =>
-      !element.isDeleted &&
-      ((!selected.has(element.id) && element.groupIds.includes(groupId)) ||
-        (element.type === "text" &&
-          element.containerId !== null &&
-          selected.has(element.containerId)) ||
-        (element.type === "arrow" &&
-          (!!element.startBinding && selected.has(element.startBinding.elementId) ||
-            !!element.endBinding && selected.has(element.endBinding.elementId)))),
-    );
+  if (!groupId || roots.length !== selected.size || roots.some((element) =>
+    !["rectangle", "ellipse", "diamond"].includes(element.type) ||
+    element.isDeleted ||
+    element.locked ||
+    element.frameId !== null ||
+    element.groupIds.length !== 1 ||
+    element.groupIds[0] !== groupId ||
+    (!allowRotated && element.angle !== 0) ||
+    !Number.isFinite(element.angle) ||
+    !Number.isFinite(element.width) ||
+    !Number.isFinite(element.height) ||
+    element.width <= 0 ||
+    element.height <= 0
+  )) {
+    return null;
+  }
+
+  const labels: ExcalidrawTextElement[] = [];
+  const members = new Set(selected);
+  for (const root of roots) {
+    const refs = root.boundElements;
+    if (!refs?.length) {
+      continue;
+    }
+    if (refs.length !== 1 || refs[0].type !== "text") {
+      return null;
+    }
+    const label = scene.elements.find((item) => item.id === refs[0].id);
+    if (
+      !label ||
+      label.type !== "text" ||
+      label.isDeleted ||
+      label.locked ||
+      label.frameId !== null ||
+      label.groupIds.length !== 1 ||
+      label.groupIds[0] !== groupId ||
+      label.containerId !== root.id ||
+      !label.autoResize ||
+      label.boundElements?.length ||
+      root.width <= 20 ||
+      root.height <= 20 ||
+      !Number.isFinite(label.fontSize) ||
+      label.fontSize <= 0 ||
+      !Number.isFinite(label.width) ||
+      !Number.isFinite(label.height) ||
+      !Number.isFinite(label.angle) ||
+      label.width < 0 ||
+      label.height < 0 ||
+      members.has(label.id)
+    ) {
+      return null;
+    }
+    labels.push(label);
+    members.add(label.id);
+  }
+
+  // All active group members must be accounted for; a partial group cannot
+  // be resized, even if an unexpected member is locked or not selectable.
+  if (scene.elements.some((element) =>
+    !element.isDeleted &&
+    element.groupIds.includes(groupId) &&
+    !members.has(element.id)
+  )) {
+    return null;
+  }
+
+  // Reject both forward and reverse orphan links. Only the validated
+  // per-container text relationships may reference selected objects.
+  const labelsById = new Map(labels.map((label) => [label.id, label]));
+  if (scene.elements.some((element) =>
+    !element.isDeleted &&
+    (
+      (element.type === "arrow" &&
+        (!!element.startBinding && selected.has(element.startBinding.elementId) ||
+          !!element.endBinding && selected.has(element.endBinding.elementId))) ||
+      (element.type === "text" &&
+        element.containerId !== null &&
+        selected.has(element.containerId) &&
+        !labelsById.has(element.id)) ||
+      (!selected.has(element.id) &&
+        element.boundElements?.some((ref) =>
+          selected.has(ref.id) ||
+          (labelsById.has(ref.id) && labelsById.get(ref.id)?.containerId !== element.id)
+        ))
+    )
+  )) {
+    return null;
+  }
+  return labels;
+};
+
+/** Commit group text transforms only if all original bindings survive core. */
+const acceptCoreGroupLabels = (
+  source: SceneFile,
+  result: SceneFile,
+  ids: readonly string[],
+  labels: readonly ExcalidrawTextElement[],
+): SceneFile => {
+  if (result === source) {
+    return source;
+  }
+  const selected = new Set(ids);
+  const labelIds = new Set(labels.map((label) => label.id));
+  const after = new Map(result.elements.map((element) => [element.id, element]));
+  for (const original of source.elements) {
+    const updated = after.get(original.id);
+    if (!updated) {
+      return source;
+    }
+    if (!selected.has(original.id) && !labelIds.has(original.id) && updated !== original) {
+      return source;
+    }
+    if (selected.has(original.id) && (
+      updated.isDeleted ||
+      updated.type !== original.type ||
+      updated.groupIds.length !== 1 ||
+      updated.groupIds[0] !== original.groupIds[0] ||
+      ![updated.x, updated.y, updated.width, updated.height, updated.angle]
+        .every(Number.isFinite) ||
+      updated.width <= 0 ||
+      updated.height <= 0
+    )) {
+      return source;
+    }
+  }
+  for (const label of labels) {
+    const bound = after.get(label.id);
+    const box = after.get(label.containerId!);
+    if (
+      !bound ||
+      bound.type !== "text" ||
+      !box ||
+      bound.isDeleted ||
+      box.isDeleted ||
+      bound.containerId !== box.id ||
+      bound.originalText !== label.originalText ||
+      bound.groupIds.length !== 1 ||
+      bound.groupIds[0] !== label.groupIds[0] ||
+      box.boundElements?.length !== 1 ||
+      box.boundElements[0].id !== label.id ||
+      box.boundElements[0].type !== "text" ||
+      !bound.autoResize ||
+      bound.locked ||
+      bound.frameId !== null ||
+      ![bound.x, bound.y, bound.width, bound.height, bound.fontSize, bound.angle]
+        .every(Number.isFinite) ||
+      bound.fontSize <= 0 ||
+      bound.width < 0 ||
+      bound.height < 0 ||
+      box.width <= 20 ||
+      box.height <= 20 ||
+      Math.abs(Math.sin(bound.angle - box.angle)) > 1e-6 ||
+      Math.abs(Math.cos(bound.angle - box.angle) - 1) > 1e-6 ||
+      bound.width > getBoundTextMaxWidth(box, bound) + 0.5 ||
+      bound.height > getBoundTextMaxHeight(
+        box,
+        bound as ExcalidrawTextElementWithContainer,
+      ) + 0.5
+    ) {
+      return source;
+    }
+  }
+  return result;
 };
 
 /**
@@ -431,8 +571,9 @@ export function resizeNativeGroupWithCore(
   scale: number,
   bounds: { x: number; y: number; width: number; height: number },
 ): SceneFile {
+  const labels = getSafeCoreGroupLabels(scene, ids, false);
   if (
-    !isPlainNativeBoxGroup(scene, ids, false) ||
+    labels === null ||
     !Number.isFinite(scale) ||
     scale <= 0 ||
     ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) ||
@@ -445,7 +586,7 @@ export function resizeNativeGroupWithCore(
     return scene;
   }
 
-  return withNativeCoreScene(scene, (core) => {
+  const resized = withNativeCoreScene(scene, (core) => {
     const originals = new Map(
       core.getNonDeletedElements().map((element) => [
         element.id,
@@ -482,6 +623,7 @@ export function resizeNativeGroupWithCore(
       },
     );
   });
+  return acceptCoreGroupLabels(scene, resized, ids, labels);
 }
 
 /**
@@ -495,8 +637,9 @@ export function rotateNativeGroupWithCore(
   pointer: { x: number; y: number },
   bounds: { x: number; y: number; width: number; height: number },
 ): SceneFile {
+  const labels = getSafeCoreGroupLabels(scene, ids, true);
   if (
-    !isPlainNativeBoxGroup(scene, ids, true) ||
+    labels === null ||
     ![pointer.x, pointer.y, bounds.x, bounds.y, bounds.width, bounds.height]
       .every(Number.isFinite) ||
     bounds.width <= 0 ||
@@ -504,7 +647,7 @@ export function rotateNativeGroupWithCore(
   ) {
     return scene;
   }
-  return withNativeCoreScene(scene, (core) => {
+  const rotated = withNativeCoreScene(scene, (core) => {
     const originalElements = new Map<string, NonDeleted<ExcalidrawElement>>();
     for (const element of core.getNonDeletedElements()) {
       originalElements.set(element.id, structuredClone(element));
@@ -527,6 +670,7 @@ export function rotateNativeGroupWithCore(
       bounds.y + bounds.height / 2,
     );
   });
+  return acceptCoreGroupLabels(scene, rotated, ids, labels);
 }
 
 /**
