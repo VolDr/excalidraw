@@ -13,7 +13,9 @@ import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
   resizeNativeBoxWithCore,
+  resizeNativeImageWithCore,
   rotateNativeBoxWithCore,
+  rotateNativeImageWithCore,
   updateNativeElement,
 } from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
@@ -262,6 +264,17 @@ export function transformSelected(
     return handle === "rotate"
       ? rotateNativeBoxWithCore(scene, id, point)
       : resizeNativeBoxWithCore(scene, id, handle, point);
+  }
+  // Image crops have additional coordinate semantics and stay on the
+  // guarded legacy path. Uncropped embedded raster geometry is core-owned.
+  if (
+    current.type === "image" &&
+    current.crop === null &&
+    isBoxTransformable(current, scene)
+  ) {
+    return handle === "rotate"
+      ? rotateNativeImageWithCore(scene, id, point)
+      : resizeNativeImageWithCore(scene, id, handle, point);
   }
   const transformed =
     handle === "rotate"
