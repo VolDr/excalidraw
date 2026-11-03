@@ -510,6 +510,8 @@ const acceptCoreGroupLabels = (
       updated.type !== original.type ||
       updated.groupIds.length !== 1 ||
       updated.groupIds[0] !== original.groupIds[0] ||
+      JSON.stringify(updated.boundElements ?? null) !==
+        JSON.stringify(original.boundElements ?? null) ||
       ![updated.x, updated.y, updated.width, updated.height, updated.angle]
         .every(Number.isFinite) ||
       updated.width <= 0 ||
@@ -559,10 +561,9 @@ const acceptCoreGroupLabels = (
 };
 
 /**
- * Use the original uniform multi-element resize for *plain* flat groups.
- * This is deliberately narrower than the native group's overall supported
- * shape set: labeled boxes, images and linear elements require their own
- * layout/point/ratio parity before their core branch can be enabled.
+ * Use the original multi-element resize for complete flat groups of boxes,
+ * including validated reciprocal text labels. Cropped images and linear
+ * elements still require separate parity handling.
  */
 export function resizeNativeGroupWithCore(
   scene: SceneFile,
