@@ -356,6 +356,29 @@ describe("native reciprocal arrow binding", () => {
     })).toBe(scene);
   });
 
+  it("rebinds the same target through core without duplicate reverse links", () => {
+    const { left, right, arrow, scene } = makeScene();
+    const retargeted = reconnectNativeEndpoint(scene, arrow.id, "start", {
+      x: left.x + left.width / 2,
+      y: left.y + left.height / 2,
+    });
+    expect(retargeted.elements[0].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    expect(retargeted.elements[1].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    const changedArrow = retargeted.elements[2];
+    expect(isNativeLinkedArrow(retargeted, changedArrow)).toBe(true);
+    expect(changedArrow.type).toBe("arrow");
+    if (changedArrow.type === "arrow") {
+      expect(changedArrow.startBinding?.elementId).toBe(left.id);
+      expect(changedArrow.endBinding?.elementId).toBe(right.id);
+      expect(changedArrow.startBinding?.mode).toBe("inside");
+    }
+    expect(syncNativeBindings(retargeted)).toBe(retargeted);
+  });
+
   it("leaves imported complex/orbit arrow bindings untouched", () => {
     const { left, arrow, scene } = makeScene();
     const imported = {
