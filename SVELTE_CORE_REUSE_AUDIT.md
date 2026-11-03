@@ -69,10 +69,9 @@ The Svelte selection move path now invokes `dragSelectedElements` with the
 original-elements snapshot extracted from an isolated `Scene`. The official
 drag implementation updates reciprocal arrow geometry and bound text as
 appropriate; Svelte keeps its strict editable-selection policy and the
-explicit label layout reconciliation. For unbound native rectangles, ellipses
-and diamonds, Svelte now delegates resize to `resizeSingleElement`, while
-preserving an 8px minimum and refusing orphan/malformed bindings. Images and
-bound text boxes still use their restricted native geometry path.
+explicit label layout reconciliation. Independent and singly labeled native boxes now use core resize, preserving
+native minimum-size rules. Uncropped embedded raster images use core resize
+and rotation as well; cropped rasters still retain guarded native geometry.
 
 For a *complete* flat group of plain rectangles, ellipses and diamonds,
 uniform corner resizing now invokes Excalidraw's `resizeMultipleElements`,
@@ -80,8 +79,9 @@ and rotation invokes its `transformElements` with the original
 `"rotation"` handle. These operations run on an isolated `Scene`, not the
 Svelte editor's source objects. They refuse partial groups, orphaned external
 bindings, locked members, frames and other unsupported imported geometry.
-Grouped labels, images, and straight arrows deliberately still use the
-guarded native transform until core parity fixtures can be executed.
+Grouped captions now use the core transform together with their containers.
+Groups with images or lines/arrows still use guarded native transforms until
+cross-editor parity fixtures can be executed.
 
 Native single-box resize and rotation now also use Excalidraw's
 `resizeSingleElement` / `transformElements` for an intact reciprocal
