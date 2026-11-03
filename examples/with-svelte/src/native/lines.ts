@@ -3,6 +3,9 @@ import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
   canEditNativeLinearPoints,
+  canEditNativeElbowArrow,
+  convertNativeArrowToElbowWithCore,
+  moveNativeElbowEndpointWithCore,
   deleteNativeLinearMidpointWithCore,
   insertNativeLinearMidpointWithCore,
   moveNativeLinearEndpointWithCore,
@@ -136,6 +139,65 @@ export function deleteLinearMidpoint(
   pointIndex: number,
 ): SceneFile {
   return deleteNativeLinearMidpointWithCore(scene, id, pointIndex);
+}
+
+/** Native elbow endpoint handles, never intermediate route-bend handles. */
+export const canEditElbowEndpoints = canEditNativeElbowArrow;
+
+export function elbowEndpointLocations(
+  element: ExcalidrawElement,
+): { start: Point; end: Point } | null {
+  if (!canEditElbowEndpoints(element)) {
+    return null;
+  }
+  const map = nativeElementsMap({ elements: [element] });
+  const start = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element, 0, map,
+  );
+  const end = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element, -1, map,
+  );
+  return [...start, ...end].every(Number.isFinite)
+    ? {
+        start: { x: start[0], y: start[1] },
+        end: { x: end[0], y: end[1] },
+      }
+    : null;
+}
+
+export function pickElbowEndpoint(
+  element: ExcalidrawElement,
+  pointer: Point,
+  tolerance = 9,
+): Endpoint | null {
+  if (![pointer.x, pointer.y, tolerance].every(Number.isFinite) ||
+      tolerance < 0) {
+    return null;
+  }
+  const coords = elbowEndpointLocations(element);
+  if (!coords) {
+    return null;
+  }
+  for (const endpoint of ["end", "start"] as const) {
+    if (Math.hypot(
+      pointer.x - coords[endpoint].x,
+      pointer.y - coords[endpoint].y,
+    ) <= tolerance) {
+      return endpoint;
+    }
+  }
+  return null;
+}
+
+export const convertArrowToElbow = convertNativeArrowToElbowWithCore;
+
+export function updateElbowEndpoint(
+  scene: SceneFile,
+  id: string,
+  endpoint: Endpoint,
+  pointer: Point,
+): SceneFile {
+  return moveNativeElbowEndpointWithCore(scene, id, endpoint, pointer);
 }
 
 /** Limit native line editing to two-point, unbound, ungrouped straight lines. */
