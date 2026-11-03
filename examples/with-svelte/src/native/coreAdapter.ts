@@ -13,12 +13,15 @@ import {
   newElementWith,
   Scene,
   unbindBindingElement,
+  updateElbowArrowPoints,
+  validateElbowPoints,
 } from "@excalidraw/element";
 
 import type { ElementUpdate } from "@excalidraw/element";
 import type {
   ElementsMap,
   ExcalidrawArrowElement,
+  ExcalidrawElbowArrowElement,
   ExcalidrawBindableElement,
   ExcalidrawElement,
   NonDeleted,
@@ -730,6 +733,241 @@ export const deleteNativeLinearMidpointWithCore = (
   id: string,
   pointIndex: number,
 ): SceneFile => editNativeLinearTopologyWithCore(scene, id, pointIndex, "remove");
+
+/**
+ * Scope of native elbow work: a well-formed orthogonal, unbound elbow
+ * with no fixed segments, labels, groups or foreign references. Binding an
+ * elbow uses orbit semantics and must not reuse the ordinary inside-link UI.
+ */
+export const canEditNativeElbowArrow = (
+  element: ExcalidrawElement,
+): element is ExcalidrawElbowArrowElement =>
+  element.type === "arrow" &&
+  element.elbowed === true &&
+  !element.isDeleted &&
+  !element.locked &&
+  element.frameId === null &&
+  element.groupIds.length === 0 &&
+  !element.startBinding &&
+  !element.endBinding &&
+  !element.boundElements?.length &&
+  !element.fixedSegments?.length &&
+  element.angle === 0 &&
+  element.points.length >= 2 &&
+  element.points.length <= 128 &&
+  [element.x, element.y, element.width, element.height].every(Number.isFinite) &&
+  element.points.every((point) =>
+    point.length === 2 && point.every(Number.isFinite)
+  ) &&
+  element.points.slice(1).every((p, i) =>
+    Math.abs(p[0] - element.points[i][0]) < 1e-6 ||
+    Math.abs(p[1] - element.points[i][1]) < 1e-6
+  );
+
+/**
+ * Reuse the same conversion boundary as Excalidraw's changeArrowType action:
+ * construct a zero-angle elbow starting at the source's global first point
+ * and let updateElbowArrowPoints compute its route. Never hand-roll bends.
+ */
+export function convertNativeArrowToElbowWithCore(
+  scene: SceneFile,
+  id: string,
+): SceneFile {
+  const original = scene.elements.find((item) => item.id === id);
+  if (
+    !original ||
+    original.type !== "arrow" ||
+    original.elbowed ||
+    !canEditNativeLinearPoints(original) ||
+    original.points.length !== 2 ||
+    scene.elements.some((other) =>
+      other.id !== id &&
+      !other.isDeleted &&
+      ((other.type === "text" && other.containerId === id) ||
+        other.boundElements?.some((ref) => ref.id === id))
+    )
+  ) {
+    return scene;
+  }
+
+  const map = nativeElementsMap(scene);
+  const start = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    original, 0, map,
+  );
+  const end = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    original, -1, map,
+  );
+  if (![...start, ...end].every(Number.isFinite) ||
+      Math.hypot(end[0] - start[0], end[1] - start[1]) < 1) {
+    return scene;
+  }
+
+  let candidate: ExcalidrawElbowArrowElement;
+  try {
+    // A horizontal initial segment satisfies the elbow router's source
+    // invariant; the requested end point goes through the core update.
+    const template = {
+      ...original,
+      x: start[0],
+      y: start[1],
+      angle: 0,
+      roundness: null,
+      elbowed: true,
+      points: [
+        pointFrom(0, 0),
+        pointFrom(end[0] - start[0] || 1, 0),
+      ],
+      fixedSegments: null,
+      startIsSpecial: false,
+      endIsSpecial: false,
+    } as ExcalidrawElbowArrowElement;
+    const route = updateElbowArrowPoints(
+      template,
+      map as Parameters<typeof updateElbowArrowPoints>[1],
+      {
+        points: [
+          pointFrom(0, 0),
+          pointFrom(end[0] - start[0], end[1] - start[1]),
+        ],
+        fixedSegments: null,
+        startBinding: null,
+        endBinding: null,
+      },
+      { isBindingEnabled: false },
+    );
+    candidate = {
+      ...template,
+      ...route,
+    };
+  } catch {
+    return scene;
+  }
+  if (
+    !canEditNativeElbowArrow(candidate) ||
+    !validateElbowPoints(candidate.points) ||
+    Math.hypot(candidate.x + candidate.points[0][0] - start[0],
+      candidate.y + candidate.points[0][1] - start[1]) > 0.1 ||
+    Math.hypot(
+      candidate.x + candidate.points[candidate.points.length - 1][0] - end[0],
+      candidate.y + candidate.points[candidate.points.length - 1][1] - end[1],
+    ) > 0.1
+  ) {
+    return scene;
+  }
+  const next = updateNativeElement(original, {
+    elbowed: true,
+    angle: candidate.angle,
+    x: candidate.x,
+    y: candidate.y,
+    width: candidate.width,
+    height: candidate.height,
+    roundness: candidate.roundness,
+    points: candidate.points,
+    fixedSegments: candidate.fixedSegments,
+    startIsSpecial: candidate.startIsSpecial,
+    endIsSpecial: candidate.endIsSpecial,
+  } as ElementUpdate<typeof original>);
+  return next === original
+    ? scene
+    : { ...scene, elements: scene.elements.map((item) =>
+      item.id === id ? next : item
+    ) };
+}
+
+/**
+ * Endpoint dragging delegates to the original LinearElementEditor, whose
+ * Scene.mutateElement triggers updateElbowArrowPoints / orthogonal rerouting.
+ */
+export function moveNativeElbowEndpointWithCore(
+  scene: SceneFile,
+  id: string,
+  endpoint: "start" | "end",
+  pointer: { x: number; y: number },
+): SceneFile {
+  const original = scene.elements.find((item) => item.id === id);
+  if (
+    !original ||
+    !canEditNativeElbowArrow(original) ||
+    ![pointer.x, pointer.y].every(Number.isFinite) ||
+    scene.elements.some((other) =>
+      other.id !== id &&
+      !other.isDeleted &&
+      ((other.type === "text" && other.containerId === id) ||
+        other.boundElements?.some((ref) => ref.id === id))
+    )
+  ) {
+    return scene;
+  }
+  const map = nativeElementsMap(scene);
+  const first = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    original, 0, map,
+  );
+  const last = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    original, -1, map,
+  );
+  const anchored = endpoint === "start" ? last : first;
+  const previous = endpoint === "start" ? first : last;
+  if (Math.hypot(pointer.x - previous[0], pointer.y - previous[1]) < 1e-8) {
+    return scene;
+  }
+
+  let projected: SceneFile;
+  try {
+    projected = withNativeCoreScene(scene, (core) => {
+      const current = core.getNonDeletedElement(id);
+      if (!current || current.type !== "arrow" || !current.elbowed) {
+        return;
+      }
+      const point = LinearElementEditor.createPointAt(
+        current,
+        core.getNonDeletedElementsMap(),
+        pointer.x,
+        pointer.y,
+        null,
+      );
+      LinearElementEditor.movePoints(
+        current,
+        core,
+        new Map([[
+          endpoint === "start" ? 0 : current.points.length - 1,
+          { point },
+        ]]),
+        undefined,
+        { isBindingEnabled: false },
+      );
+    });
+  } catch {
+    return scene;
+  }
+  const next = projected.elements.find((item) => item.id === id);
+  if (
+    projected === scene ||
+    !next ||
+    !canEditNativeElbowArrow(next) ||
+    !validateElbowPoints(next.points) ||
+    projected.elements.some((item, i) =>
+      item.id !== id && item !== scene.elements[i]
+    )
+  ) {
+    return scene;
+  }
+  const afterMap = nativeElementsMap(projected);
+  const afterFirst = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    next, 0, afterMap,
+  );
+  const afterLast = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    next, -1, afterMap,
+  );
+  const moved = endpoint === "start" ? afterFirst : afterLast;
+  const stable = endpoint === "start" ? afterLast : afterFirst;
+  if (
+    Math.hypot(stable[0] - anchored[0], stable[1] - anchored[1]) > 0.1 ||
+    Math.hypot(moved[0] - pointer.x, moved[1] - pointer.y) > 0.1
+  ) {
+    return scene;
+  }
+  return projected;
+}
 
 /**
  * An uncropped embedded raster image can use the Excalidraw transform engine
