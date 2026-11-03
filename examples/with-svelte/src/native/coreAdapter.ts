@@ -2,6 +2,7 @@ import {
   bindBindingElement,
   dragSelectedElements,
   fixBindingsAfterDeletion,
+  getGlobalFixedPointForBindableElement,
   getBoundTextMaxHeight,
   getBoundTextMaxWidth,
   getNextSingleWidthAndHeightFromPointer,
@@ -232,6 +233,31 @@ export function reconnectNativeArrowWithCore(
         { value: 1 } as Parameters<typeof bindBindingElement>[5],
         pointFrom<GlobalPoint>(worldPoint.x, worldPoint.y),
       );
+
+      // Core normalizes fixed ratios to avoid exact 0.5 edge singularities.
+      // Align the actual endpoint with that canonical anchor so another
+      // binding sync does not cause a visible post-drag jump.
+      const activeBinding =
+        current[endpoint === "start" ? "startBinding" : "endBinding"];
+      if (activeBinding) {
+        const [x, y] = getGlobalFixedPointForBindableElement(
+          activeBinding.fixedPoint,
+          nextTarget,
+          core.getNonDeletedElementsMap(),
+        );
+        const anchoredLocal = LinearElementEditor.createPointAt(
+          current,
+          core.getNonDeletedElementsMap(),
+          x,
+          y,
+          null,
+        );
+        LinearElementEditor.movePoints(
+          current,
+          core,
+          new Map([[endpoint === "start" ? 0 : 1, { point: anchoredLocal }]]),
+        );
+      }
     }
   });
 }
