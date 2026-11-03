@@ -3,6 +3,8 @@ import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
   canEditNativeLinearPoints,
+  deleteNativeLinearMidpointWithCore,
+  insertNativeLinearMidpointWithCore,
   moveNativeLinearEndpointWithCore,
   moveNativeLinearPointWithCore,
   nativeElementsMap,
@@ -67,6 +69,73 @@ export function updateLinearPoint(
   return element && canEditLinearPoints(element)
     ? moveNativeLinearPointWithCore(scene, id, index, target)
     : scene;
+}
+
+/** Midpoints are provided by Excalidraw's original segment geometry. */
+export function linearSegmentMidpoints(
+  element: ExcalidrawElement,
+): Point[] | null {
+  if (!canEditLinearPoints(element) || element.points.length >= 128) {
+    return null;
+  }
+  const map = nativeElementsMap({ elements: [element] });
+  try {
+    const midpoints = Array.from(
+      { length: element.points.length - 1 },
+      (_, i) => LinearElementEditor.getSegmentMidPoint(element, i + 1, map),
+    );
+    return midpoints.every((p) => p.every(Number.isFinite))
+      ? midpoints.map(([x, y]) => ({ x, y }))
+      : null;
+  } catch {
+    // An unsupported imported path must never break pointer hit-testing.
+    return null;
+  }
+}
+
+/** Locate the nearest midpoint handle; return its left segment index. */
+export function pickLinearSegmentMidpoint(
+  element: ExcalidrawElement,
+  location: Point,
+  tolerance = 9,
+): number | null {
+  if (
+    ![location.x, location.y, tolerance].every(Number.isFinite) ||
+    tolerance < 0
+  ) {
+    return null;
+  }
+  const midpoints = linearSegmentMidpoints(element);
+  if (!midpoints) {
+    return null;
+  }
+  let closest: number | null = null;
+  let distance = tolerance;
+  for (const [i, point] of midpoints.entries()) {
+    const current = Math.hypot(point.x - location.x, point.y - location.y);
+    if (current <= distance) {
+      closest = i;
+      distance = current;
+    }
+  }
+  return closest;
+}
+
+export function insertLinearMidpoint(
+  scene: SceneFile,
+  id: string,
+  segmentIndex: number,
+): SceneFile {
+  return insertNativeLinearMidpointWithCore(scene, id, segmentIndex);
+}
+
+/** Removing first/last endpoints is deliberately unsupported. */
+export function deleteLinearMidpoint(
+  scene: SceneFile,
+  id: string,
+  pointIndex: number,
+): SceneFile {
+  return deleteNativeLinearMidpointWithCore(scene, id, pointIndex);
 }
 
 /** Limit native line editing to two-point, unbound, ungrouped straight lines. */
