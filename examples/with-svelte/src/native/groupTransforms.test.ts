@@ -210,6 +210,105 @@ describe("native flat group transforms", () => {
     expect(scene.elements[0].angle).toBe(0);
   });
 
+  it("resizes two reciprocal labels with original Excalidraw group text scaling", () => {
+    const first = createShape("rectangle", { x: 30, y: 30 }, { x: 260, y: 170 });
+    const second = createShape("ellipse", { x: 370, y: 35 }, { x: 660, y: 220 });
+    const withFirst = updateNativeBoxLabel(
+      { ...blankScene(), elements: [first, second] },
+      first.id,
+      "First grouped caption",
+    );
+    const withBoth = updateNativeBoxLabel(
+      withFirst,
+      second.id,
+      "Second grouped caption",
+    );
+    const grouped = groupSelection(withBoth, [first.id, second.id]);
+    expect(grouped.ids).toHaveLength(2);
+    const source = grouped.scene;
+    const before = structuredClone(source);
+    const bounds = transformableGroup(source, grouped.ids)!.bounds;
+    const scaled = transformGroup(source, grouped.ids, "se", {
+      x: bounds.x + bounds.width * 1.4,
+      y: bounds.y + bounds.height * 1.4,
+    });
+    expect(scaled).not.toBe(source);
+    const originalLabels = source.elements.filter((item) => item.type === "text");
+    expect(originalLabels).toHaveLength(2);
+    for (const beforeLabel of originalLabels) {
+      if (beforeLabel.type !== "text") {
+        throw new Error("Expected grouped text");
+      }
+      const afterLabel = scaled.elements.find((item) => item.id === beforeLabel.id);
+      const box = scaled.elements.find((item) => item.id === beforeLabel.containerId);
+      expect(afterLabel?.type).toBe("text");
+      expect(box).toBeDefined();
+      if (afterLabel?.type !== "text" || !box) {
+        throw new Error("Expected intact reciprocal binding");
+      }
+      expect(afterLabel.originalText).toBe(beforeLabel.originalText);
+      expect(afterLabel.containerId).toBe(beforeLabel.containerId);
+      expect(afterLabel.groupIds).toEqual(box.groupIds);
+      expect(afterLabel.fontSize).toBeGreaterThan(beforeLabel.fontSize);
+      expect(box.boundElements).toEqual([{ id: afterLabel.id, type: "text" }]);
+      expect(nativeLabelBox(scaled, afterLabel)?.id).toBe(box.id);
+      expect(afterLabel.index).toBe(beforeLabel.index);
+    }
+    expect(source).toEqual(before);
+    const history = new SceneHistory();
+    history.commit(source);
+    expect(history.undo(scaled)).toEqual(source);
+    expect(history.redo(source)).toEqual(scaled);
+    expect(parseScene(serializeScene(scaled))).toEqual(scaled);
+  });
+
+  it("rotates a mixed plain/labeled group through core without detaching the label", () => {
+    const { box, sibling, label, scene, ids } = example();
+    const bounds = transformableGroup(scene, ids)!.bounds;
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const rotated = transformGroup(scene, ids, "rotate", {
+      x: center.x + 200,
+      y: center.y,
+    });
+    expect(rotated).not.toBe(scene);
+    expect(rotated.elements[0].angle).toBeCloseTo(Math.PI / 2);
+    expect(rotated.elements[1].angle).toBeCloseTo(Math.PI / 2);
+    const text = rotated.elements.find((item) => item.id === label.id);
+    expect(text?.type).toBe("text");
+    if (text?.type !== "text") {
+      throw new Error("Expected bound text on group rotation");
+    }
+    expect(text.angle).toBeCloseTo(rotated.elements[0].angle);
+    expect(text.originalText).toBe(label.type === "text" ? label.originalText : "");
+    expect(text.containerId).toBe(box.id);
+    expect(text.groupIds).toEqual(rotated.elements[0].groupIds);
+    expect(rotated.elements[0].boundElements).toEqual([{ id: text.id, type: "text" }]);
+    expect(nativeLabelBox(rotated, text)?.id).toBe(box.id);
+    expect(rotated.elements[1].id).toBe(sibling.id);
+    expect(scene.elements[0].angle).toBe(0);
+  });
+
+  it("refuses to transform a group with an external second reference to its caption", () => {
+    const { label, scene, ids } = example();
+    const outsider = {
+      ...createShape("rectangle", { x: 650, y: 60 }, { x: 790, y: 140 }),
+      boundElements: [{ id: label.id, type: "text" as const }],
+    };
+    const damaged = { ...scene, elements: [...scene.elements, outsider] };
+    const bounds = transformableGroup(scene, ids)!.bounds;
+    const next = transformGroup(damaged, ids, "se", {
+      x: bounds.x + bounds.width * 1.3,
+      y: bounds.y + bounds.height * 1.3,
+    });
+    expect(next).toBe(damaged);
+    const rotation = transformGroup(damaged, ids, "rotate", {
+      x: bounds.x + bounds.width / 2 + 100,
+      y: bounds.y + bounds.height / 2,
+    });
+    expect(rotation).toBe(damaged);
+    expect(damaged.elements[2]).toBe(scene.elements[2]);
+  });
+
   it("keeps undo/redo, files, extension data and original scene intact", () => {
     const { scene, ids } = example();
     const imported = {
