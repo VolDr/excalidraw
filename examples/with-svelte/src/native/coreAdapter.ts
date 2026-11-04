@@ -1709,7 +1709,8 @@ const isCoreGroupLinear = (
     element.endBinding ||
     (element.type === "line" && element.polygon) ||
     (element.type === "arrow" &&
-      (element.elbowed || element.fixedSegments != null)) ||
+      (element.elbowed ||
+        ("fixedSegments" in element && element.fixedSegments != null))) ||
     !Number.isFinite(element.width) ||
     !Number.isFinite(element.height) ||
     element.width <= 0 ||
