@@ -218,6 +218,22 @@ export function isNativeOrbitLinkedArrow(
       return false;
     }
     checkedArrows.add(id);
+    // An imported extra box/link may point *at* this arrow while the arrow
+    // does not point back. Such a half-link invalidates the entire component,
+    // not only the foreign box that happens to carry the stale reference.
+    if (scene.elements.some((other) =>
+      !other.isDeleted &&
+      other.id !== id &&
+      ((other.type === "text" && other.containerId === id) ||
+        other.boundElements?.some((ref) =>
+          ref.id === id &&
+          !(ref.type === "arrow" &&
+            (arrow.startBinding?.elementId === other.id ||
+              arrow.endBinding?.elementId === other.id))
+        ))
+    )) {
+      return false;
+    }
     for (const binding of [arrow.startBinding, arrow.endBinding]) {
       if (!binding) {
         continue;
@@ -380,8 +396,8 @@ export function reconnectNativeOrbitEndpoint(
     // Never combine an orbit with a text caption or an inside-mode arrow.
     if (
       !isSafeBoundBox(scene, item) ||
-      (item.boundElements?.length ?? 0) >= 16 &&
-        !item.boundElements?.some((ref) => ref.id === arrowId) ||
+      ((item.boundElements?.length ?? 0) >= 16 &&
+        !item.boundElements?.some((ref) => ref.id === arrowId)) ||
       item.boundElements?.some((ref) => {
         if (ref.id === arrowId) {
           return false;
