@@ -1,9 +1,11 @@
+import { LinearElementEditor } from "@excalidraw/element";
 import { pointFrom } from "@excalidraw/math";
 import { describe, expect, it } from "vitest";
 
 import type { LocalPoint } from "@excalidraw/math";
 
 import { nativeLabelBox, updateNativeBoxLabel } from "./boundText";
+import { nativeElementsMap } from "./coreAdapter";
 import {
   groupHandleLocations,
   pickGroupHandle,
@@ -438,6 +440,160 @@ describe("native flat group transforms", () => {
       line.points[0][0] * (result.width / line.width),
     );
     expect(parseScene(serializeScene(next))).toEqual(next);
+  });
+
+  it("uses core multi-resize for an unbound reversed arrow in a mixed group", () => {
+    const box = createShape("rectangle", { x: 15, y: 30 }, { x: 135, y: 130 });
+    const arrow = createShape("arrow", { x: 350, y: 170 }, { x: 210, y: 70 });
+    const outsider = createShape("ellipse", { x: 640, y: 100 }, { x: 740, y: 200 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [box, arrow, outsider] },
+      [box.id, arrow.id],
+    );
+    expect(grouped.ids).toHaveLength(2);
+    const source = grouped.scene;
+    const snapshot = structuredClone(source);
+    const { bounds } = transformableGroup(source, grouped.ids)!;
+    const scaled = transformGroup(source, grouped.ids, "se", {
+      x: bounds.x + bounds.width * 1.4,
+      y: bounds.y + bounds.height * 1.4,
+    });
+    expect(scaled).not.toBe(source);
+    const after = scaled.elements[1];
+    expect(after.type).toBe("arrow");
+    if (after.type !== "arrow" || arrow.type !== "arrow") {
+      throw new Error("Expected simple arrow in core group");
+    }
+    expect(after.width).toBeCloseTo(arrow.width * 1.4);
+    expect(after.height).toBeCloseTo(arrow.height * 1.4);
+    expect(after.points[0][0]).toBeCloseTo(arrow.points[0][0] * 1.4);
+    expect(after.points[0][1]).toBeCloseTo(arrow.points[0][1] * 1.4);
+    expect(after.points[1][0]).toBeCloseTo(arrow.points[1][0] * 1.4);
+    expect(after.points[1][1]).toBeCloseTo(arrow.points[1][1] * 1.4);
+    expect(after.startBinding).toBeNull();
+    expect(after.endBinding).toBeNull();
+    expect(after.endArrowhead).toBe(arrow.endArrowhead);
+    expect(after.groupIds).toEqual(source.elements[1].groupIds);
+    expect(after.index).toBe(arrow.index);
+    expect(after.version).toBeGreaterThan(source.elements[1].version);
+    expect(scaled.elements[2]).toBe(outsider);
+    expect(scaled.files).toBe(source.files);
+    expect(source).toEqual(snapshot);
+    const history = new SceneHistory();
+    history.commit(source);
+    expect(history.undo(scaled)).toEqual(source);
+    expect(history.redo(source)).toEqual(scaled);
+    expect(parseScene(serializeScene(scaled))).toEqual(scaled);
+  });
+
+  it("uses core group rotation for a box with a reversed two-point line", () => {
+    const box = createShape("diamond", { x: 20, y: 30 }, { x: 140, y: 130 });
+    const line = createShape("line", { x: 355, y: 185 }, { x: 215, y: 75 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [box, line] },
+      [box.id, line.id],
+    );
+    const source = grouped.scene;
+    const { bounds } = transformableGroup(source, grouped.ids)!;
+    const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+    const beforePoint = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+      line as Extract<typeof line, { type: "line" }>,
+      0,
+      nativeElementsMap(source),
+    );
+    const rotated = transformGroup(source, grouped.ids, "rotate", {
+      x: center.x + 220,
+      y: center.y,
+    });
+    expect(rotated).not.toBe(source);
+    const after = rotated.elements[1];
+    expect(after.type).toBe("line");
+    if (after.type !== "line" || line.type !== "line") {
+      throw new Error("Expected two-point line");
+    }
+    const afterPoint = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+      after,
+      0,
+      nativeElementsMap(rotated),
+    );
+    expect(after.angle).toBeCloseTo(Math.PI / 2);
+    expect(after.points).toEqual(line.points);
+    expect(afterPoint[0]).toBeCloseTo(center.x - (beforePoint[1] - center.y));
+    expect(afterPoint[1]).toBeCloseTo(center.y + (beforePoint[0] - center.x));
+    expect(rotated.elements[0].angle).toBeCloseTo(Math.PI / 2);
+    expect(after.groupIds).toEqual(rotated.elements[0].groupIds);
+    expect(source.elements[1].angle).toBe(0);
+  });
+
+  it("resizes a bound box caption and a simple arrow together in one core scene", () => {
+    const box = createShape("rectangle", { x: 15, y: 25 }, { x: 255, y: 185 });
+    const arrow = createShape("arrow", { x: 340, y: 50 }, { x: 500, y: 160 });
+    const labeled = updateNativeBoxLabel(
+      { ...blankScene(), elements: [box, arrow] },
+      box.id,
+      "Caption on mixed group",
+    );
+    const grouped = groupSelection(labeled, [box.id, arrow.id]);
+    expect(grouped.ids).toHaveLength(2);
+    const source = grouped.scene;
+    const frame = transformableGroup(source, grouped.ids)!;
+    const grown = transformGroup(source, grouped.ids, "se", {
+      x: frame.bounds.x + frame.bounds.width * 1.3,
+      y: frame.bounds.y + frame.bounds.height * 1.3,
+    });
+    expect(grown).not.toBe(source);
+    const afterLabel = grown.elements.find(
+      (item) => item.type === "text" && item.containerId === box.id,
+    );
+    const afterArrow = grown.elements.find((item) => item.id === arrow.id);
+    expect(afterLabel?.type).toBe("text");
+    expect(afterArrow?.type).toBe("arrow");
+    if (afterLabel?.type !== "text" || afterArrow?.type !== "arrow") {
+      throw new Error("Expected text and arrow preserved");
+    }
+    const resizedBox = grown.elements.find((item) => item.id === box.id)!;
+    expect(afterLabel.containerId).toBe(box.id);
+    expect(afterLabel.originalText).toBe("Caption on mixed group");
+    expect(afterLabel.fontSize).toBeGreaterThan(
+      (source.elements.find((item) => item.id === afterLabel.id) as typeof afterLabel).fontSize,
+    );
+    expect(resizedBox.boundElements).toEqual([{ id: afterLabel.id, type: "text" }]);
+    expect(afterLabel.groupIds).toEqual(resizedBox.groupIds);
+    expect(nativeLabelBox(grown, afterLabel)?.id).toBe(box.id);
+    expect(afterArrow.endBinding).toBeNull();
+    expect(afterArrow.startBinding).toBeNull();
+    expect(afterArrow.width).toBeCloseTo(arrow.width * 1.3);
+    expect(parseScene(serializeScene(grown))).toEqual(grown);
+  });
+
+  it("refuses an orphan foreign arrow binding to a grouped linear member", () => {
+    const box = createShape("rectangle", { x: 20, y: 30 }, { x: 130, y: 120 });
+    const line = createShape("line", { x: 210, y: 40 }, { x: 330, y: 130 });
+    const grouped = groupSelection(
+      { ...blankScene(), elements: [box, line] },
+      [box.id, line.id],
+    );
+    const orphan = {
+      ...createShape("arrow", { x: 440, y: 80 }, { x: 510, y: 130 }),
+      endBinding: {
+        elementId: line.id,
+        fixedPoint: [0.5, 0.5] as [number, number],
+        mode: "inside" as const,
+      },
+    };
+    const source = {
+      ...grouped.scene,
+      elements: [...grouped.scene.elements, orphan],
+    };
+    const frame = transformableGroup(grouped.scene, grouped.ids)!.bounds;
+    expect(transformGroup(source, grouped.ids, "se", {
+      x: frame.x + frame.width * 1.3,
+      y: frame.y + frame.height * 1.3,
+    })).toBe(source);
+    expect(transformGroup(source, grouped.ids, "rotate", {
+      x: frame.x + frame.width / 2 + 100,
+      y: frame.y + frame.height / 2,
+    })).toBe(source);
   });
 
   it("rejects bound, routed and multi-point arrows during group transforms", () => {
