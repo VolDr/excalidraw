@@ -1090,6 +1090,7 @@ export function moveNativeElbowEndpointWithCore(
 const canCoreTransformImage = (
   scene: SceneFile,
   id: string,
+  allowGrouped = false,
 ): boolean => {
   const element = scene.elements.find((item) => item.id === id);
   if (
@@ -1098,7 +1099,7 @@ const canCoreTransformImage = (
     element.isDeleted ||
     element.locked ||
     element.frameId !== null ||
-    element.groupIds.length !== 0 ||
+    (!allowGrouped && element.groupIds.length !== 0) ||
     element.boundElements?.length ||
     element.crop !== null ||
     !nativeImageSource(scene, element) ||
@@ -1759,7 +1760,9 @@ const getSafeCoreGroupLabels = (
   if (!groupId || roots.length !== selected.size || roots.some((element) =>
     !(
       ["rectangle", "ellipse", "diamond"].includes(element.type) ||
-      (allowSimpleLinear && isCoreGroupLinear(element))
+      (allowSimpleLinear && isCoreGroupLinear(element)) ||
+      (element.type === "image" &&
+        canCoreTransformImage(scene, element.id, true))
     ) ||
     element.isDeleted ||
     element.locked ||
@@ -1886,6 +1889,36 @@ const acceptCoreGroupLabels = (
       return source;
     }
   }
+  // Core multi-resize must retain each embedded raster's source, crop and
+  // flips. Its only accepted image mutation is geometric. Reject malformed
+  // imports and any unexpected aspect-ratio change atomically.
+  for (const id of ids) {
+    const original = source.elements.find((item) => item.id === id);
+    if (!original || original.type !== "image") {
+      continue;
+    }
+    const updated = after.get(id);
+    if (
+      !updated ||
+      updated.type !== "image" ||
+      !canCoreTransformImage(source, id, true) ||
+      updated.fileId !== original.fileId ||
+      updated.status !== original.status ||
+      updated.crop !== null ||
+      !Array.isArray(updated.scale) ||
+      updated.scale.length !== 2 ||
+      updated.scale[0] !== original.scale[0] ||
+      updated.scale[1] !== original.scale[1] ||
+      Math.abs(
+        updated.width / updated.height -
+        original.width / original.height
+      ) > 1e-6 ||
+      JSON.stringify(updated.customData ?? null) !==
+        JSON.stringify(original.customData ?? null)
+    ) {
+      return source;
+    }
+  }
   // Group resize and rotation may alter local points but must not detach,
   // reroute or reverse any simple linear element. The original endpoint order
   // and normalized point ratios are invariant under uniform scaling.
@@ -1955,9 +1988,10 @@ const acceptCoreGroupLabels = (
 };
 
 /**
- * Use original multi-element resize for complete flat box/straight-line
- * groups, including validated reciprocal box captions. Routed or linked
- * linear elements and cropped images are deliberately excluded.
+ * Use original multi-element resize for complete flat groups of boxes,
+ * unbound two-point lines/arrows and uncropped embedded rasters, including
+ * validated reciprocal box captions. Cropped rasters and linked paths
+ * remain on the guarded native path.
  */
 export function resizeNativeGroupWithCore(
   scene: SceneFile,
