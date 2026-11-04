@@ -221,15 +221,14 @@ export function transformGroup(
     return scene;
   }
 
-  // Excalidraw's original multi-selection rotation owns the complete
-  // geometry of flat box groups, including each reciprocal bound label.
-  // Images and linear shapes retain the guarded native path.
-  if (
-    handle === "rotate" &&
-    roots.every((element) =>
-      ["rectangle", "ellipse", "diamond"].includes(element.type)
-    )
-  ) {
+  // Original Excalidraw multi-selection rotation now also handles simple
+  // unbound two-point lines/arrows alongside boxes and bound box labels.
+  // Images, routed arrows and unsupported paths keep the guarded fallback.
+  const coreGroup = roots.every((element) =>
+    ["rectangle", "ellipse", "diamond"].includes(element.type) ||
+    isSimpleLinear(element)
+  );
+  if (handle === "rotate" && coreGroup) {
     return rotateNativeGroupWithCore(
       scene,
       roots.map((element) => element.id),
@@ -238,14 +237,13 @@ export function transformGroup(
     );
   }
 
-  // The original multi-resize owns both box and bound-label layout.
-  // The adapter rejects any non-reciprocal, foreign or partial selection.
+  // Core multi-resize scales normalized local linear points and reflows
+  // reciprocal box labels. Keep the existing zero-angle gate for corner
+  // resizing; other rotated/mixed image groups retain the native fallback.
   if (
     handle !== "rotate" &&
-    roots.every((element) =>
-      ["rectangle", "ellipse", "diamond"].includes(element.type) &&
-      element.angle === 0
-    )
+    coreGroup &&
+    roots.every((element) => element.angle === 0)
   ) {
     return resizeNativeGroupWithCore(
       scene,
