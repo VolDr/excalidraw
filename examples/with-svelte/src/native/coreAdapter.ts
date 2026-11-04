@@ -1694,6 +1694,47 @@ export function rotateNativeBoxWithCore(
 }
 
 /**
+ * Narrow compatibility gate for a core-transformed line in a flat group.
+ * Match the native two-point, normalized-extents rule: core resizes the local
+ * points, so malformed imported ranges must not be silently repaired.
+ */
+const isCoreGroupLinear = (
+  element: ExcalidrawElement,
+): element is Extract<ExcalidrawElement, { type: "line" | "arrow" }> => {
+  if (
+    (element.type !== "line" && element.type !== "arrow") ||
+    element.points.length !== 2 ||
+    element.boundElements?.length ||
+    element.startBinding ||
+    element.endBinding ||
+    (element.type === "line" && element.polygon) ||
+    (element.type === "arrow" &&
+      (element.elbowed || element.fixedSegments != null)) ||
+    !Number.isFinite(element.width) ||
+    !Number.isFinite(element.height) ||
+    element.width <= 0 ||
+    element.height <= 0
+  ) {
+    return false;
+  }
+  const xs = element.points.map((point) => point[0]);
+  const ys = element.points.map((point) => point[1]);
+  return element.points.every(
+    ([x, y]) =>
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      x >= 0 &&
+      y >= 0 &&
+      x <= element.width &&
+      y <= element.height,
+  ) &&
+    Math.abs(Math.min(...xs)) < 1e-6 &&
+    Math.abs(Math.max(...xs) - element.width) < 1e-6 &&
+    Math.abs(Math.min(...ys)) < 1e-6 &&
+    Math.abs(Math.max(...ys) - element.height) < 1e-6;
+};
+
+/**
  * A group can be transformed by core only if its complete flat membership
  * consists of supported box roots and, optionally, one exact reciprocal text
  * label per box. Returning the labels lets the caller validate every core
@@ -1706,6 +1747,7 @@ const getSafeCoreGroupLabels = (
   scene: SceneFile,
   ids: readonly string[],
   allowRotated: boolean,
+  allowSimpleLinear = false,
 ): ExcalidrawTextElement[] | null => {
   const selected = new Set(ids);
   if (selected.size < 2 || selected.size !== ids.length) {
@@ -1714,7 +1756,10 @@ const getSafeCoreGroupLabels = (
   const roots = scene.elements.filter((element) => selected.has(element.id));
   const groupId = roots[0]?.groupIds.length === 1 ? roots[0].groupIds[0] : null;
   if (!groupId || roots.length !== selected.size || roots.some((element) =>
-    !["rectangle", "ellipse", "diamond"].includes(element.type) ||
+    !(
+      ["rectangle", "ellipse", "diamond"].includes(element.type) ||
+      (allowSimpleLinear && isCoreGroupLinear(element))
+    ) ||
     element.isDeleted ||
     element.locked ||
     element.frameId !== null ||
@@ -1840,6 +1885,34 @@ const acceptCoreGroupLabels = (
       return source;
     }
   }
+  // Group resize and rotation may alter local points but must not detach,
+  // reroute or reverse any simple linear element. The original endpoint order
+  // and normalized point ratios are invariant under uniform scaling.
+  for (const id of ids) {
+    const original = source.elements.find((item) => item.id === id);
+    const updated = after.get(id);
+    if (original && (original.type === "line" || original.type === "arrow")) {
+      if (
+        !updated ||
+        !isCoreGroupLinear(updated) ||
+        !isCoreGroupLinear(original) ||
+        updated.type !== original.type ||
+        updated.points.length !== original.points.length ||
+        updated.points.some((point, index) =>
+          Math.abs(point[0] / updated.width -
+            original.points[index][0] / original.width) > 1e-5 ||
+          Math.abs(point[1] / updated.height -
+            original.points[index][1] / original.height) > 1e-5
+        ) ||
+        (original.type === "arrow" &&
+          (updated.type !== "arrow" ||
+            updated.startArrowhead !== original.startArrowhead ||
+            updated.endArrowhead !== original.endArrowhead))
+      ) {
+        return source;
+      }
+    }
+  }
   for (const label of labels) {
     const bound = after.get(label.id);
     const box = after.get(label.containerId!);
@@ -1881,9 +1954,9 @@ const acceptCoreGroupLabels = (
 };
 
 /**
- * Use the original multi-element resize for complete flat groups of boxes,
- * including validated reciprocal text labels. Cropped images and linear
- * elements still require separate parity handling.
+ * Use original multi-element resize for complete flat box/straight-line
+ * groups, including validated reciprocal box captions. Routed or linked
+ * linear elements and cropped images are deliberately excluded.
  */
 export function resizeNativeGroupWithCore(
   scene: SceneFile,
@@ -1892,7 +1965,7 @@ export function resizeNativeGroupWithCore(
   scale: number,
   bounds: { x: number; y: number; width: number; height: number },
 ): SceneFile {
-  const labels = getSafeCoreGroupLabels(scene, ids, false);
+  const labels = getSafeCoreGroupLabels(scene, ids, false, true);
   if (
     labels === null ||
     !Number.isFinite(scale) ||
@@ -1948,9 +2021,9 @@ export function resizeNativeGroupWithCore(
 }
 
 /**
- * Original Excalidraw multi-selection rotation, restricted to a safe
- * complete group of plain boxes. Uses the same rotation normalization and
- * element-center calculation as the React editor.
+ * Original Excalidraw multi-selection rotation for safe flat groups of
+ * boxes and simple two-point lines/arrows. Bound captions follow their boxes
+ * through the same core Scene transaction.
  */
 export function rotateNativeGroupWithCore(
   scene: SceneFile,
@@ -1958,7 +2031,7 @@ export function rotateNativeGroupWithCore(
   pointer: { x: number; y: number },
   bounds: { x: number; y: number; width: number; height: number },
 ): SceneFile {
-  const labels = getSafeCoreGroupLabels(scene, ids, true);
+  const labels = getSafeCoreGroupLabels(scene, ids, true, true);
   if (
     labels === null ||
     ![pointer.x, pointer.y, bounds.x, bounds.y, bounds.width, bounds.height]
