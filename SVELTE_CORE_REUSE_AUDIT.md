@@ -15,7 +15,7 @@ still an unverified draft.
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Flat groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images now delegate resize/rotation to core; cropped images retain guarded native geometry |
 | `native/transforms.ts` | `@excalidraw/element`: `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
-| `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and isolated elbow `orbit` links use original reciprocal binding operations; orbit cases require strict target validation and core rerouting |
+| `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `updateElbowArrowPoints`, `validateElbowPoints`, `LinearElementEditor` geometry/point editing, `bindBindingElement`, `unbindBindingElement`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes, mixed box/two-point-linear/uncropped-image groups, standard line/arrow endpoints, safe unbound elbow conversion/rerouting and reciprocal simple-arrow bindings; preserves scene metadata and unrelated elements |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
@@ -40,7 +40,7 @@ until the entire interaction policy is ported.
 
 | Area | Existing core | Why not swapped wholesale yet |
 | --- | --- | --- |
-| Remaining complex arrow lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`, `packages/element/src/elbowArrow.ts` | Isolated native elbow arrows now use `orbit` attachment, detachment and core rerouting on target translation, in addition to simple non-elbow `inside` bindings. Elbow fixed segments, multiple arrow references on one box, bound labels, grouping, mixed routes and arbitrary imported bindings still need parity. |
+| Remaining complex arrow lifecycle (`native/bindings.ts`) | `packages/element/src/binding.ts`, `packages/element/src/elbowArrow.ts` | Isolated native elbow arrows now use `orbit` attachment, detachment and core rerouting on target translation, in addition to simple non-elbow `inside` bindings. Elbow fixed segments, mixed `inside`/`orbit` arrow references on one box, bound labels, grouping, mixed routes and arbitrary imported bindings still need parity. |
 | Remaining resize and rotation | `packages/element/src/resizeElements.ts` | `resizeSingleElement`/`transformElements` now handle boxes, reciprocal text and uncropped embedded images; `resizeMultipleElements` handles flat groups of boxes, reciprocal captions, simple unbound two-point lines/arrows and uncropped embedded raster images. Cropped images, routed/bound linear groups, frames and unsupported imports still need parity work. |
 | Drag interaction completeness | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Basic native movement now delegates to this original engine with an isolated synthetic original-elements pointer snapshot; grid snapping, modifiers, nested frame interactions and the full React pointer state have not been ported. |
 | Full selection semantics | `packages/element/src/selection.ts`, `packages/element/src/bounds.ts` | Marquee geometry now uses `elementsOverlappingBBox`; selection state, nested groups, locked elements and frames still need a real Svelte state adapter. |
@@ -52,8 +52,8 @@ until the entire interaction policy is ported.
 1. Validate the already integrated `withNativeCoreScene` paths (deletion,
    dragging, resizing, rotating, simple arrow creation/reconnection) against
    the React editor with actual executed parity tests.
-2. Extend the guarded `orbit` elbow path to fixed segments, multiple arrows
-   per target and bound labels, then address cropped raster and complex routed
+2. Extend the guarded `orbit` elbow path to fixed segments, mixed-mode
+   bindings and bound labels, then address cropped raster and complex routed
    or externally linked group transforms after cross-editor parity tests.
 3. Reuse Excalidraw's fractional indexing, source element-order handling,
    and native history transaction semantics.
@@ -198,11 +198,28 @@ core `dragSelectedElements` moves a linked box and invokes the original
 `updateBoundElements` flow for its arrow. A postflight check rejects
 transactions that lose any recognized reciprocal elbow relationship.
 Resizing/rotating an orbit-linked box is intentionally disabled pending
-cross-editor parity. The current safe policy permits one arrow reference
-per box and **no other box labels, pinned segments or foreign links**;
-it does not claim general elbow-arrow parity. Regression fixtures cover
+cross-editor parity. The safe policy permits up to 16 validated orbit-arrow
+references per target and **no other box labels, inside-mode links, pinned
+segments or foreign references**. It does not claim general elbow-arrow
+parity. Regression fixtures cover
 connection, retargeting, disconnection, target movement, deletion, undo/redo
 and invalid imports, **written but not executed**.
+
+A box may now serve as an **orbit target for multiple routed elbows**
+without replacing its existing reciprocal arrow references. The native
+binding guard walks the connected component of shared targets and arrows
+iteratively (without recursively invoking `isSafeBoundBox`), validating
+every forward `orbit` endpoint, every reverse `boundElements` entry,
+unique references, orthogonal unlocked arrows, ungrouped targets, and
+absence of orphan/foreign text or arrow references. Core
+`bindBindingElement`, `unbindBindingElement` and `dragSelectedElements`
+still own attachment, detachment and rerouting; no native bend geometry
+was added. A max of 16 orbit references per box keeps this initial
+support conservative. Existing captions, ordinary `inside` bindings,
+fixed segments and malformed imports remain excluded. Regression
+fixtures for two arrows sharing a box, dragging, rerouting, selective
+retargeting/deletion, undo/redo, JSON roundtrip, duplicate reverse IDs
+and malformed siblings were authored **without executing tests**.
 
 Native flat-group scaling and rotation now also delegate **mixed boxes and
 unbound two-point lines/arrows** to `resizeMultipleElements` and
