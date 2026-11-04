@@ -142,15 +142,15 @@ export function isNativeLinkedArrow(
 }
 
 /**
- * Safe native support for *orbit*-bound, unpinned elbow routes. This
- * intentionally excludes mixed/malformed imports and multiple arrows per
- * target until full binding parity is tested. Excalidraw itself owns the
- * anchor calculation, routing and reciprocal mutation.
+ * A small, closed orbit-only graph is safe to edit without React's full
+ * binding controller. Validate all arrows sharing each target together:
+ * every forward orbit endpoint needs exactly one reciprocal box reference,
+ * and every reverse reference must lead back to an eligible routed arrow.
+ * No recursion through isSafeBoundBox: that guard itself calls this one.
  */
-export function isNativeOrbitLinkedArrow(
-  scene: SceneFile,
+const isOrbitArrowCandidate = (
   el: ExcalidrawElement,
-): el is ExcalidrawElbowArrowElement {
+): el is ExcalidrawElbowArrowElement => {
   if (
     !isElbowArrow(el) ||
     el.isDeleted ||
@@ -171,56 +171,118 @@ export function isNativeOrbitLinkedArrow(
     !el.points.slice(1).every((p, i) =>
       Math.abs(p[0] - el.points[i][0]) < 1e-6 ||
       Math.abs(p[1] - el.points[i][1]) < 1e-6
-    ) ||
-    (!el.startBinding && !el.endBinding)
+    )
   ) {
     return false;
   }
   const refs = [el.startBinding, el.endBinding].filter(
     (binding): binding is NonNullable<typeof el.startBinding> => !!binding,
   );
-  if (
-    new Set(refs.map((binding) => binding.elementId)).size !== refs.length
-  ) {
-    return false;
-  }
-  return refs.every((binding) => {
-    if (
-      !binding ||
-      binding.mode !== "orbit" ||
-      !Array.isArray(binding.fixedPoint) ||
-      binding.fixedPoint.length !== 2 ||
-      !binding.fixedPoint.every(
+  return refs.length > 0 &&
+    new Set(refs.map((binding) => binding.elementId)).size === refs.length &&
+    refs.every((binding) =>
+      binding.mode === "orbit" &&
+      Array.isArray(binding.fixedPoint) &&
+      binding.fixedPoint.length === 2 &&
+      binding.fixedPoint.every(
         (n) => Number.isFinite(n) && n >= -10 && n <= 10,
       )
-    ) {
+    );
+};
+
+/**
+ * Supports several orbit elbows attached to the same box, provided their
+ * entire connected component consists of validated, reciprocal orbit links.
+ * Limit each box to 16 endpoints while full large-document parity is pending.
+ */
+export function isNativeOrbitLinkedArrow(
+  scene: SceneFile,
+  el: ExcalidrawElement,
+): el is ExcalidrawElbowArrowElement {
+  if (!isOrbitArrowCandidate(el)) {
+    return false;
+  }
+
+  const byId = new Map(scene.elements.map((item) => [item.id, item]));
+  const checkedArrows = new Set<string>();
+  const checkedBoxes = new Set<string>();
+  const pending = [el.id];
+
+  while (pending.length) {
+    const id = pending.pop()!;
+    if (checkedArrows.has(id)) {
+      continue;
+    }
+    const arrow = byId.get(id);
+    if (!arrow || !isOrbitArrowCandidate(arrow)) {
       return false;
     }
-    const box = scene.elements.find((item) =>
-      item.id === binding.elementId
-    );
-    return !!box &&
-      isBox(box) &&
-      !box.isDeleted &&
-      !box.locked &&
-      box.frameId === null &&
-      box.groupIds.length === 0 &&
-      box.width >= 8 &&
-      box.height >= 8 &&
-      Number.isFinite(box.angle) &&
-      Array.isArray(box.boundElements) &&
-      box.boundElements.length === 1 &&
-      box.boundElements[0].id === el.id &&
-      box.boundElements[0].type === "arrow" &&
-      !scene.elements.some((other) =>
+    checkedArrows.add(id);
+    for (const binding of [arrow.startBinding, arrow.endBinding]) {
+      if (!binding) {
+        continue;
+      }
+      const box = byId.get(binding.elementId);
+      if (
+        !box ||
+        !isBox(box) ||
+        box.isDeleted ||
+        box.locked ||
+        box.frameId !== null ||
+        box.groupIds.length !== 0 ||
+        box.width < 8 ||
+        box.height < 8 ||
+        ![box.x, box.y, box.angle, box.width, box.height]
+          .every(Number.isFinite) ||
+        !Array.isArray(box.boundElements) ||
+        box.boundElements.length === 0 ||
+        box.boundElements.length > 16 ||
+        new Set(box.boundElements.map((ref) => ref.id)).size !==
+          box.boundElements.length ||
+        !box.boundElements.some(
+          (ref) => ref.id === arrow.id && ref.type === "arrow",
+        )
+      ) {
+        return false;
+      }
+      if (checkedBoxes.has(box.id)) {
+        continue;
+      }
+      checkedBoxes.add(box.id);
+      // Refuse half-imported links even if a different valid orbit arrow is
+      // present. There can be no hidden text or missing reverse arrow ref.
+      if (scene.elements.some((other) =>
         !other.isDeleted &&
-        other.id !== el.id &&
-        ((other.type === "arrow" &&
-          (other.startBinding?.elementId === box.id ||
-            other.endBinding?.elementId === box.id)) ||
-          (other.type === "text" && other.containerId === box.id))
-      );
-  });
+        ((other.type === "text" && other.containerId === box.id) ||
+          (other.type === "arrow" &&
+            (other.startBinding?.elementId === box.id ||
+              other.endBinding?.elementId === box.id) &&
+            !box.boundElements?.some(
+              (ref) => ref.id === other.id && ref.type === "arrow",
+            )))
+      )) {
+        return false;
+      }
+      for (const ref of box.boundElements) {
+        if (ref.type !== "arrow") {
+          return false;
+        }
+        const sibling = byId.get(ref.id);
+        if (
+          !sibling ||
+          !isOrbitArrowCandidate(sibling) ||
+          !(
+            sibling.startBinding?.elementId === box.id ||
+            sibling.endBinding?.elementId === box.id
+          )
+        ) {
+          return false;
+        }
+        pending.push(sibling.id);
+      }
+    }
+  }
+  return true;
 }
 
 /** World-space ends of a validated orbit-routed elbow. */
