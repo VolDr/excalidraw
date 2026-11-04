@@ -19,6 +19,7 @@ import {
   updateNativeElement,
 } from "./coreAdapter";
 import { editableSelection, safeGroupMembers } from "./groups";
+import { nativeImageSource } from "./images";
 
 import type { Bounds } from "./selection";
 import type { Point, SceneFile } from "./scene";
@@ -221,12 +222,16 @@ export function transformGroup(
     return scene;
   }
 
-  // Original Excalidraw multi-selection rotation now also handles simple
-  // unbound two-point lines/arrows alongside boxes and bound box labels.
-  // Images, routed arrows and unsupported paths keep the guarded fallback.
+  // Original core geometry handles box captions, simple two-point linear
+  // paths and uncropped embedded images in the same Scene transaction.
+  // Cropped rasters, routed arrows and unsupported paths retain the
+  // guarded legacy fallback rather than having their metadata rewritten.
   const coreGroup = roots.every((element) =>
     ["rectangle", "ellipse", "diamond"].includes(element.type) ||
-    isSimpleLinear(element)
+    isSimpleLinear(element) ||
+    (element.type === "image" &&
+      element.crop === null &&
+      nativeImageSource(scene, element) !== null)
   );
   if (handle === "rotate" && coreGroup) {
     return rotateNativeGroupWithCore(
@@ -237,9 +242,10 @@ export function transformGroup(
     );
   }
 
-  // Core multi-resize scales normalized local linear points and reflows
-  // reciprocal box labels. Keep the existing zero-angle gate for corner
-  // resizing; other rotated/mixed image groups retain the native fallback.
+  // Core multi-resize scales normalized local linear points, preserves
+  // image sources/flips and reflows reciprocal box labels. Keep the existing
+  // zero-angle gate for group corner resizing; rotated groups still use
+  // the guarded native path for this gesture.
   if (
     handle !== "rotate" &&
     coreGroup &&
