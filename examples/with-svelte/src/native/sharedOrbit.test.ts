@@ -177,6 +177,27 @@ describe("shared core-routed orbit targets", () => {
     expect(reconnectNativeOrbitEndpoint(
       duplicate, lower.id, "end", { x: 620, y: 100 },
     )).toBe(duplicate);
+    const foreign = createShape(
+      "rectangle",
+      { x: 690, y: 40 },
+      { x: 810, y: 155 },
+    );
+    const orphan = {
+      ...second,
+      elements: [
+        ...second.elements,
+        {
+          ...foreign,
+          boundElements: [{ id: upper.id, type: "arrow" as const }],
+        },
+      ],
+    };
+    expect(isNativeOrbitLinkedArrow(orphan, orphan.elements[1])).toBe(false);
+    expect(moveSelection(orphan, [shared.id], 30, -12)).toBe(orphan);
+    expect(reconnectNativeOrbitEndpoint(
+      orphan, lower.id, "end", { x: 620, y: 105 },
+    )).toBe(orphan);
+
     expect(transformSelected(second, shared.id, "se", {
       x: shared.x + shared.width * 2,
       y: shared.y + shared.height * 2,
