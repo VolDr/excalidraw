@@ -375,9 +375,24 @@ export function reconnectNativeOrbitEndpoint(
     if (!isBox(item) || item.isDeleted || !hitTest(item, pointer, 10, map)) {
       continue;
     }
-    // Do not detach on top of a non-editable/malformed target.
-    if (!isSafeBoundBox(scene, item) ||
-        (item.boundElements?.some((ref) => ref.id !== arrowId))) {
+    // A shared target is allowed only when every *other* reverse link is
+    // already a validated orbit elbow in the same closed component.
+    // Never combine an orbit with a text caption or an inside-mode arrow.
+    if (
+      !isSafeBoundBox(scene, item) ||
+      (item.boundElements?.length ?? 0) >= 16 &&
+        !item.boundElements?.some((ref) => ref.id === arrowId) ||
+      item.boundElements?.some((ref) => {
+        if (ref.id === arrowId) {
+          return false;
+        }
+        if (ref.type !== "arrow") {
+          return true;
+        }
+        const sibling = scene.elements.find((other) => other.id === ref.id);
+        return !sibling || !isNativeOrbitLinkedArrow(scene, sibling);
+      })
+    ) {
       return scene;
     }
     selected = item;
