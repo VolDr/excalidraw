@@ -9,7 +9,7 @@
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
   import { indexInsertedNativeElements } from "./native/ordering";
-  import { moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
+  import { canMoveNativeLayer, moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
   import { canLayoutNativeSelection, nativeLayoutUnitCount, layoutNativeSelectionWithCore, type NativeLayoutAction } from "./native/layout";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
@@ -117,6 +117,7 @@
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
   let layoutAvailable = $derived(canLayoutNativeSelection(scene, selectedIds));
   let layoutUnits = $derived(nativeLayoutUnitCount(scene, selectedIds));
+  let layerAvailable = $derived(canMoveNativeLayer(scene, selectedIds));
   let styleTarget = $derived(nativeStyleTarget(scene, selectedId));
   let typographyTarget = $derived(nativeTypographyTarget(scene, selectedId));
   let selectedRaster = $derived(
@@ -316,10 +317,10 @@
   }
 
   function moveLayer(direction: NativeLayerMove) {
-    if (!styleTarget || gesture || textEditor) {
+    if (!layerAvailable || gesture || textEditor) {
       return;
     }
-    const next = moveNativeLayerWithCore(scene, styleTarget.id, direction);
+    const next = moveNativeLayerWithCore(scene, selectedIds, direction);
     if (next !== scene) {
       commit(scene, next);
     }
@@ -1359,13 +1360,15 @@
         {/if}
       </div>
     {/if}
-    {#if styleTarget}
+    {#if layerAvailable}
       <div class="native-layer-controls" role="group" aria-label="Порядок элементов">
         <button onclick={() => moveLayer("bottom")} title="На задний план (Ctrl+Shift+[)">⇤</button>
         <button onclick={() => moveLayer("back")} title="На один слой назад (Ctrl+[)">←</button>
         <button onclick={() => moveLayer("forward")} title="На один слой вперед (Ctrl+])">→</button>
         <button onclick={() => moveLayer("top")} title="На передний план (Ctrl+Shift+])">⇥</button>
       </div>
+    {/if}
+    {#if styleTarget}
       <div class="native-style-controls" role="group" aria-label="Свойства выделенного элемента">
         {#if styleTarget.type !== "image"}
           <label title="Цвет обводки или текста">

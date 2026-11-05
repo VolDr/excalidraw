@@ -4,7 +4,9 @@ import { validateFractionalIndices } from "@excalidraw/element";
 
 import { blankScene, createShape } from "./scene";
 import { indexInsertedNativeElements } from "./ordering";
-import { moveNativeLayerWithCore } from "./zOrder";
+import { canMoveNativeLayer, moveNativeLayerWithCore } from "./zOrder";
+import { groupSelection } from "./groups";
+import { updateNativeBoxLabel } from "./boundText";
 
 const sceneWith3 = () => {
   const start = blankScene();
@@ -44,6 +46,44 @@ describe("native layer controls reuse Excalidraw zindex", () => {
     const front = moveNativeLayerWithCore(back, source.elements[2].id, "top");
     expect(front.elements[2].id).toBe(source.elements[2].id);
     expect(source.elements[0].type).toBe("rectangle");
+  });
+
+  it("reorders a complete contiguous native group as one layer unit", () => {
+    const source = sceneWith3();
+    const first = source.elements[0].id;
+    const second = source.elements[1].id;
+    const grouped = groupSelection(source, [first, second]).scene;
+    expect(canMoveNativeLayer(grouped, [first, second])).toBe(true);
+    expect(canMoveNativeLayer(grouped, [first])).toBe(false);
+    const moved = moveNativeLayerWithCore(grouped, [first, second], "top");
+    expect(moved.elements.map((element) => element.id)).toEqual([
+      source.elements[2].id, first, second,
+    ]);
+    expect(moved.elements[1].groupIds).toEqual(grouped.elements[0].groupIds);
+    expect(moved.elements[2].groupIds).toEqual(grouped.elements[1].groupIds);
+    validateFractionalIndices(moved.elements, {
+      includeBoundTextValidation: false,
+      shouldThrow: true,
+      ignoreLogs: true,
+    });
+  });
+
+  it("moves a reciprocal box and caption together", () => {
+    const start = blankScene();
+    const box = createShape("rectangle", { x: 0, y: 0 }, { x: 100, y: 100 });
+    const lone = indexInsertedNativeElements(start, { ...start, elements: [box] });
+    const labeled = indexInsertedNativeElements(lone, updateNativeBoxLabel(lone, box.id, "Hello"));
+    const next = createShape("diamond", { x: 200, y: 0 }, { x: 280, y: 80 });
+    const scene = indexInsertedNativeElements(labeled, {
+      ...labeled,
+      elements: [...labeled.elements, next],
+    });
+    expect(canMoveNativeLayer(scene, [box.id])).toBe(true);
+    const moved = moveNativeLayerWithCore(scene, box.id, "top");
+    expect(moved.elements[0].id).toBe(next.id);
+    expect(moved.elements[1].id).toBe(box.id);
+    expect(moved.elements[2].type).toBe("text");
+    expect(moved.elements[2].type === "text" && moved.elements[2].containerId).toBe(box.id);
   });
 
   it("refuses locked, grouped and unindexed imports", () => {

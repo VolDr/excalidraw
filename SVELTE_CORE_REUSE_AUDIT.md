@@ -20,7 +20,7 @@ still an unverified draft.
 | `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |
 | `native/imageCrop.ts` | `@excalidraw/element`: `getUncroppedImageElement`, `cropElement`; `@excalidraw/math`: `pointRotateRads` | Native center-crop and crop reset actions using original crop/source rectangle/rotated geometry |
 | `native/viewport.ts` | `@excalidraw/element`: `getCommonBounds`; `@excalidraw/excalidraw` (public export): `zoomToFitBounds` | Svelte commands fit all / selected elements via original bounds and zoom algorithm; only pixel/scene scroll conversion belongs to the host |
-| `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on validated single independent elements; no custom layer algorithm |
+| `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on complete native selections, including contiguous flat groups and safe bound captions; no custom layer algorithm |
 | `native/layout.ts` | `@excalidraw/element`: `alignElements`, `distributeElements`, `Scene` via adapter | Original group-aware bounds, translations and version updates for independent roots, complete flat groups and reciprocal single-label boxes; incomplete selections and unsafe links stay guarded |
 | `native/history.ts` | `@excalidraw/element`: `ElementsDelta.calculate`, `ElementsDelta.inverse`, `ElementsDelta.applyTo`, `validateFractionalIndices` | Core delta-based undo/redo for valid same-identity edits with original binding reconciliation and revision semantics; snapshots remain fallback for insertion, deletion, reordering and imported incompatibilities |
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
@@ -113,6 +113,12 @@ Visible native resize/rotation marker positions and picking now use the
 original `getTransformHandles` at the current canvas zoom. The prior
 hand-calculated opposite-corner anchors are retained only for the guarded
 cropped-raster fallback geometry. Fixtures authored but not executed.
+
+The native layer controls can now move a complete validated flat group or
+single reciprocal captioned box as one logical unit, using the original
+`moveOneLeft`, `moveOneRight`, `moveAllLeft` and `moveAllRight`.
+The UI rejects partial groups and non-contiguous legacy group ranges,
+leaving them untouched for the full editor. Tests were authored but not run.
 
 ## Still custom: do not mistake these for parity
 
