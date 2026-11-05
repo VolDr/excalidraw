@@ -18,7 +18,7 @@ still an unverified draft.
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `updateElbowArrowPoints`, `validateElbowPoints`, `LinearElementEditor` geometry/point editing, `bindBindingElement`, `unbindBindingElement`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes, mixed box/two-point-linear/uncropped-image groups, standard line/arrow endpoints, safe unbound elbow conversion/rerouting and reciprocal simple-arrow bindings; preserves scene metadata and unrelated elements |
 | `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |
-| `native/imageCrop.ts` | `@excalidraw/element`: `getUncroppedImageElement` | Reset raster crop on safe independent images using core rotation/flip/uncrop geometry; file and unrelated scene data preserved |
+| `native/imageCrop.ts` | `@excalidraw/element`: `getUncroppedImageElement`, `cropElement`; `@excalidraw/math`: `pointRotateRads` | Native center-crop and crop reset actions using original crop/source rectangle/rotated geometry |
 | `native/viewport.ts` | `@excalidraw/element`: `getCommonBounds`; `@excalidraw/excalidraw/viewport`: `zoomToFitBounds` | Svelte commands fit all / selected elements via original bounds and zoom algorithm; only pixel/scene scroll conversion belongs to the host |
 | `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on validated single independent elements; no custom layer algorithm |
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
@@ -84,7 +84,8 @@ Svelte now exposes a crop-reset action for validated independent image
 elements. It reuses the original `getUncroppedImageElement` and the common
 `newElementWith` update path; no image positioning algorithm was copied.
 Interactive crop handles and cropping arbitrary imported images still need
-the original editor interaction lifecycle. Fixture scenarios were authored
+the original editor interaction lifecycle. The 80%-center-crop action now
+calls original `cropElement` with decoded image dimensions. Fixture scenarios were authored
 but not run.
 
 ## Still custom: do not mistake these for parity

@@ -13,7 +13,7 @@
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import { applyNativeTypography, nativeTypographyTarget, type NativeTypographyChange } from "./native/textStyles";
-  import { resetNativeImageCrop } from "./native/imageCrop";
+  import { cropNativeImageCenter, resetNativeImageCrop } from "./native/imageCrop";
   import {
     nativeBoundLabelLayout,
     nativeEditableLabel,
@@ -349,6 +349,29 @@
 
   function fillForInput(value: string): string {
     return /^#[0-9a-f]{6}$/i.test(value) ? value : "#ffffff";
+  }
+
+  function cropSelectedImage() {
+    if (
+      !selectedRaster ||
+      selectedRaster.type !== "image" ||
+      !selectedId ||
+      gesture ||
+      textEditor
+    ) {
+      return;
+    }
+    const raster = imageCache.get(selectedRaster.fileId);
+    if (!raster) {
+      return;
+    }
+    const next = cropNativeImageCenter(scene, selectedId, {
+      width: raster.naturalWidth,
+      height: raster.naturalHeight,
+    });
+    if (next !== scene) {
+      commit(scene, next);
+    }
   }
 
   function resetSelectedCrop() {
@@ -1249,6 +1272,7 @@
     {#if selectedRaster}
       <button onclick={() => flipSelectedImage("horizontal")} title="Отразить выбранное изображение по горизонтали">↔ Отразить</button>
       <button onclick={() => flipSelectedImage("vertical")} title="Отразить выбранное изображение по вертикали">↕ Отразить</button>
+      <button onclick={cropSelectedImage} title="Обрезать изображение по центру до 80% посредством ядра Excalidraw">Обрезать 10%</button>
       {#if selectedRaster.type === "image" && selectedRaster.crop}
         <button onclick={resetSelectedCrop} title="Сбросить обрезку с оригинальной геометрией Excalidraw">Сбросить обрезку</button>
       {/if}
