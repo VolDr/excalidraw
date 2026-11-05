@@ -17,19 +17,20 @@ still an unverified draft.
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `updateElbowArrowPoints`, `validateElbowPoints`, `LinearElementEditor` geometry/point editing, `bindBindingElement`, `unbindBindingElement`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes, mixed box/two-point-linear/uncropped-image groups, standard line/arrow endpoints, safe unbound elbow conversion/rerouting and reciprocal simple-arrow bindings; preserves scene metadata and unrelated elements |
-| `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |\n| `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
+| `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |\n| `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |\n| `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
 **compatibility policy**, not substitutes for Excalidraw's geometry.
 They reject edits we cannot yet model safely.
 
-The native adapter deliberately retains append-order, `index: null`, and
-`version: 1` for duplicated elements as a **temporary policy** even though
-`duplicateElement` supplies the identity, deep copy, groups, seed and
-timestamps. The original `fixDuplicatedBindingsAfterDuplication` now rewrites
-both sides of reciprocal label links on copies. Fractional-index and
-full document-order parity is pending.
+New elements are now assigned fractional indices through the original
+`syncInvalidIndicesImmutable` implementation, invoked only on Svelte insertion
+commits. Existing valid keys and object identities are preserved; legacy
+invalid keys may be repaired when inserted elements require normalization.
+`duplicateElement` still supplies identity, deep copy, groups, seed and
+timestamps, and original `fixDuplicatedBindingsAfterDuplication` owns reciprocal
+label links. Full document-order reconciliation and history parity remain open.
 
 For native hit-testing the adapter passes
 `overrideShouldTestInside: true`: its selection UI currently allows
@@ -64,8 +65,8 @@ correct multi-element semantics. Regression fixtures are authored but not run.
 2. Extend the guarded `orbit` elbow path to fixed segments, mixed-mode
    bindings and bound labels, then address cropped raster and complex routed
    or externally linked group transforms after cross-editor parity tests.
-3. Reuse Excalidraw's fractional indexing, source element-order handling,
-   and native history transaction semantics.
+3. Extend core fractional-index reconciliation beyond insertion and adopt
+   original document-order and history transaction semantics.
 4. Reuse the official rendering and hit-test pipeline where possible; test
    rounded corners, elbow arrows, bound arrow labels, cropped images and frames.
 5. Add roundtrip/behavior parity fixtures with the React editor **and run them**

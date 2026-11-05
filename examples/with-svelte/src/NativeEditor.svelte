@@ -8,6 +8,7 @@
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
+  import { indexInsertedNativeElements } from "./native/ordering";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import {
     nativeBoundLabelLayout,
@@ -229,8 +230,12 @@
   }
 
   function commit(previous: SceneFile, next: SceneFile) {
+    if (previous === next) {
+      return;
+    }
+    const indexed = indexInsertedNativeElements(previous, next);
     history.commit(previous);
-    onChange(next);
+    onChange(indexed);
     refreshHistory();
   }
 
