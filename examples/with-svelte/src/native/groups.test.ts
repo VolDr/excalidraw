@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { blankScene, createShape } from "./scene";
+import { updateNativeBoxLabel, nativeLabelBox } from "./boundText";
+const sceneJson = (scene: unknown) => JSON.stringify(scene);
 import { deleteSelection, moveSelection } from "./transforms";
 import {
   editableSelection,
@@ -10,7 +12,7 @@ import {
   ungroupSelection,
 } from "./groups";
 
-describe("flat Svelte groups", () => {
+describe("Svelte groups with original Excalidraw nesting", () => {
   it("moves grouped members together and refuses partial group deletion", () => {
     const a = createShape("rectangle", { x: 4, y: 6 }, { x: 40, y: 50 });
     const b = createShape("ellipse", { x: 80, y: 90 }, { x: 130, y: 150 });
@@ -44,6 +46,56 @@ describe("flat Svelte groups", () => {
       ungrouped.scene.elements.every((element) => !element.groupIds.length),
     ).toBe(true);
     expect(scene.elements[0].groupIds).toEqual([]);
+  });
+
+  it("nests whole groups without losing parent hierarchy and safely unwraps only the outer group", () => {
+    const a = createShape("rectangle", { x: 5, y: 10 }, { x: 85, y: 80 });
+    const b = createShape("ellipse", { x: 110, y: 10 }, { x: 185, y: 75 });
+    const c = createShape("diamond", { x: 210, y: 10 }, { x: 270, y: 85 });
+    const source = { ...blankScene(), elements: [a, b, c] };
+    const inner = groupSelection(source, [a.id, b.id]);
+    const nested = groupSelection(inner.scene, [a.id, b.id, c.id]);
+    expect(nested.groupId).toBeTruthy();
+    expect(nested.scene.elements.map((el) => el.groupIds)).toEqual([
+      [inner.groupId, nested.groupId],
+      [inner.groupId, nested.groupId],
+      [nested.groupId],
+    ]);
+    expect(selectionUnit(nested.scene, a.id)).toEqual([a.id, b.id, c.id]);
+    expect(selectionUnit(nested.scene, c.id)).toEqual([a.id, b.id, c.id]);
+    expect(editableSelection(nested.scene, [a.id, b.id])).toEqual([]);
+    expect(editableSelection(nested.scene, [a.id, b.id, c.id])).toEqual([a.id, b.id, c.id]);
+    const moved = moveSelection(nested.scene, [a.id, b.id, c.id], 15, 25);
+    expect(moved.elements.map((e) => e.x)).toEqual([20, 125, 225]);
+    expect(deleteSelection(nested.scene, [a.id, b.id])).toBe(nested.scene);
+    const unwrapped = ungroupSelection(nested.scene, [a.id, b.id, c.id]);
+    expect(unwrapped.scene.elements.map((e) => e.groupIds)).toEqual([
+      [inner.groupId], [inner.groupId], [],
+    ]);
+    expect(selectionUnit(unwrapped.scene, a.id)).toEqual([a.id, b.id]);
+    expect(sceneJson(source)).not.toEqual(sceneJson(nested.scene));
+  });
+
+  it("keeps a reciprocal label inside the same nested group as its box", () => {
+    const a = createShape("rectangle", { x: 10, y: 10 }, { x: 180, y: 110 });
+    const b = createShape("ellipse", { x: 220, y: 10 }, { x: 330, y: 110 });
+    const c = createShape("diamond", { x: 360, y: 20 }, { x: 450, y: 130 });
+    const source = { ...blankScene(), elements: [a, b, c] };
+    const labeled = updateNativeBoxLabel(source, a.id, "Header");
+    const inner = groupSelection(labeled, [a.id, b.id]);
+    expect(inner.groupId).not.toBeNull();
+    const nested = groupSelection(inner.scene, [a.id, b.id, c.id]);
+    const box = nested.scene.elements.find((e) => e.id === a.id)!;
+    const text = nested.scene.elements.find((e) => e.type === "text")!;
+    expect(box.groupIds).toEqual([inner.groupId, nested.groupId]);
+    expect(text.groupIds).toEqual(box.groupIds);
+    expect(nativeLabelBox(nested.scene, text)?.id).toBe(box.id);
+    expect(selectionUnit(nested.scene, text.id)).toEqual([a.id, b.id, c.id]);
+    const moved = moveSelection(nested.scene, [a.id, b.id, c.id], 20, 10);
+    const nextLabel = moved.elements.find((e) => e.id === text.id)!;
+    expect(nextLabel.type).toBe("text");
+    expect(nextLabel.groupIds).toEqual(text.groupIds);
+    expect(nextLabel.x).toBeCloseTo(text.x + 20);
   });
 
   it("does not change partially selected, nested, bound or locked groups", () => {

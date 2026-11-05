@@ -42,7 +42,7 @@ export function nativeLabelBox(
     !label.autoResize ||
     label.boundElements?.length ||
     label.frameId ||
-    label.groupIds.length > 1
+    label.groupIds.some((id, index) => label.groupIds.indexOf(id) !== index)
   ) {
     return null;
   }
@@ -182,7 +182,7 @@ export function nativeEditableLabel(
     box.isDeleted ||
     box.locked ||
     box.frameId ||
-    box.groupIds.length > 1 ||
+    box.groupIds.some((id, index) => box.groupIds.indexOf(id) !== index) ||
     box.width <= 20 ||
     box.height <= 20
   ) {

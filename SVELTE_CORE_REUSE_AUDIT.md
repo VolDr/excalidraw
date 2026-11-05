@@ -11,7 +11,7 @@ still an unverified draft.
 | --- | --- | --- |
 | `native/scene.ts` | `@excalidraw/element`: `newElement`, `newLinearElement`, `newArrowElement`, `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | All native shape constructors, text metrics, precise pointer hit tests |
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
-| `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Group membership and ID-array modifications |
+| `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Complete outer-group selection, nested ancestry validation, wrapping and unwrapping without replacing original group-ID manipulation |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Flat groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images now delegate resize/rotation to core; cropped images retain guarded native geometry |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
@@ -28,7 +28,7 @@ still an unverified draft.
 | `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
-The conservative, flat-group and reciprocal-single-label checks are
+The conservative, whole-group and reciprocal-single-label checks are
 **compatibility policy**, not substitutes for Excalidraw's geometry.
 They reject edits we cannot yet model safely.
 
@@ -120,6 +120,15 @@ single reciprocal captioned box as one logical unit, using the original
 `moveOneLeft`, `moveOneRight`, `moveAllLeft` and `moveAllRight`.
 The UI rejects partial groups and non-contiguous legacy group ranges,
 leaving them untouched for the full editor. Tests were authored but not run.
+
+Nested native groups can now be selected as complete outer units, moved,
+deleted, wrapped in a higher-level group, and ungrouped one outer level at a
+time. Validation checks every member's ancestry, including reciprocal labels,
+rejects malformed cross-parent references and singleton inner groups, and
+delegates group-ID changes to Excalidraw's own `addToGroup` and
+`removeFromSelectedGroups`. Individual editing inside nested groups still
+requires the original group-editing interaction model; Svelte intentionally
+selects only whole outer groups. Fixtures authored, not run.
 
 ## Still custom: do not mistake these for parity
 
