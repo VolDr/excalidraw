@@ -46,6 +46,13 @@ responsible for every visual stroke/arrowhead. Linked arrows, bound text,
 groups and frames are deliberately excluded from style changes pending
 correct multi-element semantics. Regression fixtures are authored but not run.
 
+The Svelte app now exposes PNG and SVG export through Excalidraw's
+original `exportScene` API, imported on demand without mounting a React
+editor. It retains core image loading, fonts, text, frames, clipping and
+optional embedded scene metadata. This is distinct from the native canvas
+preview, so export correctness does not depend on duplicate Svelte
+rendering code. Build and tests remain unexecuted.
+
 ## Still custom: do not mistake these for parity
 
 | Area | Existing core | Why not swapped wholesale yet |
