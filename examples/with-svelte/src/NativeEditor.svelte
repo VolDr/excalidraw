@@ -5,6 +5,8 @@
   import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
   import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
+  import { nativeElementsMap } from "./native/coreAdapter";
+  import { isCoreRoughElement, paintCoreRoughElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
   import { paintNativeText } from "./native/text";
   import {
@@ -500,14 +502,16 @@
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    ctx.fillStyle = theme === "dark"
+    const canvasBackgroundColor = theme === "dark"
       ? "#1e1e1e"
       : (typeof scene.appState.viewBackgroundColor === "string"
         ? scene.appState.viewBackgroundColor : "#ffffff");
+    ctx.fillStyle = canvasBackgroundColor;
     ctx.fillRect(0, 0, w, h);
 
     ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, dpr * pan.x, dpr * pan.y);
     const sketch = rough.canvas(canvas);
+    const elementsMap = nativeElementsMap(scene);
 
     const draw = (element: ExcalidrawElement) => {
       const label = nativeBoundLabelLayout(scene, element);
@@ -550,54 +554,40 @@
         ctx.restore();
         return;
       }
-      const { x, y, width, height } = elementBounds(element);
-      const stroke = theme === "dark"
-        ? applyDarkModeFilter(element.strokeColor)
-        : element.strokeColor;
-      const fill = element.backgroundColor === "transparent"
-        ? undefined
-        : theme === "dark"
-          ? applyDarkModeFilter(element.backgroundColor)
-          : element.backgroundColor;
-      const opts = {
-        seed: element.seed,
-        roughness: element.roughness,
-        stroke,
-        strokeWidth: element.strokeWidth,
-        fill,
-        fillStyle: element.fillStyle,
-      };
-      ctx.save();
-      ctx.globalAlpha = element.opacity / 100;
-      if (element.angle) {
-        const cx = x + width / 2;
-        const cy = y + height / 2;
-        ctx.translate(cx, cy);
-        ctx.rotate(element.angle);
-        ctx.translate(-cx, -cy);
+      if (isCoreRoughElement(element)) {
+        paintCoreRoughElement(
+          ctx,
+          sketch,
+          element,
+          elementsMap,
+          theme,
+          canvasBackgroundColor,
+        );
+        return;
       }
 
-      switch (element.type) {
-        case "rectangle":
-          sketch.rectangle(x, y, width, height, opts);
-          break;
-        case "ellipse":
-          sketch.ellipse(x + width / 2, y + height / 2, width, height, opts);
-          break;
-        case "diamond":
-          sketch.polygon([
-            [x + width / 2, y],
-            [x + width, y + height / 2],
-            [x + width / 2, y + height],
-            [x, y + height / 2],
-          ], opts);
-          break;
-        case "text": {
-          paintNativeText(ctx, element, stroke);
-          break;
+      // Text and freehand are still rendered by their existing native
+      // adapters; the official RoughJS pipeline now owns every box and line.
+      if (element.type === "text" || element.type === "freedraw") {
+        const { x, y, width, height } = elementBounds(element);
+        const stroke = theme === "dark"
+          ? applyDarkModeFilter(element.strokeColor)
+          : element.strokeColor;
+        ctx.save();
+        ctx.globalAlpha = element.opacity / 100;
+        if (element.angle) {
+          const cx = x + width / 2;
+          const cy = y + height / 2;
+          ctx.translate(cx, cy);
+          ctx.rotate(element.angle);
+          ctx.translate(-cx, -cy);
         }
-        case "freedraw": {
-          const points = element.points.map((p) => [element.x + p[0], element.y + p[1]] as const);
+        if (element.type === "text") {
+          paintNativeText(ctx, element, stroke);
+        } else {
+          const points = element.points.map(
+            (point) => [element.x + point[0], element.y + point[1]] as const,
+          );
           if (points.length) {
             ctx.beginPath();
             ctx.strokeStyle = stroke;
@@ -613,38 +603,9 @@
             }
             ctx.stroke();
           }
-          break;
         }
-        case "line":
-        case "arrow": {
-          const pts = element.points.map((p) =>
-            [element.x + p[0], element.y + p[1]] as [number, number]);
-          if (pts.length >= 2) {
-            sketch.linearPath(pts, opts);
-            if (element.type === "arrow" && element.endArrowhead && pts.length >= 2) {
-              const [ax, ay] = pts[pts.length - 2];
-              const [bx, by] = pts[pts.length - 1];
-              const angle = Math.atan2(by - ay, bx - ax);
-              const head = Math.min(15, Math.max(8, element.strokeWidth * 5));
-              ctx.strokeStyle = stroke;
-              ctx.lineWidth = element.strokeWidth;
-              ctx.beginPath();
-              ctx.moveTo(
-                bx - head * Math.cos(angle - Math.PI / 6),
-                by - head * Math.sin(angle - Math.PI / 6),
-              );
-              ctx.lineTo(bx, by);
-              ctx.lineTo(
-                bx - head * Math.cos(angle + Math.PI / 6),
-                by - head * Math.sin(angle + Math.PI / 6),
-              );
-              ctx.stroke();
-            }
-          }
-          break;
-        }
+        ctx.restore();
       }
-      ctx.restore();
     };
 
     for (const element of scene.elements) {
