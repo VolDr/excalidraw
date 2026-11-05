@@ -18,6 +18,7 @@ still an unverified draft.
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `updateElbowArrowPoints`, `validateElbowPoints`, `LinearElementEditor` geometry/point editing, `bindBindingElement`, `unbindBindingElement`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes, mixed box/two-point-linear/uncropped-image groups, standard line/arrow endpoints, safe unbound elbow conversion/rerouting and reciprocal simple-arrow bindings; preserves scene metadata and unrelated elements |
 | `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |
+| `native/viewport.ts` | `@excalidraw/element`: `getCommonBounds`; `@excalidraw/excalidraw/viewport`: `zoomToFitBounds` | Svelte commands fit all / selected elements via original bounds and zoom algorithm; only pixel/scene scroll conversion belongs to the host |
 | `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on validated single independent elements; no custom layer algorithm |
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
 | `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text typography now uses original font wrapping and measurement in an isolated core scene; imported/bound/rotated complex text stays guarded |
@@ -70,6 +71,13 @@ to the original `redrawTextBoundingBox` and `Scene.mutateElement`, without a
 second layout engine. Unsupported bound/rotated/fixed-size text remains
 read-only until the original full text interaction path is adapted. Fixtures
 are written but not run; no build/CI performed.
+
+Native canvas now supports fitting all supported visible objects or the
+current selection to the viewport via core `getCommonBounds` and
+`zoomToFitBounds`. Svelte only converts pixel pan to/from Excalidraw's
+scene-space scroll; the original viewport code owns bounds, zoom limits and
+centering. Zoom fitting does not modify document state or undo history.
+Fixtures were authored but not executed.
 
 ## Still custom: do not mistake these for parity
 

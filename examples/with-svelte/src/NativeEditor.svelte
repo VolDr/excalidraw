@@ -10,6 +10,7 @@
   import { SceneHistory } from "./native/history";
   import { indexInsertedNativeElements } from "./native/ordering";
   import { moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
+  import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import { applyNativeTypography, nativeTypographyTarget, type NativeTypographyChange } from "./native/textStyles";
   import {
@@ -305,6 +306,19 @@
     const next = moveNativeLayerWithCore(scene, styleTarget.id, direction);
     if (next !== scene) {
       commit(scene, next);
+    }
+  }
+
+  function fitView(mode: NativeViewportFit) {
+    if (gesture || textEditor) {
+      return;
+    }
+    const fitted = fitNativeViewportWithCore(
+      scene, selectedIds, mode, viewSize, zoom, pan,
+    );
+    if (fitted) {
+      zoom = fitted.zoom;
+      pan = fitted.pan;
     }
   }
 
@@ -1055,6 +1069,16 @@
       return;
     }
     const cmd = event.ctrlKey || event.metaKey;
+    if (!cmd && event.shiftKey && event.key === "!") {
+      event.preventDefault();
+      fitView("all");
+      return;
+    }
+    if (!cmd && event.shiftKey && event.key === "@") {
+      event.preventDefault();
+      fitView("selection");
+      return;
+    }
     if (cmd && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) redo(); else undo();
@@ -1406,6 +1430,8 @@
       (canEditElbowEndpoints(element) || isNativeOrbitLinkedArrow(scene, element)))}
       <span class="zoom">Угловая стрелка: перетащите конец на фигуру для orbit-привязки</span>
     {/if}
+    <button onclick={() => fitView("all")} title="Показать все объекты (Shift+1)">По содержимому</button>
+    <button disabled={!selectedIds.length} onclick={() => fitView("selection")} title="Приблизить выделение (Shift+2)">К выделению</button>
     <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
   </div>
 
