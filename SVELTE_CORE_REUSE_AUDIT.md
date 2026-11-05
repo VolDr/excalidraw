@@ -47,7 +47,7 @@ until the entire interaction policy is ported.
 Native property controls now use a guarded immutable `newElementWith` path
 for independent elements, with no homegrown shape geometry. The current
 panel exposes stroke/fill colors, fill styles, stroke width, dash style,
-roughness, opacity and supported simple-arrow end tips. The core remains
+roughness, roundness, opacity and supported tips on both ends of simple arrows. The core remains
 responsible for every visual stroke/arrowhead. Linked arrows, bound text,
 groups and frames are deliberately excluded from style changes pending
 correct multi-element semantics. Regression fixtures are authored but not run.

@@ -1,3 +1,5 @@
+import { ROUNDNESS } from "@excalidraw/common";
+
 import type {
   Arrowhead,
   ExcalidrawElement,
@@ -26,6 +28,7 @@ export type NativeStyleChange =
   | { key: "strokeStyle"; value: StrokeStyle }
   | { key: "fillStyle"; value: FillStyle }
   | { key: "roughness"; value: 0 | 1 | 2 }
+  | { key: "roundness"; value: "round" | "sharp" }
   | { key: "opacity"; value: number }
   | { key: "startArrowhead" | "endArrowhead"; value: Arrowhead | null };
 
@@ -113,6 +116,14 @@ export function applyNativeStyle(
         return scene;
       }
       break;
+    case "roundness":
+      if (
+        !["rectangle", "diamond", "line", "image"].includes(element.type) ||
+        (change.value !== "round" && change.value !== "sharp")
+      ) {
+        return scene;
+      }
+      break;
     case "opacity":
       if (
         !Number.isFinite(change.value) ||
@@ -161,6 +172,18 @@ export function applyNativeStyle(
     case "roughness":
       updated = updateNativeElement(element, { roughness: change.value });
       break;
+    case "roundness": {
+      if (!!element.roundness === (change.value === "round")) {
+        return scene;
+      }
+      const type = element.type === "diamond" || element.type === "line"
+        ? ROUNDNESS.PROPORTIONAL_RADIUS
+        : ROUNDNESS.ADAPTIVE_RADIUS;
+      updated = updateNativeElement(element, {
+        roundness: change.value === "sharp" ? null : { type },
+      });
+      break;
+    }
     case "opacity":
       updated = updateNativeElement(element, { opacity: change.value });
       break;

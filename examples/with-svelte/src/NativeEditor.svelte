@@ -1387,7 +1387,35 @@
             </select>
           </label>
         {/if}
+        {#if ["rectangle", "diamond", "line", "image"].includes(styleTarget.type)}
+          <label>
+            Углы
+            <select
+              aria-label="Скругление углов"
+              value={styleTarget.roundness ? "round" : "sharp"}
+              onchange={(event) => changeStyle({ key: "roundness", value: event.currentTarget.value as "round" | "sharp" })}
+            >
+              <option value="sharp">Острые</option>
+              <option value="round">Скругленные</option>
+            </select>
+          </label>
+        {/if}
         {#if styleTarget.type === "arrow" && !styleTarget.elbowed}
+          <label>
+            Начало
+            <select
+              aria-label="Начальный наконечник стрелки"
+              value={styleTarget.startArrowhead ?? "none"}
+              onchange={(event) => changeStyle({ key: "startArrowhead", value: event.currentTarget.value === "none" ? null : event.currentTarget.value as "arrow" | "triangle" | "bar" | "circle" | "diamond" })}
+            >
+              <option value="none">Нет</option>
+              <option value="arrow">Стрелка</option>
+              <option value="triangle">Треугольник</option>
+              <option value="bar">Черта</option>
+              <option value="circle">Круг</option>
+              <option value="diamond">Ромб</option>
+            </select>
+          </label>
           <label>
             Конец
             <select
