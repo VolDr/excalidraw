@@ -17,7 +17,8 @@ still an unverified draft.
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `updateElbowArrowPoints`, `validateElbowPoints`, `LinearElementEditor` geometry/point editing, `bindBindingElement`, `unbindBindingElement`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes, mixed box/two-point-linear/uncropped-image groups, standard line/arrow endpoints, safe unbound elbow conversion/rerouting and reciprocal simple-arrow bindings; preserves scene metadata and unrelated elements |
-| `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |\n| `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |\n| `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
+| `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |\n| `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on validated single independent elements; no custom layer algorithm |
+| `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |\n| `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
@@ -52,6 +53,13 @@ editor. It retains core image loading, fonts, text, frames, clipping and
 optional embedded scene metadata. This is distinct from the native canvas
 preview, so export correctness does not depend on duplicate Svelte
 rendering code. Build and tests remain unexecuted.
+
+Native Svelte exposes four z-order operations via the original
+`packages/element/src/zindex.ts` functions. They run in a private core
+Scene with a validated, independent selection; the adapter adopts changed
+fractional indices and array order without modifying the input scene.
+Unsupported grouped, bound and corrupt imported selections remain outside
+this initial editing scope. Regression fixtures are written but not run.
 
 ## Still custom: do not mistake these for parity
 

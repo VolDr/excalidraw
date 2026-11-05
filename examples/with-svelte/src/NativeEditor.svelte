@@ -9,6 +9,7 @@
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
   import { indexInsertedNativeElements } from "./native/ordering";
+  import { moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import {
     nativeBoundLabelLayout,
@@ -292,6 +293,16 @@
     if (result.ids.length) {
       commit(scene, result.scene);
       selectedIds = result.ids;
+    }
+  }
+
+  function moveLayer(direction: NativeLayerMove) {
+    if (!styleTarget || gesture || textEditor) {
+      return;
+    }
+    const next = moveNativeLayerWithCore(scene, styleTarget.id, direction);
+    if (next !== scene) {
+      commit(scene, next);
     }
   }
 
@@ -1056,6 +1067,15 @@
       duplicate();
       return;
     }
+    if (cmd && (event.code === "BracketLeft" || event.code === "BracketRight")) {
+      event.preventDefault();
+      moveLayer(
+        event.code === "BracketLeft"
+          ? event.shiftKey ? "bottom" : "back"
+          : event.shiftKey ? "top" : "forward",
+      );
+      return;
+    }
     if (cmd && event.key.toLowerCase() === "a") {
       event.preventDefault();
       selectedIds = editableSelection(
@@ -1206,6 +1226,12 @@
     <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
     <button disabled={!selectedIds.length} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
     {#if styleTarget}
+      <div class="native-layer-controls" role="group" aria-label="Порядок элементов">
+        <button onclick={() => moveLayer("bottom")} title="На задний план (Ctrl+Shift+[)">⇤</button>
+        <button onclick={() => moveLayer("back")} title="На один слой назад (Ctrl+[)">←</button>
+        <button onclick={() => moveLayer("forward")} title="На один слой вперед (Ctrl+])">→</button>
+        <button onclick={() => moveLayer("top")} title="На передний план (Ctrl+Shift+])">⇥</button>
+      </div>
       <div class="native-style-controls" role="group" aria-label="Свойства выделенного элемента">
         {#if styleTarget.type !== "image"}
           <label title="Цвет обводки или текста">
@@ -1392,6 +1418,10 @@
   }
   .native-toolbar button.active { background: #e8e7fa; border-color: #7771d0; }
   .native-toolbar button:disabled { opacity: 0.45; cursor: default; }
+  .native-layer-controls {
+    display: flex; gap: 3px; align-items: center;
+    padding-left: 6px; border-left: 1px solid #dadae2;
+  }
   .native-style-controls {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 4px 6px; border-left: 1px solid #dadae2;
