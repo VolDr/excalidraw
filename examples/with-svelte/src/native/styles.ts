@@ -139,10 +139,47 @@ export function applyNativeStyle(
       break;
   }
 
-  if (element[change.key] === change.value) {
+  // Narrow discriminated keys for TypeScript and keep updates structurally
+  // typed against Excalidraw element variants (arrowheads are arrow-only).
+  let updated: ExcalidrawElement;
+  switch (change.key) {
+    case "strokeColor":
+      updated = updateNativeElement(element, { strokeColor: change.value });
+      break;
+    case "backgroundColor":
+      updated = updateNativeElement(element, { backgroundColor: change.value });
+      break;
+    case "strokeWidth":
+      updated = updateNativeElement(element, { strokeWidth: change.value });
+      break;
+    case "strokeStyle":
+      updated = updateNativeElement(element, { strokeStyle: change.value });
+      break;
+    case "fillStyle":
+      updated = updateNativeElement(element, { fillStyle: change.value });
+      break;
+    case "roughness":
+      updated = updateNativeElement(element, { roughness: change.value });
+      break;
+    case "opacity":
+      updated = updateNativeElement(element, { opacity: change.value });
+      break;
+    case "startArrowhead":
+      if (element.type !== "arrow") {
+        return scene;
+      }
+      updated = updateNativeElement(element, { startArrowhead: change.value });
+      break;
+    case "endArrowhead":
+      if (element.type !== "arrow") {
+        return scene;
+      }
+      updated = updateNativeElement(element, { endArrowhead: change.value });
+      break;
+  }
+  if (updated === element) {
     return scene;
   }
-  const updated = updateNativeElement(element, { [change.key]: change.value });
   return {
     ...scene,
     elements: scene.elements.map((candidate) =>
