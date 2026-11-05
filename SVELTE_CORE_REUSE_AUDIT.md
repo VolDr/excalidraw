@@ -17,7 +17,7 @@ still an unverified draft.
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `updateElbowArrowPoints`, `validateElbowPoints`, `LinearElementEditor` geometry/point editing, `bindBindingElement`, `unbindBindingElement`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes, mixed box/two-point-linear/uncropped-image groups, standard line/arrow endpoints, safe unbound elbow conversion/rerouting and reciprocal simple-arrow bindings; preserves scene metadata and unrelated elements |
-| `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |\n| `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
+| `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |\n| `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, flat-group and reciprocal-single-label checks are
 **compatibility policy**, not substitutes for Excalidraw's geometry.
@@ -45,7 +45,7 @@ until the entire interaction policy is ported.
 | Drag interaction completeness | `packages/element/src/dragElements.ts`: `dragSelectedElements` | Basic native movement now delegates to this original engine with an isolated synthetic original-elements pointer snapshot; grid snapping, modifiers, nested frame interactions and the full React pointer state have not been ported. |
 | Full selection semantics | `packages/element/src/selection.ts`, `packages/element/src/bounds.ts` | Marquee geometry now uses `elementsOverlappingBBox`; selection state, nested groups, locked elements and frames still need a real Svelte state adapter. |
 | Undo/redo | `packages/element/src/store.ts` plus the original editor's history | The current snapshot history is intentionally independent, not granular Excalidraw history. |
-| Rendering | `packages/element/src/shape.ts`, `renderElement.ts`, `packages/excalidraw/scene` | Boxes, lines, arrows and pressure-sensitive freehand now draw directly from core `ShapeCache` geometry; text, images, clipping and selection overlays still need parity with the original renderer. |
+| Rendering | `packages/element/src/shape.ts`, `renderElement.ts`, `packages/excalidraw/scene` | Boxes, lines, arrows and pressure-sensitive freehand now draw directly from core `ShapeCache` geometry; images, clipping and selection overlays still need parity with the original renderer. |
 
 ## Required next refactor (before claiming parity)
 
@@ -268,6 +268,14 @@ curved/routed line shapes and supported start/end arrowhead variants.
 Freehand now also uses the core SVG fill path and perfect-freehand outline,
 including pressure-sensitive strokes and closed-loop rough fills. Text,
 images, clipping and interaction overlays remain on native paths. **No tests, build or CI were executed.**
+
+Text painting is now shared with the original `renderElement.ts` code:
+`paintTextElementOnCanvas` was extracted without changing its glyph,
+multiline, baseline, text-alignment or RTL behavior. The Svelte adapter
+provides only the scene transform for standalone text and validated
+reciprocal box captions. The former native `paintNativeText` is no
+longer used by `NativeEditor.svelte`; existing compatibility helpers
+are retained for now. No tests or build were executed.
 
 ### Core Scene mutation isolation
 

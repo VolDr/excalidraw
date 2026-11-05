@@ -1,7 +1,7 @@
-import { getCreatePath, getElementAbsoluteCoords, ShapeCache } from "@excalidraw/element";
+import { getCreatePath, getElementAbsoluteCoords, paintTextElementOnCanvas, ShapeCache } from "@excalidraw/element";
 import { applyDarkModeFilter } from "@excalidraw/common";
 
-import type { ElementsMap, ExcalidrawElement } from "@excalidraw/element/types";
+import type { ElementsMap, ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/element/types";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { Drawable } from "roughjs/bin/core";
 
@@ -77,6 +77,28 @@ export function paintCoreDrawableElement(
     } else {
       paintShape(shapes);
     }
+  } finally {
+    ctx.restore();
+  }
+}
+
+/**
+ * Same local-coordinate text painter used by the original renderer.
+ * Native layouts (including validated reciprocal box captions) supply the
+ * position; glyph shaping, RTL and multiline baselines remain core-owned.
+ */
+export function paintCoreTextElement(
+  ctx: CanvasRenderingContext2D,
+  element: ExcalidrawTextElement,
+  theme: "light" | "dark",
+): void {
+  ctx.save();
+  try {
+    ctx.globalAlpha *= element.opacity / 100;
+    ctx.translate(element.x + element.width / 2, element.y + element.height / 2);
+    ctx.rotate(element.angle);
+    ctx.translate(-element.width / 2, -element.height / 2);
+    paintTextElementOnCanvas(element, ctx, theme);
   } finally {
     ctx.restore();
   }

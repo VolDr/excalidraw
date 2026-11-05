@@ -457,6 +457,74 @@ export const withSavedContext = (
   }
 };
 
+/**
+ * Text glyph painting shared by the React renderer and Svelte host.
+ * The caller owns element positioning/rotation and opacity. This is the
+ * original text path extracted from drawElementOnCanvas.
+ */
+export const paintTextElementOnCanvas = (
+  element: ExcalidrawTextElement,
+  context: CanvasRenderingContext2D,
+  theme: AppState["theme"],
+): void => {
+        const rtl = isRTL(element.text);
+        // NOTE: `isConnected === false` rather than `!isConnected` -- a
+        // non-DOM canvas (node-canvas et al) has no such property, and must
+        // not be handed to `document.body`
+        const shouldTemporarilyAttach =
+          rtl &&
+          context.canvas.isConnected === false &&
+          typeof document !== "undefined";
+        if (shouldTemporarilyAttach) {
+          // to correctly render RTL text mixed with LTR, we have to append it
+          // to the DOM
+          document.body.appendChild(context.canvas);
+        }
+        if (typeof context.canvas.setAttribute === "function") {
+          context.canvas.setAttribute("dir", rtl ? "rtl" : "ltr");
+        }
+        withSavedContext(context, () => {
+          context.font = getFontString(element);
+          context.fillStyle = applyDarkModeFilter(
+            element.strokeColor,
+            theme === THEME.DARK,
+          );
+          context.textAlign = element.textAlign as CanvasTextAlign;
+
+          // Canvas does not support multiline text by default
+          const lines = element.text.replace(/\r\n?/g, "\n").split("\n");
+
+          const horizontalOffset =
+            element.textAlign === "center"
+              ? element.width / 2
+              : element.textAlign === "right"
+              ? element.width
+              : 0;
+
+          const lineHeightPx = getLineHeightInPx(
+            element.fontSize,
+            element.lineHeight,
+          );
+
+          const verticalOffset = getVerticalOffset(
+            element.fontFamily,
+            element.fontSize,
+            lineHeightPx,
+          );
+
+          for (let index = 0; index < lines.length; index++) {
+            context.fillText(
+              lines[index],
+              horizontalOffset,
+              index * lineHeightPx + verticalOffset,
+            );
+          }
+        });
+        if (shouldTemporarilyAttach) {
+          context.canvas.remove();
+        }
+};
+
 const drawElementOnCanvas = (
   element: NonDeletedExcalidrawElement,
   rc: RoughCanvas,
@@ -658,62 +726,7 @@ const drawElementOnCanvas = (
     }
     default: {
       if (isTextElement(element)) {
-        const rtl = isRTL(element.text);
-        // NOTE: `isConnected === false` rather than `!isConnected` -- a
-        // non-DOM canvas (node-canvas et al) has no such property, and must
-        // not be handed to `document.body`
-        const shouldTemporarilyAttach =
-          rtl &&
-          context.canvas.isConnected === false &&
-          typeof document !== "undefined";
-        if (shouldTemporarilyAttach) {
-          // to correctly render RTL text mixed with LTR, we have to append it
-          // to the DOM
-          document.body.appendChild(context.canvas);
-        }
-        if (typeof context.canvas.setAttribute === "function") {
-          context.canvas.setAttribute("dir", rtl ? "rtl" : "ltr");
-        }
-        withSavedContext(context, () => {
-          context.font = getFontString(element);
-          context.fillStyle = applyDarkModeFilter(
-            element.strokeColor,
-            renderConfig.theme === THEME.DARK,
-          );
-          context.textAlign = element.textAlign as CanvasTextAlign;
-
-          // Canvas does not support multiline text by default
-          const lines = element.text.replace(/\r\n?/g, "\n").split("\n");
-
-          const horizontalOffset =
-            element.textAlign === "center"
-              ? element.width / 2
-              : element.textAlign === "right"
-              ? element.width
-              : 0;
-
-          const lineHeightPx = getLineHeightInPx(
-            element.fontSize,
-            element.lineHeight,
-          );
-
-          const verticalOffset = getVerticalOffset(
-            element.fontFamily,
-            element.fontSize,
-            lineHeightPx,
-          );
-
-          for (let index = 0; index < lines.length; index++) {
-            context.fillText(
-              lines[index],
-              horizontalOffset,
-              index * lineHeightPx + verticalOffset,
-            );
-          }
-        });
-        if (shouldTemporarilyAttach) {
-          context.canvas.remove();
-        }
+        paintTextElementOnCanvas(element, context, renderConfig.theme);
       } else {
         throw new Error(`Unimplemented type ${element.type}`);
       }

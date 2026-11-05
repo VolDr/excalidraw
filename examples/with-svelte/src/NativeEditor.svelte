@@ -6,9 +6,8 @@
 
   import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { nativeElementsMap } from "./native/coreAdapter";
-  import { isCoreDrawableElement, paintCoreDrawableElement } from "./native/renderCore";
+  import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
-  import { paintNativeText } from "./native/text";
   import {
     nativeBoundLabelLayout,
     nativeEditableLabel,
@@ -516,18 +515,7 @@
     const draw = (element: ExcalidrawElement) => {
       const label = nativeBoundLabelLayout(scene, element);
       if (label) {
-        const color = theme === "dark"
-          ? applyDarkModeFilter(label.strokeColor)
-          : label.strokeColor;
-        const cx = label.x + label.width / 2;
-        const cy = label.y + label.height / 2;
-        ctx.save();
-        ctx.globalAlpha = label.opacity / 100;
-        ctx.translate(cx, cy);
-        ctx.rotate(label.angle);
-        ctx.translate(-cx, -cy);
-        paintNativeText(ctx, label, color, true);
-        ctx.restore();
+        paintCoreTextElement(ctx, label, theme);
         return;
       }
       if (!isNativeShape(element)) {
@@ -566,23 +554,8 @@
         return;
       }
 
-      // Remaining unbound text uses the existing native typography adapter.
       if (element.type === "text") {
-        const { x, y, width, height } = elementBounds(element);
-        const stroke = theme === "dark"
-          ? applyDarkModeFilter(element.strokeColor)
-          : element.strokeColor;
-        ctx.save();
-        ctx.globalAlpha = element.opacity / 100;
-        if (element.angle) {
-          const cx = x + width / 2;
-          const cy = y + height / 2;
-          ctx.translate(cx, cy);
-          ctx.rotate(element.angle);
-          ctx.translate(-cx, -cy);
-        }
-        paintNativeText(ctx, element, stroke);
-        ctx.restore();
+        paintCoreTextElement(ctx, element, theme);
       }
     };
 
