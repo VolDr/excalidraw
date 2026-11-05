@@ -1,5 +1,5 @@
 import { getCommonBounds } from "@excalidraw/element";
-import { zoomToFitBounds } from "@excalidraw/excalidraw/viewport";
+import { zoomToFitBounds } from "@excalidraw/excalidraw";
 
 import type { AppState } from "@excalidraw/excalidraw/types";
 
