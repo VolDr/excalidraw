@@ -36,7 +36,7 @@ New elements are now assigned fractional indices through the original
 `syncInvalidIndicesImmutable` implementation, invoked only on Svelte insertion
 commits. Existing valid keys and object identities are preserved; legacy
 invalid keys may be repaired when inserted elements require normalization.
-`duplicateElement` still supplies identity, deep copy, groups, seed and
+`duplicateElement` still supplies identity, deep copy, nested ancestry IDs, seed and
 timestamps, and original `fixDuplicatedBindingsAfterDuplication` owns reciprocal
 label links. Full document-order reconciliation and history parity remain open.
 
@@ -121,7 +121,7 @@ single reciprocal captioned box as one logical unit, using the original
 The UI rejects partial groups and non-contiguous legacy group ranges,
 leaving them untouched for the full editor. Tests were authored but not run.
 
-Nested native groups can now be selected as complete outer units, moved,
+Nested native groups can now be selected as complete outer units, duplicated, moved,
 deleted, wrapped in a higher-level group, and ungrouped one outer level at a
 time. Validation checks every member's ancestry, including reciprocal labels,
 rejects malformed cross-parent references and singleton inner groups, and

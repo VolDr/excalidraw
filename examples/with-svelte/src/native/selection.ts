@@ -77,9 +77,10 @@ export function elementsInMarquee(
 }
 
 /**
- * Duplicate independent elements and safe, reciprocal box/label pairs.
- * Remap both sides before appending: no copy may refer to its original.
- * Imported arrow bindings and complex grouped/frame content are untouched.
+ * Duplicate independent roots, complete nested groups and reciprocal labels.
+ * Excalidraw's duplicateElement owns all nested group-ID remapping, while
+ * fixDuplicatedBindingsAfterDuplication updates the paired text references.
+ * Unsafe external arrow links and frame attachments remain untouched.
  */
 export function duplicateSelection(
   scene: SceneFile,
@@ -96,7 +97,7 @@ export function duplicateSelection(
     }
     if (
       canEditIndependently(element) ||
-      (element.groupIds.length === 1 && !element.boundElements?.length)
+      (element.groupIds.length > 0 && !element.boundElements?.length)
     ) {
       selected.add(element.id);
       copiedParents.add(element.id);
@@ -110,9 +111,8 @@ export function duplicateSelection(
     }
   }
 
-  // A root allowed for selection might still have an arrow binding which
-  // cannot be cloned by this limited native duplication path. In that case
-  // reject the entire operation instead of silently copying other roots.
+  // A root allowed for selection might still have an unsafe arrow binding.
+  // Never copy a partial logical group or drop a linked member silently.
   if (!selected.size || copiedParents.size !== requested.size) {
     return { scene, ids: [] };
   }
