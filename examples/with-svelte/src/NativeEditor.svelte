@@ -201,6 +201,7 @@
     action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint";
     start: Point;
     original: SceneFile;
+    latest: SceneFile;
     initialPan: Point;
     id: string | null;
     ids: string[];
@@ -239,7 +240,7 @@
       return;
     }
     const indexed = indexInsertedNativeElements(previous, next);
-    history.commit(previous);
+    history.commit(previous, indexed);
     onChange(indexed);
     refreshHistory();
   }
@@ -929,6 +930,7 @@
       action,
       start,
       original: scene,
+      latest: scene,
       initialPan: { ...pan },
       id,
       ids,
@@ -965,14 +967,19 @@
     const dy = point.y - g.start.y;
     if (g.action === "move" && g.id) {
       if (Math.hypot(dx, dy) > 0.2 && editableSelection(g.original, g.ids).length) {
-        g.changed = true;
-        onChange(moveSelection(g.original, g.ids, dx, dy));
+        const next = moveSelection(g.original, g.ids, dx, dy);
+        if (next !== g.original) {
+          g.changed = true;
+          g.latest = next;
+          onChange(next);
+        }
       }
     } else if (g.action === "transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
         const next = transformSelected(g.original, g.id, g.handle, point);
         if (next !== g.original) {
           g.changed = true;
+          g.latest = next;
           onChange(next);
         }
       }
@@ -981,6 +988,7 @@
         const next = transformGroup(g.original, g.ids, g.handle, point);
         if (next !== g.original) {
           g.changed = true;
+          g.latest = next;
           onChange(next);
         }
       }
@@ -1000,6 +1008,7 @@
               : g.original;
         if (next !== g.original) {
           g.changed = true;
+          g.latest = next;
           onChange(next);
         }
       }
@@ -1046,7 +1055,7 @@
       g.changed
     ) {
       // The move was previewed in-place; record the *original* scene once.
-      history.commit(g.original);
+      history.commit(g.original, g.latest);
       refreshHistory();
     } else if (g.action === "select" && g.changed && marquee) {
       const hits = elementsInMarquee(g.original, marquee.start, marquee.end);

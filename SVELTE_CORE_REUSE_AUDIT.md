@@ -21,6 +21,7 @@ still an unverified draft.
 | `native/imageCrop.ts` | `@excalidraw/element`: `getUncroppedImageElement`, `cropElement`; `@excalidraw/math`: `pointRotateRads` | Native center-crop and crop reset actions using original crop/source rectangle/rotated geometry |
 | `native/viewport.ts` | `@excalidraw/element`: `getCommonBounds`; `@excalidraw/excalidraw` (public export): `zoomToFitBounds` | Svelte commands fit all / selected elements via original bounds and zoom algorithm; only pixel/scene scroll conversion belongs to the host |
 | `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on validated single independent elements; no custom layer algorithm |
+| `native/history.ts` | `@excalidraw/element`: `ElementsDelta.calculate`, `ElementsDelta.inverse`, `ElementsDelta.applyTo`, `validateFractionalIndices` | Core delta-based undo/redo for valid same-identity edits with original binding reconciliation and revision semantics; snapshots remain fallback for insertion, deletion, reordering and imported incompatibilities |
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
 | `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text typography now uses original font wrapping and measurement in an isolated core scene; imported/bound/rotated complex text stays guarded |
 | `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
@@ -87,6 +88,17 @@ Interactive crop handles and cropping arbitrary imported images still need
 the original editor interaction lifecycle. The 80%-center-crop action now
 calls original `cropElement` with decoded image dimensions. Fixture scenarios were authored
 but not run.
+
+Svelte history now captures Excalidraw's original `ElementsDelta` for
+reversible, validated edits to existing elements with unchanged IDs and
+fractional indices. It replays the core delta (including its binding repair)
+on private copies, compares resulting element data against the known
+snapshot, and only adopts it when the result is equivalent. Snapshot history
+still safely handles insertions, deletions, z-order changes, malformed legacy
+scenes, appState, binary files, and unknown extension fields. Pointer gestures
+store their latest preview scene so the final transaction does not depend on
+reactive prop timing. This is **partial history reuse**, not full parity
+with React's Store and History. Tests/CI are not run.
 
 ## Still custom: do not mistake these for parity
 
