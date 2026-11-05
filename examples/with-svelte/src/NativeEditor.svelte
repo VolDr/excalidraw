@@ -11,6 +11,7 @@
   import { indexInsertedNativeElements } from "./native/ordering";
   import { moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
+  import { canLayoutNativeSelection, layoutNativeSelectionWithCore, type NativeLayoutAction } from "./native/layout";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import { applyNativeTypography, nativeTypographyTarget, type NativeTypographyChange } from "./native/textStyles";
   import { cropNativeImageCenter, resetNativeImageCrop } from "./native/imageCrop";
@@ -113,6 +114,7 @@
   let tool = $state<NativeTool>("selection");
   let selectedIds = $state<string[]>([]);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
+  let layoutAvailable = $derived(canLayoutNativeSelection(scene, selectedIds));
   let styleTarget = $derived(nativeStyleTarget(scene, selectedId));
   let typographyTarget = $derived(nativeTypographyTarget(scene, selectedId));
   let selectedRaster = $derived(
@@ -298,6 +300,16 @@
     if (result.ids.length) {
       commit(scene, result.scene);
       selectedIds = result.ids;
+    }
+  }
+
+  function layoutSelection(action: NativeLayoutAction) {
+    if (!layoutAvailable || gesture || textEditor) {
+      return;
+    }
+    const next = layoutNativeSelectionWithCore(scene, selectedIds, action);
+    if (next !== scene) {
+      commit(scene, next);
     }
   }
 
@@ -1308,6 +1320,43 @@
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
     <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
     <button disabled={!selectedIds.length} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
+    {#if layoutAvailable}
+      <div class="native-layout-controls" role="group" aria-label="Выравнивание элементов">
+        <label>
+          Выровнять
+          <select
+            aria-label="Выравнивание выделенных фигур"
+            value=""
+            onchange={(event) => {
+              const [axis, position] = event.currentTarget.value.split(":");
+              if ((axis === "x" || axis === "y") &&
+                  (position === "start" || position === "center" || position === "end")) {
+                layoutSelection({ kind: "align", alignment: { axis, position } });
+              }
+              event.currentTarget.value = "";
+            }}
+          >
+            <option value="" disabled>Выбрать</option>
+            <option value="x:start">По левому краю</option>
+            <option value="x:center">По центру по X</option>
+            <option value="x:end">По правому краю</option>
+            <option value="y:start">По верхнему краю</option>
+            <option value="y:center">По центру по Y</option>
+            <option value="y:end">По нижнему краю</option>
+          </select>
+        </label>
+        {#if selectedIds.length >= 3}
+          <button
+            onclick={() => layoutSelection({ kind: "distribute", distribution: { axis: "x", space: "between" } })}
+            title="Равномерно распределить по горизонтали"
+          >Распределить X</button>
+          <button
+            onclick={() => layoutSelection({ kind: "distribute", distribution: { axis: "y", space: "between" } })}
+            title="Равномерно распределить по вертикали"
+          >Распределить Y</button>
+        {/if}
+      </div>
+    {/if}
     {#if styleTarget}
       <div class="native-layer-controls" role="group" aria-label="Порядок элементов">
         <button onclick={() => moveLayer("bottom")} title="На задний план (Ctrl+Shift+[)">⇤</button>
@@ -1573,6 +1622,14 @@
   }
   .native-toolbar button.active { background: #e8e7fa; border-color: #7771d0; }
   .native-toolbar button:disabled { opacity: 0.45; cursor: default; }
+  .native-layout-controls {
+    display: flex; gap: 4px; align-items: center;
+    padding-left: 6px; border-left: 1px solid #dadae2;
+  }
+  .native-layout-controls label {
+    display: flex; align-items: center; gap: 4px; font-size: 12px;
+  }
+  .native-layout-controls select { font-size: 12px; max-width: 170px; }
   .native-typography-controls {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     padding: 4px 6px; border-left: 1px solid #dadae2;

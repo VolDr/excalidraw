@@ -21,6 +21,7 @@ still an unverified draft.
 | `native/imageCrop.ts` | `@excalidraw/element`: `getUncroppedImageElement`, `cropElement`; `@excalidraw/math`: `pointRotateRads` | Native center-crop and crop reset actions using original crop/source rectangle/rotated geometry |
 | `native/viewport.ts` | `@excalidraw/element`: `getCommonBounds`; `@excalidraw/excalidraw` (public export): `zoomToFitBounds` | Svelte commands fit all / selected elements via original bounds and zoom algorithm; only pixel/scene scroll conversion belongs to the host |
 | `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on validated single independent elements; no custom layer algorithm |
+| `native/layout.ts` | `@excalidraw/element`: `alignElements`, `distributeElements`, `Scene` via adapter | Original group-aware bounds, translations and version updates for validated independent multi-selection; dangerous groups/bindings remain guarded |
 | `native/history.ts` | `@excalidraw/element`: `ElementsDelta.calculate`, `ElementsDelta.inverse`, `ElementsDelta.applyTo`, `validateFractionalIndices` | Core delta-based undo/redo for valid same-identity edits with original binding reconciliation and revision semantics; snapshots remain fallback for insertion, deletion, reordering and imported incompatibilities |
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
 | `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text typography now uses original font wrapping and measurement in an isolated core scene; imported/bound/rotated complex text stays guarded |
@@ -99,6 +100,13 @@ scenes, appState, binary files, and unknown extension fields. Pointer gestures
 store their latest preview scene so the final transaction does not depend on
 reactive prop timing. This is **partial history reuse**, not full parity
 with React's Store and History. Tests/CI are not run.
+
+Native Svelte now exposes all six Excalidraw alignment directions and
+horizontal/vertical equal-gap distribution. The actions call the original
+`alignElements` and `distributeElements` inside an isolated `Scene`.
+Only complete selections of independent editable roots are exposed; group
+and bound-element layout UI still needs the original selection semantics.
+Fixtures are authored but not executed.
 
 ## Still custom: do not mistake these for parity
 
