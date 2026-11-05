@@ -6,15 +6,18 @@ import type {
   FontFamilyValues,
 } from "@excalidraw/element/types";
 
+import { nativeEditableLabel } from "./boundText";
+import { isSafeBoundBox } from "./bindings";
 import { withNativeCoreScene } from "./coreAdapter";
 import { nativeStyleTarget } from "./styles";
 
 import type { SceneFile } from "./scene";
 
 /**
- * Svelte exposes typography, but the original Excalidraw Scene owns updates
- * and redrawTextBoundingBox owns wrapping/font metrics. Never implement a
- * second text layout pipeline or mutate an imported document in place.
+ * Svelte exposes typography for standalone text and validated reciprocal
+ * box captions. The original Excalidraw Scene owns immutable transactions,
+ * wrapping, font metrics and growing bound-text containers. Never implement
+ * a second text layout pipeline or mutate imported source elements.
  */
 export type NativeTypographyChange =
   | { key: "fontFamily"; value: FontFamilyValues }
@@ -34,16 +37,38 @@ export const nativeTypographyTarget = (
   scene: SceneFile,
   id: string | null,
 ): ExcalidrawTextElement | null => {
-  const element = nativeStyleTarget(scene, id);
-  // For now, preserve complex rotation, bindings, group and frame layouts by
-  // making them read-only in the Svelte typography panel.
-  return element?.type === "text" &&
-    element.containerId === null &&
-    !element.boundElements?.length &&
-    element.angle === 0 &&
-    element.autoResize
-    ? element
-    : null;
+  if (!id) {
+    return null;
+  }
+  const selected = scene.elements.find((element) => element.id === id);
+  if (!selected || selected.isDeleted || selected.locked) {
+    return null;
+  }
+
+  // Standalone typography: preserve the existing conservative policy.
+  if (selected.type === "text") {
+    const element = nativeStyleTarget(scene, id);
+    return element?.type === "text" &&
+      element.containerId === null &&
+      !element.boundElements?.length &&
+      element.angle === 0 &&
+      element.autoResize
+      ? element
+      : null;
+  }
+
+  // A selected box owns its reciprocal label. The core redraw below can
+  // change both label metrics and container dimensions atomically.
+  // Do not expose arbitrary arrow-bound, nested or grouped containers.
+  if (
+    selected.groupIds.length ||
+    !isSafeBoundBox(scene, selected) ||
+    selected.boundElements?.length !== 1 ||
+    selected.boundElements[0].type !== "text"
+  ) {
+    return null;
+  }
+  return nativeEditableLabel(scene, selected) ?? null;
 };
 
 export const applyNativeTypography = (
@@ -70,8 +95,14 @@ export const applyNativeTypography = (
   }
 
   return withNativeCoreScene(scene, (core) => {
-    const element = core.getNonDeletedElement(id);
+    const element = core.getNonDeletedElement(initial.id);
     if (!element || element.type !== "text") {
+      return;
+    }
+    const container = initial.containerId
+      ? core.getNonDeletedElement(initial.containerId)
+      : null;
+    if (initial.containerId && !container) {
       return;
     }
 
@@ -90,15 +121,15 @@ export const applyNativeTypography = (
     } else {
       core.mutateElement(element, { textAlign: change.value });
     }
-    redrawTextBoundingBox(element, null, core);
+    redrawTextBoundingBox(element, container, core);
 
     // The same anchor ratios that Excalidraw uses to create standalone text
     // prevent growth from unexpectedly shifting center/right-aligned labels.
-    const updated = core.getNonDeletedElement(id);
+    const updated = core.getNonDeletedElement(initial.id);
     if (!updated || updated.type !== "text") {
       return;
     }
-    if (change.key !== "textAlign") {
+    if (!container && change.key !== "textAlign") {
       const anchor = getTextAnchorRatios(initial);
       core.mutateElement(updated, {
         x: initial.x + (initial.width - updated.width) * anchor.x,

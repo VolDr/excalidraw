@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { FONT_FAMILY } from "@excalidraw/common";
 
-import { blankScene, createText } from "./scene";
+import { blankScene, createShape, createText } from "./scene";
+import { updateNativeBoxLabel } from "./boundText";
 import { applyNativeTypography, nativeTypographyTarget } from "./textStyles";
 
 describe("Svelte typography reuses core text layout", () => {
@@ -36,6 +37,47 @@ describe("Svelte typography reuses core text layout", () => {
     expect(applyNativeTypography(next, text.id, {
       key: "fontFamily", value: FONT_FAMILY.Helvetica,
     })).toBe(next);
+  });
+
+  it("updates a reciprocal caption and keeps its container binding intact", () => {
+    const box = createShape("rectangle", { x: 20, y: 20 }, { x: 180, y: 110 });
+    const base = { ...blankScene(), elements: [box] };
+    const labeled = updateNativeBoxLabel(base, box.id, "Title");
+    const label = labeled.elements.find((element) => element.type === "text");
+    expect(label?.type).toBe("text");
+    expect(nativeTypographyTarget(labeled, box.id)?.id).toBe(label?.id);
+    if (label?.type !== "text") return;
+
+    const next = applyNativeTypography(labeled, box.id, {
+      key: "fontSize", value: 36,
+    });
+    const updated = next.elements.find((element) => element.id === label.id);
+    const container = next.elements.find((element) => element.id === box.id);
+    expect(updated?.type).toBe("text");
+    if (updated?.type === "text") {
+      expect(updated.fontSize).toBe(36);
+      expect(updated.containerId).toBe(box.id);
+      expect(updated.version).toBeGreaterThan(label.version);
+    }
+    expect(container?.boundElements).toEqual(labeled.elements[0].boundElements);
+    expect(labeled.elements.find((element) => element.id === label.id)).toBe(label);
+  });
+
+  it("rejects a caption when its reciprocal link is damaged", () => {
+    const box = createShape("diamond", { x: 0, y: 0 }, { x: 160, y: 160 });
+    const scene = updateNativeBoxLabel({ ...blankScene(), elements: [box] }, box.id, "Hello");
+    const label = scene.elements.find((element) => element.type === "text");
+    if (label?.type !== "text") return;
+    const damaged = {
+      ...scene,
+      elements: scene.elements.map((element) =>
+        element.id === label.id ? { ...element, containerId: "missing" } : element
+      ),
+    };
+    expect(nativeTypographyTarget(damaged, box.id)).toBeNull();
+    expect(applyNativeTypography(damaged, box.id, {
+      key: "fontSize", value: 48,
+    })).toBe(damaged);
   });
 
   it("guards bound labels, rotation and imported non-resizable text", () => {

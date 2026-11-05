@@ -24,7 +24,7 @@ still an unverified draft.
 | `native/layout.ts` | `@excalidraw/element`: `alignElements`, `distributeElements`, `Scene` via adapter | Original group-aware bounds, translations and version updates for independent roots, complete flat groups and reciprocal single-label boxes; incomplete selections and unsafe links stay guarded |
 | `native/history.ts` | `@excalidraw/element`: `ElementsDelta.calculate`, `ElementsDelta.inverse`, `ElementsDelta.applyTo`, `validateFractionalIndices` | Core delta-based undo/redo for valid same-identity edits with original binding reconciliation and revision semantics; snapshots remain fallback for insertion, deletion, reordering and imported incompatibilities |
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
-| `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text typography now uses original font wrapping and measurement in an isolated core scene; imported/bound/rotated complex text stays guarded |
+| `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text and validated reciprocal box captions use original font metrics, wrapping and container resize; imported/rotated/complex bindings remain guarded |
 | `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
@@ -69,9 +69,10 @@ Unsupported grouped, bound and corrupt imported selections remain outside
 this initial editing scope. Regression fixtures are written but not run.
 
 Svelte now offers font family, font size and text alignment for independent
-unrotated auto-resizing text elements. Font metrics and wrapping are delegated
-to the original `redrawTextBoundingBox` and `Scene.mutateElement`, without a
-second layout engine. Unsupported bound/rotated/fixed-size text remains
+unrotated auto-resizing text and validated reciprocal captions. Font metrics,
+wrapping and resizing of labeled containers are delegated to the original
+`redrawTextBoundingBox` and `Scene.mutateElement`, without a second layout
+engine. Unsupported arrow-bound, rotated, grouped and fixed-size text remains
 read-only until the original full text interaction path is adapted. Fixtures
 are written but not run; no build/CI performed.
 

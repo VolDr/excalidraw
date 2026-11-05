@@ -343,7 +343,7 @@
     if (!typographyTarget || gesture || textEditor) {
       return;
     }
-    const next = applyNativeTypography(scene, typographyTarget.id, change);
+    const next = applyNativeTypography(scene, selectedId ?? typographyTarget.id, change);
     if (next !== scene) {
       commit(scene, next);
     }
