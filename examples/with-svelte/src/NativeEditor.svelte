@@ -6,7 +6,7 @@
 
   import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { nativeElementsMap } from "./native/coreAdapter";
-  import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreTextElement } from "./native/renderCore";
+  import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
   import {
     nativeBoundLabelLayout,
@@ -16,7 +16,6 @@
   import {
     addNativeImage,
     NativeImageCache,
-    paintNativeImage,
     nativeImageSource,
     NATIVE_IMAGE_TYPES,
   } from "./native/images";
@@ -524,7 +523,7 @@
       if (element.type === "image") {
         const file = nativeImageSource(scene, element);
         const image = file ? imageCache.get(file.id) : null;
-        if (paintNativeImage(ctx, element, image)) {
+        if (file && image && paintCoreImageElement(ctx, element, image, file.mimeType, theme, dpr)) {
           return;
         }
         // Keep unloaded/missing raster elements visible without mutating data.

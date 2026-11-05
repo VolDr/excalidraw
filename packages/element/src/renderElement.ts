@@ -525,92 +525,20 @@ export const paintTextElementOnCanvas = (
         }
 };
 
-const drawElementOnCanvas = (
-  element: NonDeletedExcalidrawElement,
-  rc: RoughCanvas,
+/**
+ * Raster painting shared by React and Svelte. Coordinates are local to the
+ * image's top-left corner, with rotation/flip and opacity applied by the caller.
+ * This is the existing image branch extracted unchanged from the renderer.
+ */
+export const paintImageElementOnCanvas = (
+  element: ExcalidrawImageElement,
   context: CanvasRenderingContext2D,
-  renderConfig: StaticCanvasRenderConfig,
-) => {
-  switch (element.type) {
-    case "stickynote": {
-      withSavedContext(context, () => {
-        context.fillStyle = `rgba(0, 0, 0, ${STICKY_NOTE_SHADOW_OPACITY})`;
-        fillStickyNoteShape(
-          context,
-          getStickyNotePathCommands(element, { shadow: true }),
-        );
-
-        const commands = getStickyNotePathCommands(element);
-        context.fillStyle = applyDarkModeFilter(
-          element.backgroundColor,
-          renderConfig.theme === THEME.DARK,
-        );
-        fillStickyNoteShape(context, commands);
-        strokeStickyNoteEdge(context, commands);
-
-        // the label is absolute, so this cached canvas only goes stale at a
-        // year boundary — and is regenerated on the next zoom, theme or
-        // element change anyway
-        const footer = getStickyNoteFooter(element);
-        if (footer) {
-          context.font = `${STICKY_NOTE_FOOTER.fontSize}px ${STICKY_NOTE_FOOTER.fontFamily}`;
-          context.textAlign = "right";
-          context.textBaseline = "alphabetic";
-          context.fillStyle = applyDarkModeFilter(
-            element.strokeColor,
-            renderConfig.theme === THEME.DARK,
-          );
-          context.globalAlpha *= STICKY_NOTE_FOOTER.opacity;
-          context.fillText(footer.text, footer.x, footer.y);
-        }
-      });
-      break;
-    }
-    case "rectangle":
-    case "iframe":
-    case "embeddable":
-    case "diamond":
-    case "ellipse": {
-      context.lineJoin = "round";
-      context.lineCap = "round";
-
-      rc.draw(ShapeCache.generateElementShape(element, renderConfig));
-      break;
-    }
-    case "arrow":
-    case "line": {
-      context.lineJoin = "round";
-      context.lineCap = "round";
-
-      ShapeCache.generateElementShape(element, renderConfig).forEach(
-        (shape) => {
-          rc.draw(shape);
-        },
-      );
-      break;
-    }
-    case "freedraw": {
-      // Draw directly to canvas
-      withSavedContext(context, () => {
-        const shapes = ShapeCache.generateElementShape(element, renderConfig);
-        const createPath = getCreatePath(renderConfig.renderEnvironment);
-
-        for (const shape of shapes) {
-          if (typeof shape === "string") {
-            context.fillStyle = applyDarkModeFilter(
-              element.strokeColor,
-              renderConfig.theme === THEME.DARK,
-            );
-            context.fill(createPath(shape));
-          } else {
-            rc.draw(shape);
-          }
-        }
-      });
-      break;
-    }
-    case "image": {
-      withSavedContext(context, () => {
+  renderConfig: Pick<
+    StaticCanvasRenderConfig,
+    "imageCache" | "theme" | "scale" | "renderEnvironment"
+  >,
+): void => {
+  withSavedContext(context, () => {
         const cacheEntry =
           element.fileId !== null
             ? renderConfig.imageCache.get(element.fileId)
@@ -721,7 +649,95 @@ const drawElementOnCanvas = (
             getRenderEnvironment(renderConfig.renderEnvironment),
           );
         }
+  });
+};
+
+const drawElementOnCanvas = (
+  element: NonDeletedExcalidrawElement,
+  rc: RoughCanvas,
+  context: CanvasRenderingContext2D,
+  renderConfig: StaticCanvasRenderConfig,
+) => {
+  switch (element.type) {
+    case "stickynote": {
+      withSavedContext(context, () => {
+        context.fillStyle = `rgba(0, 0, 0, ${STICKY_NOTE_SHADOW_OPACITY})`;
+        fillStickyNoteShape(
+          context,
+          getStickyNotePathCommands(element, { shadow: true }),
+        );
+
+        const commands = getStickyNotePathCommands(element);
+        context.fillStyle = applyDarkModeFilter(
+          element.backgroundColor,
+          renderConfig.theme === THEME.DARK,
+        );
+        fillStickyNoteShape(context, commands);
+        strokeStickyNoteEdge(context, commands);
+
+        // the label is absolute, so this cached canvas only goes stale at a
+        // year boundary — and is regenerated on the next zoom, theme or
+        // element change anyway
+        const footer = getStickyNoteFooter(element);
+        if (footer) {
+          context.font = `${STICKY_NOTE_FOOTER.fontSize}px ${STICKY_NOTE_FOOTER.fontFamily}`;
+          context.textAlign = "right";
+          context.textBaseline = "alphabetic";
+          context.fillStyle = applyDarkModeFilter(
+            element.strokeColor,
+            renderConfig.theme === THEME.DARK,
+          );
+          context.globalAlpha *= STICKY_NOTE_FOOTER.opacity;
+          context.fillText(footer.text, footer.x, footer.y);
+        }
       });
+      break;
+    }
+    case "rectangle":
+    case "iframe":
+    case "embeddable":
+    case "diamond":
+    case "ellipse": {
+      context.lineJoin = "round";
+      context.lineCap = "round";
+
+      rc.draw(ShapeCache.generateElementShape(element, renderConfig));
+      break;
+    }
+    case "arrow":
+    case "line": {
+      context.lineJoin = "round";
+      context.lineCap = "round";
+
+      ShapeCache.generateElementShape(element, renderConfig).forEach(
+        (shape) => {
+          rc.draw(shape);
+        },
+      );
+      break;
+    }
+    case "freedraw": {
+      // Draw directly to canvas
+      withSavedContext(context, () => {
+        const shapes = ShapeCache.generateElementShape(element, renderConfig);
+        const createPath = getCreatePath(renderConfig.renderEnvironment);
+
+        for (const shape of shapes) {
+          if (typeof shape === "string") {
+            context.fillStyle = applyDarkModeFilter(
+              element.strokeColor,
+              renderConfig.theme === THEME.DARK,
+            );
+            context.fill(createPath(shape));
+          } else {
+            rc.draw(shape);
+          }
+        }
+      });
+      break;
+    }
+    case "image": {
+      paintImageElementOnCanvas(element, context, renderConfig);
       break;
     }
     default: {

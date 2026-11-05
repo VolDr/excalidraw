@@ -1,7 +1,8 @@
-import { getCreatePath, getElementAbsoluteCoords, paintTextElementOnCanvas, ShapeCache } from "@excalidraw/element";
+import { getCreatePath, getElementAbsoluteCoords, paintImageElementOnCanvas, paintTextElementOnCanvas, ShapeCache } from "@excalidraw/element";
 import { applyDarkModeFilter } from "@excalidraw/common";
 
-import type { ElementsMap, ExcalidrawElement, ExcalidrawTextElement } from "@excalidraw/element/types";
+import type { ElementsMap, ExcalidrawElement, ExcalidrawImageElement, ExcalidrawTextElement } from "@excalidraw/element/types";
+import type { StaticCanvasRenderConfig } from "@excalidraw/excalidraw/scene/types";
 import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { Drawable } from "roughjs/bin/core";
 
@@ -99,6 +100,47 @@ export function paintCoreTextElement(
     ctx.rotate(element.angle);
     ctx.translate(-element.width / 2, -element.height / 2);
     paintTextElementOnCanvas(element, ctx, theme);
+  } finally {
+    ctx.restore();
+  }
+}
+
+/**
+ * Forward embedded raster data through Excalidraw's original image painter.
+ * Keep binary decoding, scene validation and the fallback placeholder in
+ * Svelte; core owns crop source coordinates, rounded clipping and drawing.
+ */
+export function paintCoreImageElement(
+  ctx: CanvasRenderingContext2D,
+  element: ExcalidrawImageElement,
+  image: HTMLImageElement,
+  mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/gif",
+  theme: "light" | "dark",
+  scale: number,
+): boolean {
+  if (!element.fileId || element.isDeleted || element.width <= 0 || element.height <= 0) {
+    return false;
+  }
+
+  const imageCache: StaticCanvasRenderConfig["imageCache"] = new Map();
+  imageCache.set(element.fileId, { image, mimeType });
+
+  ctx.save();
+  try {
+    ctx.globalAlpha *= element.opacity / 100;
+    ctx.translate(
+      element.x + element.width / 2,
+      element.y + element.height / 2,
+    );
+    ctx.rotate(element.angle);
+    ctx.scale(element.scale[0], element.scale[1]);
+    ctx.translate(-element.width / 2, -element.height / 2);
+    paintImageElementOnCanvas(element, ctx, {
+      imageCache,
+      theme,
+      scale,
+    });
+    return true;
   } finally {
     ctx.restore();
   }
