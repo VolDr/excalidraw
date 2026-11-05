@@ -2,7 +2,8 @@
   import NativeEditor from "./NativeEditor.svelte";
   import { isNonDeletedElement } from "@excalidraw/element";
 
-  import type { BinaryFiles, ExportSceneData } from "@excalidraw/excalidraw";
+  import type { ExportSceneData } from "@excalidraw/excalidraw";
+  import type { BinaryFiles } from "@excalidraw/excalidraw/types";
   import {
     blankScene,
     parseScene,
