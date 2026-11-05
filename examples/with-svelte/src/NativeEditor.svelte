@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import rough from "roughjs/bin/rough";
 
-  import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
+  import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
   import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { nativeElementsMap } from "./native/coreAdapter";
@@ -11,6 +11,7 @@
   import { indexInsertedNativeElements } from "./native/ordering";
   import { moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
+  import { applyNativeTypography, nativeTypographyTarget, type NativeTypographyChange } from "./native/textStyles";
   import {
     nativeBoundLabelLayout,
     nativeEditableLabel,
@@ -111,6 +112,7 @@
   let selectedIds = $state<string[]>([]);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
   let styleTarget = $derived(nativeStyleTarget(scene, selectedId));
+  let typographyTarget = $derived(nativeTypographyTarget(scene, selectedId));
   let selectedRaster = $derived(
     scene.elements.find(
       (element) =>
@@ -301,6 +303,16 @@
       return;
     }
     const next = moveNativeLayerWithCore(scene, styleTarget.id, direction);
+    if (next !== scene) {
+      commit(scene, next);
+    }
+  }
+
+  function changeTypography(change: NativeTypographyChange) {
+    if (!typographyTarget || gesture || textEditor) {
+      return;
+    }
+    const next = applyNativeTypography(scene, typographyTarget.id, change);
     if (next !== scene) {
       commit(scene, next);
     }
@@ -1344,6 +1356,48 @@
         </label>
       </div>
     {/if}
+    {#if typographyTarget}
+      <div class="native-typography-controls" role="group" aria-label="Оформление текста">
+        <label>
+          Шрифт
+          <select
+            aria-label="Семейство шрифта"
+            value={typographyTarget.fontFamily}
+            onchange={(event) => changeTypography({ key: "fontFamily", value: Number(event.currentTarget.value) as FontFamilyValues })}
+          >
+            <option value={FONT_FAMILY.Excalifont}>Excalifont</option>
+            <option value={FONT_FAMILY.Virgil}>Virgil</option>
+            <option value={FONT_FAMILY.Helvetica}>Helvetica</option>
+            <option value={FONT_FAMILY.Cascadia}>Cascadia</option>
+            <option value={FONT_FAMILY.Nunito}>Nunito</option>
+          </select>
+        </label>
+        <label>
+          Размер
+          <select
+            aria-label="Размер шрифта"
+            value={typographyTarget.fontSize}
+            onchange={(event) => changeTypography({ key: "fontSize", value: Number(event.currentTarget.value) })}
+          >
+            {#each [12, 16, 20, 24, 28, 36, 48, 64, 72] as size}
+              <option value={size}>{size}</option>
+            {/each}
+          </select>
+        </label>
+        <label>
+          Выравнивание
+          <select
+            aria-label="Выравнивание текста"
+            value={typographyTarget.textAlign}
+            onchange={(event) => changeTypography({ key: "textAlign", value: event.currentTarget.value as ExcalidrawTextElement["textAlign"] })}
+          >
+            <option value="left">Слева</option>
+            <option value="center">По центру</option>
+            <option value="right">Справа</option>
+          </select>
+        </label>
+      </div>
+    {/if}
     <span class="zoom">{Math.round(zoom * 100)}%</span>
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
     {#if selectedId && scene.elements.some((element) => element.id === selectedId && canEditLinearPoints(element))}
@@ -1418,6 +1472,12 @@
   }
   .native-toolbar button.active { background: #e8e7fa; border-color: #7771d0; }
   .native-toolbar button:disabled { opacity: 0.45; cursor: default; }
+  .native-typography-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 4px 6px; border-left: 1px solid #dadae2;
+  }
+  .native-typography-controls label { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+  .native-typography-controls select { max-width: 120px; font-size: 12px; }
   .native-layer-controls {
     display: flex; gap: 3px; align-items: center;
     padding-left: 6px; border-left: 1px solid #dadae2;
