@@ -11,7 +11,7 @@
   import { indexInsertedNativeElements } from "./native/ordering";
   import { moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
-  import { canLayoutNativeSelection, layoutNativeSelectionWithCore, type NativeLayoutAction } from "./native/layout";
+  import { canLayoutNativeSelection, nativeLayoutUnitCount, layoutNativeSelectionWithCore, type NativeLayoutAction } from "./native/layout";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import { applyNativeTypography, nativeTypographyTarget, type NativeTypographyChange } from "./native/textStyles";
   import { cropNativeImageCenter, resetNativeImageCrop } from "./native/imageCrop";
@@ -116,6 +116,7 @@
   let selectedIds = $state<string[]>([]);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
   let layoutAvailable = $derived(canLayoutNativeSelection(scene, selectedIds));
+  let layoutUnits = $derived(nativeLayoutUnitCount(scene, selectedIds));
   let styleTarget = $derived(nativeStyleTarget(scene, selectedId));
   let typographyTarget = $derived(nativeTypographyTarget(scene, selectedId));
   let selectedRaster = $derived(
@@ -1346,7 +1347,7 @@
             <option value="y:end">По нижнему краю</option>
           </select>
         </label>
-        {#if selectedIds.length >= 3}
+        {#if layoutUnits >= 3}
           <button
             onclick={() => layoutSelection({ kind: "distribute", distribution: { axis: "x", space: "between" } })}
             title="Равномерно распределить по горизонтали"
