@@ -8,6 +8,7 @@
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
+  import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import {
     nativeBoundLabelLayout,
     nativeEditableLabel,
@@ -107,6 +108,7 @@
   let tool = $state<NativeTool>("selection");
   let selectedIds = $state<string[]>([]);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
+  let styleTarget = $derived(nativeStyleTarget(scene, selectedId));
   let selectedRaster = $derived(
     scene.elements.find(
       (element) =>
@@ -286,6 +288,24 @@
       commit(scene, result.scene);
       selectedIds = result.ids;
     }
+  }
+
+  function changeStyle(change: NativeStyleChange) {
+    if (!styleTarget || gesture || textEditor) {
+      return;
+    }
+    const next = applyNativeStyle(scene, styleTarget.id, change);
+    if (next !== scene) {
+      commit(scene, next);
+    }
+  }
+
+  function colorForInput(value: string): string {
+    return /^#[0-9a-f]{6}$/i.test(value) ? value : "#1e1e1e";
+  }
+
+  function fillForInput(value: string): string {
+    return /^#[0-9a-f]{6}$/i.test(value) ? value : "#ffffff";
   }
 
   function flipSelectedImage(axis: "horizontal" | "vertical") {
@@ -1180,6 +1200,119 @@
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
     <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
     <button disabled={!selectedIds.length} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
+    {#if styleTarget}
+      <div class="native-style-controls" role="group" aria-label="Свойства выделенного элемента">
+        {#if styleTarget.type !== "image"}
+          <label title="Цвет обводки или текста">
+            Цвет
+            <input
+              type="color"
+              aria-label="Цвет обводки"
+              value={colorForInput(styleTarget.strokeColor)}
+              onchange={(event) => changeStyle({ key: "strokeColor", value: event.currentTarget.value })}
+            />
+          </label>
+        {/if}
+        {#if ["rectangle", "ellipse", "diamond", "line"].includes(styleTarget.type)}
+          <label>
+            Заливка
+            <select
+              aria-label="Режим заливки"
+              value={styleTarget.backgroundColor === "transparent" ? "none" : "color"}
+              onchange={(event) => changeStyle({ key: "backgroundColor", value: event.currentTarget.value === "none" ? "transparent" : fillForInput(styleTarget.backgroundColor) })}
+            >
+              <option value="none">Без заливки</option>
+              <option value="color">Цвет</option>
+            </select>
+            {#if styleTarget.backgroundColor !== "transparent"}
+              <input
+                type="color"
+                aria-label="Цвет заливки"
+                value={fillForInput(styleTarget.backgroundColor)}
+                onchange={(event) => changeStyle({ key: "backgroundColor", value: event.currentTarget.value })}
+              />
+              <select
+                aria-label="Стиль заливки"
+                value={styleTarget.fillStyle}
+                onchange={(event) => changeStyle({ key: "fillStyle", value: event.currentTarget.value as "hachure" | "cross-hatch" | "solid" | "zigzag" })}
+              >
+                <option value="hachure">Штриховка</option>
+                <option value="cross-hatch">Сетка</option>
+                <option value="solid">Сплошная</option>
+                <option value="zigzag">Зигзаг</option>
+              </select>
+            {/if}
+          </label>
+        {/if}
+        {#if styleTarget.type !== "image" && styleTarget.type !== "text"}
+          <label>
+            Линия
+            <select
+              aria-label="Толщина линии"
+              value={styleTarget.strokeWidth}
+              onchange={(event) => changeStyle({ key: "strokeWidth", value: Number(event.currentTarget.value) as 1 | 2 | 4 })}
+            >
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="4">4</option>
+            </select>
+          </label>
+          <label>
+            Стиль
+            <select
+              aria-label="Стиль линии"
+              value={styleTarget.strokeStyle}
+              onchange={(event) => changeStyle({ key: "strokeStyle", value: event.currentTarget.value as "solid" | "dashed" | "dotted" })}
+            >
+              <option value="solid">Сплошная</option>
+              <option value="dashed">Штрих</option>
+              <option value="dotted">Точки</option>
+            </select>
+          </label>
+          <label>
+            Эскиз
+            <select
+              aria-label="Неровность линии"
+              value={styleTarget.roughness}
+              onchange={(event) => changeStyle({ key: "roughness", value: Number(event.currentTarget.value) as 0 | 1 | 2 })}
+            >
+              <option value="0">Нет</option>
+              <option value="1">Обычно</option>
+              <option value="2">Сильно</option>
+            </select>
+          </label>
+        {/if}
+        {#if styleTarget.type === "arrow" && !styleTarget.elbowed}
+          <label>
+            Конец
+            <select
+              aria-label="Наконечник стрелки"
+              value={styleTarget.endArrowhead ?? "none"}
+              onchange={(event) => changeStyle({ key: "endArrowhead", value: event.currentTarget.value === "none" ? null : event.currentTarget.value as "arrow" | "triangle" | "bar" | "circle" | "diamond" })}
+            >
+              <option value="none">Нет</option>
+              <option value="arrow">Стрелка</option>
+              <option value="triangle">Треугольник</option>
+              <option value="bar">Черта</option>
+              <option value="circle">Круг</option>
+              <option value="diamond">Ромб</option>
+            </select>
+          </label>
+        {/if}
+        <label>
+          Прозрачность {styleTarget.opacity}%
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="10"
+            value={styleTarget.opacity}
+            aria-label="Непрозрачность"
+            onchange={(event) => changeStyle({ key: "opacity", value: Number(event.currentTarget.value) })}
+          />
+        </label>
+      </div>
+    {/if}
     <span class="zoom">{Math.round(zoom * 100)}%</span>
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
     {#if selectedId && scene.elements.some((element) => element.id === selectedId && canEditLinearPoints(element))}
@@ -1254,6 +1387,17 @@
   }
   .native-toolbar button.active { background: #e8e7fa; border-color: #7771d0; }
   .native-toolbar button:disabled { opacity: 0.45; cursor: default; }
+  .native-style-controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 4px 6px; border-left: 1px solid #dadae2;
+  }
+  .native-style-controls label {
+    display: flex; align-items: center; gap: 4px; white-space: nowrap;
+    font-size: 12px;
+  }
+  .native-style-controls select { max-width: 115px; font-size: 12px; }
+  .native-style-controls input[type="color"] { width: 27px; height: 25px; padding: 1px; }
+  .native-style-controls input[type="range"] { width: 75px; }
   .file-input { display: none; }
   .separator { height: 22px; width: 1px; background: #dadae2; margin: 0 3px; }
   .zoom { font-size: 12px; white-space: nowrap; }
