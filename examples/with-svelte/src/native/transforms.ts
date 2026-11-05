@@ -1,4 +1,4 @@
-import { getNextSingleWidthAndHeightFromPointer } from "@excalidraw/element";
+import { getNextSingleWidthAndHeightFromPointer, getTransformHandles } from "@excalidraw/element";
 import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
@@ -18,6 +18,7 @@ import {
   rotateNativeBoxWithCore,
   rotateNativeImageWithCore,
   updateNativeElement,
+  nativeElementsMap,
 } from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { nativeImageSource } from "./images";
@@ -86,16 +87,55 @@ export function handleLocations(
   };
 }
 
+/**
+ * Excalidraw owns the location and zoom-dependent size of the native
+ * transform handles. The Svelte layer only converts the core's rectangle
+ * records into centers for painting and pointer hit-testing.
+ *
+ * Retain legacy handleLocations solely for guarded cropped-image anchors.
+ */
+export function coreHandleLocations(
+  element: ExcalidrawElement,
+  zoom: number,
+  scene?: SceneFile,
+): Record<Handle, Point> | null {
+  if (!Number.isFinite(zoom) || zoom <= 0 || !isBoxTransformable(element, scene)) {
+    return null;
+  }
+  const handles = getTransformHandles(
+    element,
+    { value: zoom } as Parameters<typeof getTransformHandles>[1],
+    nativeElementsMap(scene ?? { elements: [element] }),
+    "mouse",
+  );
+  const center = (
+    box: readonly [number, number, number, number] | undefined,
+  ): Point | null => box
+    ? { x: box[0] + box[2] / 2, y: box[1] + box[3] / 2 }
+    : null;
+
+  const nw = center(handles.nw);
+  const ne = center(handles.ne);
+  const sw = center(handles.sw);
+  const se = center(handles.se);
+  const rotate = center(handles.rotation);
+
+  return nw && ne && sw && se && rotate
+    ? { nw, ne, sw, se, rotate }
+    : null;
+}
+
 export function pickHandle(
   element: ExcalidrawElement,
   point: Point,
   tolerance = 9,
   scene?: SceneFile,
+  zoom = 1,
 ): Handle | null {
   if (!isBoxTransformable(element, scene)) {
     return null;
   }
-  const locations = handleLocations(element);
+  const locations = coreHandleLocations(element, zoom, scene) ?? handleLocations(element);
   for (const key of [...corners, "rotate"] as Handle[]) {
     if (
       Math.hypot(point.x - locations[key].x, point.y - locations[key].y) <=

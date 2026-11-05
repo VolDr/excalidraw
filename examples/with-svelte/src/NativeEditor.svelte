@@ -56,6 +56,7 @@
     deleteSelection,
     flipNativeImage,
     handleLocations,
+    coreHandleLocations,
     isBoxTransformable,
     moveSelection,
     pickHandle,
@@ -698,7 +699,7 @@
       ctx.restore();
 
       if (selectedId === element.id && isBoxTransformable(element, scene)) {
-        const handles = handleLocations(element);
+        const handles = coreHandleLocations(element, zoom, scene) ?? handleLocations(element);
         const top = {
           x: (handles.nw.x + handles.ne.x) / 2,
           y: (handles.nw.y + handles.ne.y) / 2,
@@ -895,7 +896,7 @@
       pointIndex = !event.shiftKey && selected && !endpoint
         ? pickLinearPoint(selected, start, 9 / zoom) : null;
       handle = !event.shiftKey && selected
-        ? pickHandle(selected, start, 9 / zoom, scene) : null;
+        ? pickHandle(selected, start, 9 / zoom, scene, zoom) : null;
       if (groupHandle && group) {
         action = "group-transform";
         id = group.id;
