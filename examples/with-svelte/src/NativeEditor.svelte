@@ -6,7 +6,7 @@
 
   import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { nativeElementsMap } from "./native/coreAdapter";
-  import { isCoreRoughElement, paintCoreRoughElement } from "./native/renderCore";
+  import { isCoreDrawableElement, paintCoreDrawableElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
   import { paintNativeText } from "./native/text";
   import {
@@ -554,8 +554,8 @@
         ctx.restore();
         return;
       }
-      if (isCoreRoughElement(element)) {
-        paintCoreRoughElement(
+      if (isCoreDrawableElement(element)) {
+        paintCoreDrawableElement(
           ctx,
           sketch,
           element,
@@ -566,9 +566,8 @@
         return;
       }
 
-      // Text and freehand are still rendered by their existing native
-      // adapters; the official RoughJS pipeline now owns every box and line.
-      if (element.type === "text" || element.type === "freedraw") {
+      // Remaining unbound text uses the existing native typography adapter.
+      if (element.type === "text") {
         const { x, y, width, height } = elementBounds(element);
         const stroke = theme === "dark"
           ? applyDarkModeFilter(element.strokeColor)
@@ -582,28 +581,7 @@
           ctx.rotate(element.angle);
           ctx.translate(-cx, -cy);
         }
-        if (element.type === "text") {
-          paintNativeText(ctx, element, stroke);
-        } else {
-          const points = element.points.map(
-            (point) => [element.x + point[0], element.y + point[1]] as const,
-          );
-          if (points.length) {
-            ctx.beginPath();
-            ctx.strokeStyle = stroke;
-            ctx.lineWidth = element.strokeWidth * 2;
-            ctx.lineJoin = "round";
-            ctx.lineCap = "round";
-            ctx.moveTo(points[0][0], points[0][1]);
-            for (const point of points.slice(1)) {
-              ctx.lineTo(point[0], point[1]);
-            }
-            if (points.length === 1) {
-              ctx.lineTo(points[0][0] + 0.01, points[0][1]);
-            }
-            ctx.stroke();
-          }
-        }
+        paintNativeText(ctx, element, stroke);
         ctx.restore();
       }
     };
