@@ -18,7 +18,8 @@ import {
   rotateNativeGroupWithCore,
   updateNativeElement,
 } from "./coreAdapter";
-import { editableSelection, safeGroupMembers } from "./groups";
+import { editableSelection, hasClosedNativeSimpleLinks, safeGroupMembers } from "./groups";
+import { transformClosedLinkedGroupWithCore } from "./linkedGroupTransforms";
 import { nativeImageSource } from "./images";
 
 import type { Bounds } from "./selection";
@@ -112,7 +113,8 @@ export function transformableGroup(
         !selected.has(element.id) ||
         !(
           ["rectangle", "ellipse", "diamond", "image"].includes(element.type) ||
-          isSimpleLinear(element)
+          isSimpleLinear(element) ||
+          (element.type === "arrow" && !!(element.startBinding || element.endBinding))
         ) ||
         !Number.isFinite(element.angle) ||
         element.width <= 0 ||
@@ -121,6 +123,17 @@ export function transformableGroup(
   ) {
     return null;
   }
+  // Linked arrows only enter the handle path when ALL links and group
+  // members are a validated closed component. The original transform path
+  // below owns all point and binding calculations.
+  if (
+    roots.some((element) =>
+      element.type === "arrow" &&
+      !!(element.startBinding || element.endBinding)
+    ) &&
+    !hasClosedNativeSimpleLinks(scene, members)
+  ) return null;
+
   // Reuse the same type-aware bounds as Excalidraw (including rotated
   // ellipses, diamonds and two-point arrows).
   const [x, y, right, bottom] = getCommonBounds(roots, nativeElementsMap(scene));
@@ -226,6 +239,12 @@ export function transformGroup(
   // paths and uncropped embedded images in the same Scene transaction.
   // Cropped rasters, routed arrows and unsupported paths retain the
   // guarded legacy fallback rather than having their metadata rewritten.
+  if (hasClosedNativeSimpleLinks(scene, safeGroupMembers(scene, group.id))) {
+    return transformClosedLinkedGroupWithCore(
+      scene, roots.map((element) => element.id), handle, point, scale, bounds,
+    );
+  }
+
   const coreGroup = roots.every((element) =>
     ["rectangle", "ellipse", "diamond"].includes(element.type) ||
     isSimpleLinear(element) ||
