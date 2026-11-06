@@ -4,6 +4,7 @@ import {
   isCoreGraphTransitionValid,
   fixBindingsAfterDeletion,
   getGlobalFixedPointForBindableElement,
+  getCommonBounds,
   getBoundTextMaxHeight,
   getBoundTextMaxWidth,
   getNextSingleWidthAndHeightFromPointer,
@@ -197,6 +198,50 @@ export function dragNativeGraphWithCore(
   } catch {
     // Broken third-party imports must not crash the Svelte host.
     return scene;
+  }
+}
+
+/**
+ * The original Excalidraw transformElements handles multiple selection
+ * geometry, arrow routing and text bindings. It is used even for imported
+ * complex groups; only a universal graph-integrity postcondition applies.
+ */
+export function transformNativeGraphWithCore(
+  source: SceneFile,
+  selectedIds: readonly string[],
+  handle: "nw" | "ne" | "sw" | "se" | "rotate",
+  pointer: { x: number; y: number },
+  controller: CoreEditorController,
+): SceneFile {
+  if (
+    selectedIds.length < 2 ||
+    new Set(selectedIds).size !== selectedIds.length ||
+    ![pointer.x, pointer.y].every(Number.isFinite)
+  ) return source;
+  const selected = source.elements.filter((el) =>
+    selectedIds.includes(el.id) && !el.isDeleted && !el.locked,
+  );
+  if (selected.length !== selectedIds.length) return source;
+  const [left, top, right, bottom] = getCommonBounds(
+    selected, nativeElementsMap(source),
+  );
+  if (![left, top, right, bottom].every(Number.isFinite) ||
+      right <= left || bottom <= top) return source;
+
+  try {
+    const tx = controller.previewTransformSelection(
+      source.elements,
+      new Set(selectedIds),
+      handle === "rotate" ? "rotation" : handle,
+      pointer,
+      { x: (left + right) / 2, y: (top + bottom) / 2 },
+    );
+    const next = adoptCoreTransaction(source, tx);
+    return next !== source &&
+      isCoreGraphTransitionValid(source.elements, next.elements)
+      ? next : source;
+  } catch {
+    return source;
   }
 }
 
