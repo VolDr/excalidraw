@@ -13,6 +13,7 @@ still an unverified draft.
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groupEditing.ts` | `@excalidraw/element`: `getElementsInGroup`; original group-ID ancestry | Enter/exit nested group editing levels, select immediate child units and move individual boxes through original core drag/binding updates |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Complete outer-group selection, nested ancestry validation, wrapping and unwrapping without replacing original group-ID manipulation |
+| `native/importedBindings.ts` | `@excalidraw/element`: `bindBindingElement` through original `Scene` | Explicitly restores missing reverse arrow references in limited legacy inside-bound imports; validates every repaired link and forbids unrelated mutations |
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
@@ -182,6 +183,13 @@ Escape or the toolbar button exits one level and restores parent selection.
 Movement is still delegated to `dragSelectedElements` and the original
 binding update logic, with closed-group revalidation. Transform handles for
 individual bound/grouped children need a separate safe core bridge.
+
+A native "Исправить связи" action now detects a limited, common imported
+inconsistency: an ordinary arrow has a valid inside-binding to a box, but
+that box lacks the corresponding reverse arrow reference. The original
+`bindBindingElement` rebuilds the reciprocal links in one undoable core
+transaction. Complex imports are never silently normalized; repair is an
+explicit action and is rejected if any unrelated object changes.
 
 ## Still custom: do not mistake these for parity
 

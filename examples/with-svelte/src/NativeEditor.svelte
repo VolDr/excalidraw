@@ -8,6 +8,7 @@
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
+  import { missingNativeImportedBindings, repairNativeImportedBindings } from "./native/importedBindings";
   import {
     nativeEnterEditingGroup,
     nativeEditingSelectionUnit,
@@ -144,6 +145,7 @@
   let redoAvailable = $state(false);
   let imageError = $state("");
   let unsupported = $derived(unsupportedCount(scene));
+  let recoverableLinks = $derived(missingNativeImportedBindings(scene).length);
   let textEditor = $state<{
     id: string | null;
     boxId: string | null;
@@ -416,6 +418,12 @@
     if (next !== scene) {
       commit(scene, next);
     }
+  }
+
+  function repairImportedBindings() {
+    if (gesture || textEditor || !recoverableLinks) return;
+    const next = repairNativeImportedBindings(scene);
+    if (next !== scene) commit(scene, next);
   }
 
   function groupSelected() {
@@ -1320,6 +1328,12 @@
       aria-label="Выбрать изображение"
     />
     <button onclick={() => imageInput.click()}>Изображение</button>
+    {#if recoverableLinks}
+      <button
+        onclick={repairImportedBindings}
+        title="Явно восстановить недостающие обратные ссылки импортированных стрелок через оригинальное ядро; действие можно отменить"
+      >Исправить связи ({recoverableLinks})</button>
+    {/if}
     {#if selectedRaster}
       <button onclick={() => flipSelectedImage("horizontal")} title="Отразить выбранное изображение по горизонтали">↔ Отразить</button>
       <button onclick={() => flipSelectedImage("vertical")} title="Отразить выбранное изображение по вертикали">↕ Отразить</button>
