@@ -92,6 +92,7 @@ export * from "./resizeTest";
 export * from "./Scene";
 export * from "./EditorController";
 export * from "./EditorHistory";
+export * from "./EditorSession";
 export * from "./selection";
 export * from "./shape";
 export * from "./showSelectedShapeActions";
