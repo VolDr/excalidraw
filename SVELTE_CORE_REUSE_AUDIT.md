@@ -19,6 +19,7 @@ still an unverified draft.
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
+| `native/frameDrop.ts` | `@excalidraw/element`: `isCursorInFrame`, `isElementInFrame`, `addElementsToFrame`, `removeElementsFromFrame` | On pointer-up, safely adopts or releases a single unbound root on crossing frame boundaries; preserves history and original ordering |
 | `native/frameMove.ts` | `@excalidraw/element`: original `dragSelectedElements` via core Scene | Validates complete frame drags, including all child translations and unchanged external references; rejects incomplete imported group ancestry |
 | `native/frameResize.ts` | `@excalidraw/element`: `getTransformHandles`, `transformElements`, `getElementsInResizingFrame` | Frame corner resize through original core; accepts only geometry edits that keep the same frame child set |
 | `native/frames.ts` | `@excalidraw/element`: `newFrameElement`, `getElementsInNewFrame`, `addElementsToFrame`, `getCommonBounds`, `removeAllElementsFromFrame` | Frame creation, automatic membership, wrapping selection, drag with original core, unwrapping without deleting children |
@@ -226,6 +227,12 @@ Frame drawing, wrapping selection and unwrapping now use original
 `addElementsToFrame` and `removeAllElementsFromFrame`. Moving a frame
 delegates to original `dragSelectedElements`, which moves its children.
 Frame naming is also editable through original `newElementWith`.
+Single independent framed children are now selectable and movable without
+detaching frame metadata. On pointer-up, an unbound individual root is
+captured or released using the original frame hit-test and membership
+algorithms. The entire drag and frame transfer share one undo transaction.
+Partial groups and linked-arrow graph transfers remain unsupported.
+
 Frame movement now passes through an additional source-level guard: the
 original `dragSelectedElements` moves the frame and children, while Svelte
 verifies that child membership, ancestry, captions, arrow target IDs and

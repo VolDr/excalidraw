@@ -11,6 +11,7 @@
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import { elementsInNativeLasso, type NativeLassoMode } from "./native/lasso";
   import { NativeLaserStroke } from "./native/laser";
+  import { reconcileNativeFrameDrop } from "./native/frameDrop";
   import {
     createNativeFrameWithCore,
     nativeFrameFromDrag,
@@ -1360,7 +1361,15 @@
       g.changed
     ) {
       // The move was previewed in-place; record the *original* scene once.
-      history.commit(g.original, g.latest);
+      const next = g.action === "move" && !editingGroupId
+        ? reconcileNativeFrameDrop(
+            g.original, g.latest, g.ids, getPoint(event),
+          )
+        : g.latest;
+      if (next !== g.latest) {
+        onChange(next);
+      }
+      history.commit(g.original, next);
       refreshHistory();
     } else if (g.action === "laser") {
       if (laserStroke) {
