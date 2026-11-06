@@ -5,6 +5,7 @@
   import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
   import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
+  import { CoreEditorController, type CoreEditorSelectionState } from "@excalidraw/element";
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
@@ -155,9 +156,38 @@
   let imageInput: HTMLInputElement;
 
   let tool = $state<NativeTool>("selection");
-  let selectedIds = $state<string[]>([]);
-  let editingGroupId = $state<string | null>(null);
+
+  // The original Excalidraw Scene and selection state now outlive pointer
+  // events. Svelte observes the controller instead of maintaining a second
+  // independent selection/group-editing state.
+  const coreController = new CoreEditorController(scene.elements);
+  let coreElements = scene.elements;
+  let selectionState = $state<CoreEditorSelectionState>(coreController.getSelection());
+  let selectedIds = $derived(Object.keys(selectionState.selectedElementIds)
+    .filter((id) => selectionState.selectedElementIds[id]));
+  let editingGroupId = $derived(selectionState.editingGroupId);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
+  const unsubscribeCore = coreController.onUpdate(() => {
+    selectionState = coreController.getSelection();
+  });
+
+  function setSelectedIds(ids: readonly string[]) {
+    coreController.setSelection(ids, editingGroupId);
+  }
+  function setEditingGroupId(id: string | null) {
+    coreController.setSelection(selectedIds, id);
+  }
+  function syncCoreScene(next: SceneFile) {
+    if (next.elements === coreElements) return;
+    coreController.replaceElements(next.elements);
+    coreElements = next.elements;
+  }
+
+  // Changes from the React fallback or the parent document loader must
+  // refresh the same controller, not spawn a new controller per gesture.
+  $effect(() => {
+    syncCoreScene(scene);
+  });
   let selectedFrame = $derived(
     scene.elements.find((element) =>
       element.id === selectedId && element.type === "frame" && !element.isDeleted
@@ -248,7 +278,7 @@
         center,
       );
       commit(scene, result.scene);
-      selectedIds = [result.element.id];
+      setSelectedIds([result.element.id]);
       tool = "selection";
     } catch (error) {
       imageError = error instanceof Error ? error.message : "Ошибка загрузки изображения.";
@@ -283,8 +313,8 @@
     history.clear();
     lastPastedText = null;
     pasteNumber = 0;
-    selectedIds = [];
-    editingGroupId = null;
+    setSelectedIds([]);
+    setEditingGroupId(null);
     marquee = null;
     lassoPoints = [];
     laserOutline = [];
@@ -308,6 +338,7 @@
     }
     const indexed = indexInsertedNativeElements(previous, next);
     history.commit(previous, indexed);
+    syncCoreScene(indexed);
     onChange(indexed);
     refreshHistory();
   }
@@ -336,7 +367,7 @@
       lastPastedText = null;
       pasteNumber = 0;
       commit(scene, result.scene);
-      selectedIds = [];
+      setSelectedIds([]);
     }
   }
 
@@ -352,7 +383,7 @@
       pasteNumber = nextPasteNumber;
       event.preventDefault();
       commit(scene, result.scene);
-      selectedIds = result.ids;
+      setSelectedIds(result.ids);
       tool = "selection";
     }
   }
@@ -364,7 +395,7 @@
     const result = duplicateSelection(scene, selectedIds);
     if (result.ids.length) {
       commit(scene, result.scene);
-      selectedIds = result.ids;
+      setSelectedIds(result.ids);
     }
   }
 
@@ -484,7 +515,7 @@
     const wrapped = wrapNativeSelectionInFrame(scene, selectedIds);
     if (!wrapped) return;
     commit(scene, wrapped.scene);
-    selectedIds = [wrapped.frame.id];
+    setSelectedIds([wrapped.frame.id]);
   }
 
   function removeSelectedFrame() {
@@ -492,7 +523,7 @@
     const next = unwrapNativeFrame(scene, selectedId);
     if (next !== scene) {
       commit(scene, next);
-      selectedIds = [];
+      setSelectedIds([]);
     }
   }
 
@@ -503,7 +534,7 @@
     const result = groupSelection(scene, selectedIds);
     if (result.groupId) {
       commit(scene, result.scene);
-      selectedIds = result.ids;
+      setSelectedIds(result.ids);
     }
   }
 
@@ -514,23 +545,27 @@
     const result = ungroupSelection(scene, selectedIds);
     if (result.ids.length) {
       commit(scene, result.scene);
-      selectedIds = result.ids;
+      setSelectedIds(result.ids);
     }
   }
 
   function undo() {
     if (history.canUndo) {
-      onChange(history.undo(scene));
+      const previous = history.undo(scene);
+      syncCoreScene(previous);
+      onChange(previous);
       refreshHistory();
-      selectedIds = [];
+      setSelectedIds([]);
     }
   }
 
   function redo() {
     if (history.canRedo) {
-      onChange(history.redo(scene));
+      const next = history.redo(scene);
+      syncCoreScene(next);
+      onChange(next);
       refreshHistory();
-      selectedIds = [];
+      setSelectedIds([]);
     }
   }
 
@@ -601,8 +636,8 @@
         commit(scene, next);
       }
       // Keep the whole native group selected after editing an internal label.
-      selectedIds = container?.type === "arrow"
-        ? [editor.boxId] : selectionUnit(next, editor.boxId);
+      setSelectedIds(container?.type === "arrow"
+        ? [editor.boxId] : selectionUnit(next, editor.boxId));
     } else if (!value.trim()) {
       if (editor.id) {
         commit(scene, deleteById(scene, editor.id));
@@ -616,12 +651,12 @@
         value !== (existing.originalText ?? existing.text)
       ) {
         commit(scene, replaceText(scene, editor.id, value));
-        selectedIds = [editor.id];
+        setSelectedIds([editor.id]);
       }
     } else {
       const element = createText(editor.at, value);
       commit(scene, { ...scene, elements: [...scene.elements, element] });
-      selectedIds = [element.id];
+      setSelectedIds([element.id]);
     }
     tool = "selection";
   }
@@ -649,8 +684,8 @@
     }
     const nextGroupId = nativeEnterEditingGroup(scene, hit.id, editingGroupId);
     if (nextGroupId) {
-      editingGroupId = nextGroupId;
-      selectedIds = nativeEditingSelectionUnit(scene, hit.id, nextGroupId);
+      setEditingGroupId(nextGroupId);
+      setSelectedIds(nativeEditingSelectionUnit(scene, hit.id, nextGroupId));
       return;
     }
     if (hit.type === "arrow") {
@@ -1153,33 +1188,33 @@
         if (event.shiftKey) {
           if (unit.length) {
             const fullySelected = unit.every((item) => selectedIds.includes(item));
-            selectedIds = fullySelected
+            setSelectedIds(fullySelected
               ? selectedIds.filter((item) => !unit.includes(item))
-              : [...new Set([...selectedIds, ...unit])];
+              : [...new Set([...selectedIds, ...unit])]);
           }
           action = "select";
         } else if (unit.length) {
           ids = unit.every((item) => selectedIds.includes(item))
             ? [...selectedIds] : unit;
-          selectedIds = ids;
+          setSelectedIds(ids);
           id = target!.id;
         } else {
-          selectedIds = [];
+          setSelectedIds([]);
           action = "select";
         }
       }
     } else if (action === "lasso") {
       lassoPoints = [start];
-      if (!event.shiftKey) selectedIds = [];
+      if (!event.shiftKey) setSelectedIds([]);
     } else if (action === "laser") {
       if (laserClearTimer !== null) clearTimeout(laserClearTimer);
       laserClearTimer = null;
       laserStroke = new NativeLaserStroke(zoom);
       laserOutline = laserStroke.add(start, event.pressure || 0.5);
     } else if (action === "draw" && tool === "frame") {
-      selectedIds = [];
+      setSelectedIds([]);
     } else if (action === "draw" || action === "free") {
-      selectedIds = [];
+      setSelectedIds([]);
       draft = action === "free"
         ? createFreeDraw([start], [event.pressure || 0.5])
         : createShape((tool === "elbow" ? "arrow" : tool) as NativeShape, start, start);
@@ -1204,7 +1239,7 @@
       pressures: [event.pressure || 0.5],
     };
     if (action === "erase") {
-      selectedIds = [];
+      setSelectedIds([]);
       eraseAt(start);
     }
   }
@@ -1382,21 +1417,21 @@
       }, 750);
     } else if (g.action === "lasso") {
       const hits = elementsInNativeLasso(g.original, g.points, lassoMode, zoom);
-      selectedIds = event.shiftKey
+      setSelectedIds(event.shiftKey
         ? [...new Set([...g.initialSelection, ...hits])]
-        : hits;
+        : hits);
     } else if (g.action === "select" && g.changed && marquee) {
       const hits = elementsInMarquee(g.original, marquee.start, marquee.end);
-      selectedIds = event.shiftKey
+      setSelectedIds(event.shiftKey
         ? [...new Set([...g.initialSelection, ...hits])]
-        : hits;
+        : hits);
     } else if (g.action === "free" && preview) {
       if (g.points.length > 1) {
         commit(g.original, {
           ...g.original,
           elements: [...g.original.elements, preview],
         });
-        selectedIds = [preview.id];
+        setSelectedIds([preview.id]);
         tool = "selection";
       }
     } else if (g.action === "draw" && tool === "frame" && preview) {
@@ -1405,7 +1440,7 @@
       );
       if (created) {
         commit(g.original, created.scene);
-        selectedIds = [created.frame.id];
+        setSelectedIds([created.frame.id]);
         tool = "selection";
       }
     } else if (g.action === "draw" && preview) {
@@ -1427,7 +1462,7 @@
           return;
         }
         commit(g.original, next);
-        selectedIds = [preview.id];
+        setSelectedIds([preview.id]);
         tool = "selection";
       }
     }
@@ -1450,7 +1485,7 @@
     }
     pan = g.initialPan;
     if (g.action === "select" || g.action === "lasso") {
-      selectedIds = g.initialSelection;
+      setSelectedIds(g.initialSelection);
     }
     lassoPoints = [];
     if (g.action === "laser") {
@@ -1517,10 +1552,10 @@
     }
     if (cmd && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      selectedIds = editableSelection(
+      setSelectedIds(editableSelection(
         scene,
         scene.elements.map((element) => element.id),
-      );
+      ));
       return;
     }
     if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length) {
@@ -1529,16 +1564,16 @@
       if (next.elements.some((el, i) => el.isDeleted !== scene.elements[i].isDeleted)) {
         commit(scene, next);
       }
-      selectedIds = [];
+      setSelectedIds([]);
       return;
     }
     if (event.key === "Escape") {
       if (editingGroupId) {
         const parent = nativeExitEditingGroup(scene, editingGroupId);
-        editingGroupId = parent.editingGroupId;
-        selectedIds = parent.selectedIds;
+        setEditingGroupId(parent.editingGroupId);
+        setSelectedIds(parent.selectedIds);
       } else {
-        selectedIds = [];
+        setSelectedIds([]);
       }
       preview = null;
       tool = "selection";
@@ -1616,6 +1651,8 @@
       if (laserClearTimer !== null) clearTimeout(laserClearTimer);
       laserClearTimer = null;
       laserStroke = null;
+      unsubscribeCore();
+      coreController.destroy();
     };
   });
 </script>
@@ -1640,7 +1677,7 @@
     ] as item}
       <button
         class:active={tool === item[0]}
-        onclick={() => { tool = item[0] as NativeTool; selectedIds = []; }}
+        onclick={() => { tool = item[0] as NativeTool; setSelectedIds([]); }}
         title={item[1]}
         aria-pressed={tool === item[0]}
       >
@@ -1726,8 +1763,8 @@
       <button
         onclick={() => {
           const parent = nativeExitEditingGroup(scene, editingGroupId!);
-          editingGroupId = parent.editingGroupId;
-          selectedIds = parent.selectedIds;
+          setEditingGroupId(parent.editingGroupId);
+          setSelectedIds(parent.selectedIds);
         }}
         title="Вернуться на уровень выше (Esc)"
       >↑ Из группы</button>
