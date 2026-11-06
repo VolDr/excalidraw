@@ -111,15 +111,21 @@ const adoptCoreTransaction = (
 export function withNativeCoreScene(
   scene: SceneFile,
   operation: (core: Scene) => void,
+  persistentController?: CoreEditorController,
 ): SceneFile {
-  const controller = new CoreEditorController(scene.elements);
+  const controller = persistentController ??
+    new CoreEditorController(scene.elements);
   try {
-    return adoptCoreTransaction(
-      scene,
-      controller.transact((core) => operation(core)),
-    );
+    // A persistent host previews an operation *from the supplied snapshot*.
+    // Never mutate its committed Scene before a gesture is finalized.
+    const result = persistentController
+      ? controller.previewTransaction(
+          scene.elements, (core) => operation(core),
+        )
+      : controller.transact((core) => operation(core));
+    return adoptCoreTransaction(scene, result);
   } finally {
-    controller.destroy();
+    if (!persistentController) controller.destroy();
   }
 }
 
@@ -138,18 +144,23 @@ export function dragNativeSelectionWithCore(
   ids: ReadonlySet<string>,
   dx: number,
   dy: number,
+  persistentController?: CoreEditorController,
 ): SceneFile {
   if (!ids.size || (!dx && !dy) || !Number.isFinite(dx) || !Number.isFinite(dy)) {
     return scene;
   }
-  const controller = new CoreEditorController(scene.elements);
+  const controller = persistentController ??
+    new CoreEditorController(scene.elements);
   try {
-    controller.setSelection([...ids]);
-    // The original Scene.getSelectedElements and dragSelectedElements
-    // live together in the controller. No synthetic Svelte pointer state.
-    return adoptCoreTransaction(scene, controller.dragSelection(dx, dy));
+    const result = persistentController
+      ? controller.previewDragSelection(scene.elements, ids, dx, dy)
+      : (() => {
+          controller.setSelection([...ids]);
+          return controller.dragSelection(dx, dy);
+        })();
+    return adoptCoreTransaction(scene, result);
   } finally {
-    controller.destroy();
+    if (!persistentController) controller.destroy();
   }
 }
 
