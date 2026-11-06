@@ -32,6 +32,10 @@
   } from "./native/complexElbowLabel";
   import { missingNativeImportedBindings, repairNativeImportedBindings } from "./native/importedBindings";
   import {
+    missingNativeImportedOrbitBindings,
+    repairNativeImportedOrbitBindings,
+  } from "./native/importedOrbitRepair";
+  import {
     nativeEnterEditingGroup,
     nativeEditingSelectionUnit,
     nativeExitEditingGroup,
@@ -167,7 +171,7 @@
   let redoAvailable = $state(false);
   let imageError = $state("");
   let unsupported = $derived(unsupportedCount(scene));
-  let recoverableLinks = $derived(missingNativeImportedBindings(scene).length);
+  let recoverableLinks = $derived(missingNativeImportedBindings(scene).length + missingNativeImportedOrbitBindings(scene).length);
   let textEditor = $state<{
     id: string | null;
     boxId: string | null;
@@ -444,7 +448,8 @@
 
   function repairImportedBindings() {
     if (gesture || textEditor || !recoverableLinks) return;
-    const next = repairNativeImportedBindings(scene);
+    const inside = repairNativeImportedBindings(scene);
+    const next = repairNativeImportedOrbitBindings(inside);
     if (next !== scene) commit(scene, next);
   }
 

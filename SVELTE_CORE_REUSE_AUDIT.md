@@ -13,6 +13,7 @@ still an unverified draft.
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groupEditing.ts` | `@excalidraw/element`: `getElementsInGroup`; original group-ID ancestry | Enter/exit nested group editing levels, select immediate child units and move individual boxes through original core drag/binding updates |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Complete outer-group selection, nested ancestry validation, wrapping and unwrapping without replacing original group-ID manipulation |
+| `native/importedOrbitRepair.ts` | `@excalidraw/element`: original `bindBindingElement` and core orthogonal rerouting | Explicitly restores missing reverse orbit refs of validated imported elbow arrows; no automatic repair or arbitrary normalization |
 | `native/importedBindings.ts` | `@excalidraw/element`: `bindBindingElement` through original `Scene` | Explicitly restores missing reverse arrow references in limited legacy inside-bound imports; validates every repaired link and forbids unrelated mutations |
 | `native/innerElementTransforms.ts` | `@excalidraw/element`: original `transformElements` using single-element resize/rotation; isolated core Scene | Core resize and rotation for individual validated inner boxes, preserving group ancestry, captions and arrow links |
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
@@ -222,6 +223,12 @@ Frame drawing, wrapping selection and unwrapping now use original
 delegates to original `dragSelectedElements`, which moves its children.
 Full frame resize and advanced frame editing remain guarded. The Svelte
 canvas draws a lightweight frame outline, not its own membership engine.
+
+The explicit "Исправить связи" action now also recognizes valid imported
+orbit elbow bindings that lack the reverse box reference. The original
+`bindBindingElement` restores the binding and triggers the original
+orthogonal router; unsupported imports are never silently rewritten.
+Both inside and orbit repair paths use one undo step for a click.
 
 ## Still custom: do not mistake these for parity
 
