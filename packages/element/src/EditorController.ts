@@ -185,9 +185,33 @@ export class CoreEditorController {
     operation: (scene: Scene, state: Readonly<CoreEditorSelectionState>) => void,
   ): CoreEditorTransactionResult {
     this.assertOpen();
-    const draft = new Scene(structuredClone(
-      this.scene.getElementsIncludingDeleted(),
-    ), { skipValidation: true });
+    return this.evaluate(
+      this.scene.getElementsIncludingDeleted(), operation, true,
+    );
+  }
+
+  /**
+   * Pointer previews run from the original pointer-down elements, not
+   * the last preview. This keeps even nonlinear rotations/bindings stable
+   * during a drag, without creating a separate short-lived controller.
+   * The controller's committed Scene and selection do not change.
+   */
+  previewTransaction(
+    originalElements: readonly ExcalidrawElement[],
+    operation: (scene: Scene, state: Readonly<CoreEditorSelectionState>) => void,
+  ): CoreEditorTransactionResult {
+    this.assertOpen();
+    return this.evaluate(originalElements, operation, false);
+  }
+
+  private evaluate(
+    originalElements: readonly ExcalidrawElement[],
+    operation: (scene: Scene, state: Readonly<CoreEditorSelectionState>) => void,
+    adopt: boolean,
+  ): CoreEditorTransactionResult {
+    const draft = new Scene(structuredClone(originalElements), {
+      skipValidation: true,
+    });
     const baseline: CoreEditorVersion[] = draft
       .getElementsIncludingDeleted()
       .map((element) => ({
@@ -235,15 +259,19 @@ export class CoreEditorController {
 
       // Output must not expose mutable Scene-owned element references.
       const elements = structuredClone(after);
-      const previous = this.scene;
-      this.scene = draft;
-      previous.destroy();
-      // Remove stale selection after deleting/replacing elements.
-      this.selection.selectedElementIds = Object.fromEntries(
-        Object.entries(this.selection.selectedElementIds)
-          .filter(([id]) => !!this.scene.getNonDeletedElement(id)),
-      );
-      this.notify();
+      if (adopt) {
+        const previous = this.scene;
+        this.scene = draft;
+        previous.destroy();
+        // Drop selected references to deleted elements on committed actions.
+        this.selection.selectedElementIds = Object.fromEntries(
+          Object.entries(this.selection.selectedElementIds)
+            .filter(([id]) => !!this.scene.getNonDeletedElement(id)),
+        );
+        this.notify();
+      } else {
+        draft.destroy();
+      }
       return { elements, baseline, changedIds };
     } catch (error) {
       draft.destroy();
@@ -261,25 +289,51 @@ export class CoreEditorController {
       throw new Error("Invalid drag offset");
     }
     return this.transact((scene, state) => {
-      if (!dx && !dy) return;
-      const selected = scene.getSelectedElements({
-        selectedElementIds: state.selectedElementIds,
-      });
-      if (!selected.length) return;
-      const originals = new Map<string, NonDeleted<ExcalidrawElement>>(
-        scene.getNonDeletedElements().map((element) => [
-          element.id, structuredClone(element),
-        ]),
-      );
-      dragSelectedElements(
-        { originalElements: originals } as PointerDownState,
-        selected,
-        { x: dx, y: dy },
+      this.applyOriginalDrag(scene, state.selectedElementIds, dx, dy);
+    });
+  }
+
+  previewDragSelection(
+    originalElements: readonly ExcalidrawElement[],
+    selectedIds: ReadonlySet<string>,
+    dx: number,
+    dy: number,
+  ): CoreEditorTransactionResult {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+      throw new Error("Invalid drag offset");
+    }
+    return this.previewTransaction(originalElements, (scene) => {
+      this.applyOriginalDrag(
         scene,
-        { x: 0, y: 0 },
-        null,
+        Object.fromEntries([...selectedIds].map((id) => [id, true])),
+        dx,
+        dy,
       );
     });
+  }
+
+  private applyOriginalDrag(
+    scene: Scene,
+    selectedElementIds: AppState["selectedElementIds"],
+    dx: number,
+    dy: number,
+  ): void {
+    if (!dx && !dy) return;
+    const selected = scene.getSelectedElements({ selectedElementIds });
+    if (!selected.length) return;
+    const originals = new Map<string, NonDeleted<ExcalidrawElement>>(
+      scene.getNonDeletedElements().map((element) => [
+        element.id, structuredClone(element),
+      ]),
+    );
+    dragSelectedElements(
+      { originalElements: originals } as PointerDownState,
+      selected,
+      { x: dx, y: dy },
+      scene,
+      { x: 0, y: 0 },
+      null,
+    );
   }
 
   destroy(): void {
