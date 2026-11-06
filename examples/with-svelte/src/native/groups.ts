@@ -99,6 +99,50 @@ export const canEditIndependently = (element: ExcalidrawElement): boolean =>
   isIndependent(element) && element.groupIds.length === 0;
 
 /**
+ * A composite box can own one reciprocal caption plus arrow references.
+ * The standard nativeLabelBox path remains strictly single-label-only:
+ * here we only verify that the original core may move/copy the entire closed
+ * group without detaching any of its internal relationships.
+ */
+const isClosedGraphCaption = (
+  scene: SceneFile,
+  memberMap: ReadonlyMap<string, ExcalidrawElement>,
+  label: ExcalidrawElement,
+): boolean => {
+  if (nativeLabelBox(scene, label)) return true;
+  if (
+    label.type !== "text" ||
+    !label.containerId ||
+    label.isDeleted ||
+    label.locked ||
+    !label.autoResize ||
+    label.boundElements?.length ||
+    label.frameId
+  ) return false;
+  const box = memberMap.get(label.containerId);
+  if (
+    !box ||
+    !["rectangle", "ellipse", "diamond"].includes(box.type) ||
+    box.isDeleted ||
+    box.locked ||
+    box.frameId ||
+    box.width <= 20 ||
+    box.height <= 20 ||
+    box.groupIds.join("\u0000") !== label.groupIds.join("\u0000") ||
+    !box.boundElements?.some((ref) => ref.type === "arrow") ||
+    box.boundElements.filter((ref) => ref.type === "text").length !== 1 ||
+    !box.boundElements.some((ref) => ref.type === "text" && ref.id === label.id) ||
+    scene.elements.some((other) =>
+      !other.isDeleted &&
+      other.id !== label.id &&
+      other.type === "text" &&
+      other.containerId === box.id
+    )
+  ) return false;
+  return true;
+};
+
+/**
  * Recognize a *closed* ordinary-arrow binding component. This validator
  * never calculates an endpoint or mutates its binding: all geometry and
  * reciprocity updates remain in Excalidraw's original Scene operations.
@@ -122,7 +166,7 @@ export function hasClosedNativeSimpleLinks(
       return false;
     }
     if (isBoundLabel(element)) {
-      if (!nativeLabelBox(scene, element)) return false;
+      if (!isClosedGraphCaption(scene, byId, element)) return false;
       continue;
     }
     if (element.type === "arrow" && (element.startBinding || element.endBinding)) {
@@ -161,6 +205,10 @@ export function hasClosedNativeSimpleLinks(
         element.boundElements.length > 32 ||
         new Set(element.boundElements.map((ref) => ref.id)).size !== element.boundElements.length ||
         element.boundElements.some((ref) => {
+          if (ref.type === "text") {
+            const label = byId.get(ref.id);
+            return !label || !isClosedGraphCaption(scene, byId, label);
+          }
           if (ref.type !== "arrow") return true;
           const arrow = byId.get(ref.id);
           return !arrow ||
@@ -237,7 +285,12 @@ export function safeGroupMembers(
 
     if (isBoundLabel(element)) {
       const box = nativeLabelBox(scene, element);
-      if (!box || !memberIds.has(box.id)) {
+      if ((!box || !memberIds.has(box.id)) &&
+          (!closedLinks || !isClosedGraphCaption(
+            scene,
+            new Map(members.map((member) => [member.id, member])),
+            element,
+          ))) {
         return [];
       }
     } else if (!isSupportedRoot(scene, element) && !closedLinks) {
@@ -341,7 +394,18 @@ export function groupSelection(
   const allowed = new Set(editableSelection(scene, ids));
   const candidates = roots.flatMap((element) => {
     const label = nativeEditableLabel(scene, element);
-    return label ? [element, label] : [element];
+    const refs = element.boundElements?.filter((ref) => ref.type === "text") ?? [];
+    const linkedText = refs
+      .map((ref) => scene.elements.find((item) =>
+        item.id === ref.id &&
+        item.type === "text" &&
+        item.containerId === element.id,
+      ))
+      .filter((item): item is ExcalidrawElement => !!item);
+    return [element, ...new Map(
+      [...(label ? [label] : []), ...linkedText]
+        .map((item) => [item.id, item]),
+    ).values()];
   });
   const closedLinks = hasClosedNativeSimpleLinks(scene, candidates);
   const units = new Set<string>();
@@ -368,13 +432,7 @@ export function groupSelection(
   ) {
     return { scene, ids: [], groupId: null };
   }
-  const allIds = new Set(roots.map((element) => element.id));
-  for (const root of roots) {
-    const label = nativeEditableLabel(scene, root);
-    if (label) {
-      allIds.add(label.id);
-    }
-  }
+  const allIds = new Set(candidates.map((element) => element.id));
   const groupId = crypto.randomUUID();
   return {
     scene: {

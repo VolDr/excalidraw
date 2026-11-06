@@ -127,6 +127,13 @@ adapter revalidates the copied component before adopting it. Layer
 reordering also accepts whole verified nested and linked groups.
 Fixtures are present but unexecuted.
 
+Validated closed groups may now carry a box caption and reciprocal arrow
+links on the same box. The native adapter includes the caption as an internal
+group member during grouping, duplication and deletion, while the original
+core still owns movement and binding mutations. The existing one-label-only
+editor guard remains unchanged for complex captions until the core editing
+action is wired. No separate text layout code is introduced.
+
 Complete simple two-point arrow/box binding graphs can now be grouped and
 dragged via Excalidraw's original `dragSelectedElements`. Svelte validates
 the reciprocal relationship and keeps all referenced shapes within the

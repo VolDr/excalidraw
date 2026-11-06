@@ -96,6 +96,25 @@ export function duplicateSelection(
     if (!requested.has(element.id)) {
       continue;
     }
+    const directLabel = nativeEditableLabel(scene, element);
+    const groupedCaption = element.groupIds.length
+      ? element.boundElements?.find((ref) => ref.type === "text")
+      : null;
+    const label = directLabel ?? (
+      groupedCaption
+        ? scene.elements.find((item) =>
+            item.id === groupedCaption.id &&
+            item.type === "text" &&
+            item.containerId === element.id,
+          )
+        : null
+    );
+    if (label) {
+      selected.add(element.id);
+      selected.add(label.id);
+      copiedParents.add(element.id);
+      continue;
+    }
     if (
       canEditIndependently(element) ||
       (element.groupIds.length > 0 &&
@@ -105,12 +124,6 @@ export function duplicateSelection(
       selected.add(element.id);
       copiedParents.add(element.id);
       continue;
-    }
-    const label = nativeEditableLabel(scene, element);
-    if (label) {
-      selected.add(element.id);
-      selected.add(label.id);
-      copiedParents.add(element.id);
     }
   }
 

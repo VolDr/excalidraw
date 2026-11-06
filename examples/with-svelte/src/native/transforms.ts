@@ -314,6 +314,25 @@ export function deleteSelection(
     const box = nativeLabelBox(scene, element);
     if (box && selected.has(box.id)) {
       selected.add(element.id);
+      continue;
+    }
+    if (
+      element.type === "text" &&
+      element.containerId &&
+      !element.isDeleted &&
+      !selected.has(element.id)
+    ) {
+      const container = scene.elements.find((item) => item.id === element.containerId);
+      if (
+        container && selected.has(container.id) && container.groupIds.length &&
+        container.boundElements?.some((ref) =>
+          ref.type === "text" && ref.id === element.id
+        ) &&
+        safeGroupMembers(scene, container.groupIds[container.groupIds.length - 1])
+          .some((member) => member.id === element.id)
+      ) {
+        selected.add(element.id);
+      }
     }
   }
   return deleteNativeElementsWithCore(scene, selected);

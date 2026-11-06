@@ -127,6 +127,41 @@ describe("Svelte groups with original Excalidraw nesting", () => {
     expect(groupSelection(linked, [a.id, linkedArrow.id]).scene).toBe(linked);
   });
 
+  it("keeps a box caption and bound arrow together in a closed group", () => {
+    const a = createShape("rectangle", { x: 10, y: 10 }, { x: 180, y: 120 });
+    const b = createShape("ellipse", { x: 300, y: 10 }, { x: 410, y: 120 });
+    const original = updateNativeBoxLabel({ ...blankScene(), elements: [a, b] }, a.id, "Caption");
+    const arrow = createShape("arrow", { x: 145, y: 55 }, { x: 320, y: 55 });
+    // Arrow binding reuses the native/core binding adapter; the box already
+    // has a label, so create a reciprocal imported graph for this fixture.
+    const caption = original.elements.find((element) => element.type === "text")!;
+    const linked = appendNativeArrow(original, arrow, { x: 145, y: 55 }, { x: 320, y: 55 });
+    const actualArrow = linked.elements.find((element) => element.type === "arrow");
+    if (actualArrow?.type !== "arrow") return;
+    const source = {
+      ...linked,
+      elements: linked.elements.map((element) =>
+        element.id === a.id
+          ? { ...element, boundElements: [
+              { id: caption.id, type: "text" as const },
+              { id: actualArrow.id, type: "arrow" as const },
+            ] }
+          : element,
+      ),
+    };
+    const ids = [a.id, b.id, actualArrow.id];
+    // In a complete composite graph, the internal text is never a root.
+    const result = groupSelection(source, ids);
+    expect(result.groupId).not.toBeNull();
+    const label = result.scene.elements.find((element) => element.id === caption.id)!;
+    expect(label.groupIds).toEqual([result.groupId]);
+    expect(selectionUnit(result.scene, label.id)).toEqual(ids);
+    const moved = moveSelection(result.scene, ids, 10, 15);
+    expect(moved).not.toBe(result.scene);
+    const deleted = deleteSelection(result.scene, ids);
+    expect(deleted.elements.every((element) => element.isDeleted)).toBe(true);
+  });
+
   it("does not change partially selected, nested, bound or locked groups", () => {
     const a = createShape("rectangle", { x: 0, y: 0 }, { x: 30, y: 40 });
     const b = createShape("rectangle", { x: 50, y: 60 }, { x: 70, y: 90 });
