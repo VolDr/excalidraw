@@ -170,6 +170,50 @@ export class CoreEditorController {
       .map((member) => member.id);
   }
 
+  enterGroupForElement(
+    id: string,
+    currentGroupId: string | null = this.selection.editingGroupId,
+  ): string | null {
+    this.assertOpen();
+    const hit = this.scene.getNonDeletedElement(id);
+    const element = hit?.type === "text" && hit.containerId
+      ? this.scene.getNonDeletedElement(hit.containerId) : hit;
+    if (!element || element.locked) return null;
+    const position = currentGroupId === null
+      ? element.groupIds.length
+      : element.groupIds.indexOf(currentGroupId);
+    if (position < 1) return null;
+    const groupId = element.groupIds[position - 1];
+    const members = getElementsInGroup(
+      this.scene.getNonDeletedElementsMap(), groupId,
+    );
+    return members.filter((member) =>
+      !(member.type === "text" && member.containerId)
+    ).length > 0 ? groupId : null;
+  }
+
+  exitEditingGroup(
+    groupId: string | null = this.selection.editingGroupId,
+  ): { editingGroupId: string | null; selectedIds: string[] } {
+    this.assertOpen();
+    if (!groupId) {
+      return { editingGroupId: null, selectedIds: [] };
+    }
+    const roots = getElementsInGroup(
+      this.scene.getNonDeletedElementsMap(), groupId,
+    ).filter((item) => !(item.type === "text" && item.containerId));
+    const first = roots[0];
+    if (!first) {
+      return { editingGroupId: null, selectedIds: [] };
+    }
+    const index = first.groupIds.indexOf(groupId);
+    const parent = index < 0 ? null : first.groupIds[index + 1] ?? null;
+    return {
+      editingGroupId: parent,
+      selectedIds: this.getSelectionUnit(first.id, parent),
+    };
+  }
+
   setSelection(
     selectedElementIds: readonly string[],
     editingGroupId: string | null = this.selection.editingGroupId,

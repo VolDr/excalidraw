@@ -44,11 +44,6 @@
     missingNativeImportedOrbitBindings,
     repairNativeImportedOrbitBindings,
   } from "./native/importedOrbitRepair";
-  import {
-    nativeEnterEditingGroup,
-    nativeEditingSelectionUnit,
-    nativeExitEditingGroup,
-  } from "./native/groupEditing";
   import { indexInsertedNativeElements } from "./native/ordering";
   import { canMoveNativeLayer, moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
@@ -691,10 +686,10 @@
     if (!hit) {
       return;
     }
-    const nextGroupId = nativeEnterEditingGroup(scene, hit.id, editingGroupId);
+    const nextGroupId = coreController.enterGroupForElement(hit.id);
     if (nextGroupId) {
       setEditingGroupId(nextGroupId);
-      setSelectedIds(nativeEditingSelectionUnit(scene, hit.id, nextGroupId));
+      setSelectedIds(coreController.getSelectionUnit(hit.id, nextGroupId));
       return;
     }
     if (hit.type === "arrow") {
@@ -1193,7 +1188,7 @@
         ids = [selectedId];
       } else {
         const target = pickElement(scene.elements, start, 8 / zoom);
-        const unit = target ? nativeEditingSelectionUnit(scene, target.id, editingGroupId) : [];
+        const unit = target ? coreController.getSelectionUnit(target.id) : [];
         if (event.shiftKey) {
           if (unit.length) {
             const fullySelected = unit.every((item) => selectedIds.includes(item));
@@ -1578,7 +1573,7 @@
     }
     if (event.key === "Escape") {
       if (editingGroupId) {
-        const parent = nativeExitEditingGroup(scene, editingGroupId);
+        const parent = coreController.exitEditingGroup(editingGroupId);
         setEditingGroupId(parent.editingGroupId);
         setSelectedIds(parent.selectedIds);
       } else {
@@ -1772,7 +1767,7 @@
     {#if editingGroupId}
       <button
         onclick={() => {
-          const parent = nativeExitEditingGroup(scene, editingGroupId!);
+          const parent = coreController.exitEditingGroup(editingGroupId!);
           setEditingGroupId(parent.editingGroupId);
           setSelectedIds(parent.selectedIds);
         }}
