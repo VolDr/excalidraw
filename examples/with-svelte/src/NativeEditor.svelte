@@ -5,7 +5,7 @@
   import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
   import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
-  import { CoreEditorController, type CoreEditorSelectionState } from "@excalidraw/element";
+  import { CoreEditorController, type CoreEditorSelectionState, type CoreEditorToolState } from "@excalidraw/element";
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
@@ -155,21 +155,36 @@
   let textInput = $state<HTMLTextAreaElement>();
   let imageInput: HTMLInputElement;
 
-  let tool = $state<NativeTool>("selection");
-
   // The original Excalidraw Scene and selection state now outlive pointer
   // events. Svelte observes the controller instead of maintaining a second
   // independent selection/group-editing state.
   const coreController = new CoreEditorController(scene.elements);
   let coreElements = scene.elements;
   let selectionState = $state<CoreEditorSelectionState>(coreController.getSelection());
+  let toolState = $state<CoreEditorToolState>(coreController.getToolState());
+  let tool = $derived(
+    (toolState.activeTool.type === "arrow" &&
+     toolState.currentItemArrowType === "elbow"
+      ? "elbow" : toolState.activeTool.type) as NativeTool
+  );
   let selectedIds = $derived(Object.keys(selectionState.selectedElementIds)
     .filter((id) => selectionState.selectedElementIds[id]));
   let editingGroupId = $derived(selectionState.editingGroupId);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
   const unsubscribeCore = coreController.onUpdate(() => {
     selectionState = coreController.getSelection();
+    toolState = coreController.getToolState();
   });
+
+  function setTool(nextTool: NativeTool) {
+    coreController.setActiveTool({
+      type: nextTool === "elbow" ? "arrow" : nextTool,
+      customType: null,
+      locked: false,
+      fromSelection: false,
+      lastActiveTool: null,
+    }, nextTool === "elbow" ? "elbow" : "round");
+  }
 
   function setSelectedIds(ids: readonly string[]) {
     coreController.setSelection(ids, editingGroupId);
@@ -279,7 +294,7 @@
       );
       commit(scene, result.scene);
       setSelectedIds([result.element.id]);
-      tool = "selection";
+      setTool("selection");
     } catch (error) {
       imageError = error instanceof Error ? error.message : "Ошибка загрузки изображения.";
     }
@@ -384,7 +399,7 @@
       event.preventDefault();
       commit(scene, result.scene);
       setSelectedIds(result.ids);
-      tool = "selection";
+      setTool("selection");
     }
   }
 
@@ -658,7 +673,7 @@
       commit(scene, { ...scene, elements: [...scene.elements, element] });
       setSelectedIds([element.id]);
     }
-    tool = "selection";
+    setTool("selection");
   }
 
   function textKeyDown(event: KeyboardEvent) {
@@ -1432,7 +1447,7 @@
           elements: [...g.original.elements, preview],
         });
         setSelectedIds([preview.id]);
-        tool = "selection";
+        setTool("selection");
       }
     } else if (g.action === "draw" && tool === "frame" && preview) {
       const created = createNativeFrameWithCore(
@@ -1441,7 +1456,7 @@
       if (created) {
         commit(g.original, created.scene);
         setSelectedIds([created.frame.id]);
-        tool = "selection";
+        setTool("selection");
       }
     } else if (g.action === "draw" && preview) {
       if (Math.max(preview.width, preview.height) >= 3 / zoom) {
@@ -1463,7 +1478,7 @@
         }
         commit(g.original, next);
         setSelectedIds([preview.id]);
-        tool = "selection";
+        setTool("selection");
       }
     }
     preview = null;
@@ -1576,7 +1591,7 @@
         setSelectedIds([]);
       }
       preview = null;
-      tool = "selection";
+      setTool("selection");
       return;
     }
     const nudges: Record<string, Point> = {
@@ -1605,18 +1620,18 @@
       return;
     }
     const key = event.key.toLowerCase();
-    if (key === "v") tool = "selection";
-    if (key === "q") tool = "lasso";
-    if (key === "k") tool = "laser";
-    if (key === "r") tool = "rectangle";
-    if (key === "e") tool = "ellipse";
-    if (key === "d") tool = "diamond";
-    if (key === "l") tool = "line";
-    if (key === "a") tool = event.shiftKey ? "elbow" : "arrow";
-    if (key === "t") tool = "text";
-    if (key === "p") tool = "freedraw";
-    if (key === "x" && !editingGroupId) tool = "eraser";
-    if (key === "f" && !editingGroupId) tool = "frame";
+    if (key === "v") setTool("selection");
+    if (key === "q") setTool("lasso");
+    if (key === "k") setTool("laser");
+    if (key === "r") setTool("rectangle");
+    if (key === "e") setTool("ellipse");
+    if (key === "d") setTool("diamond");
+    if (key === "l") setTool("line");
+    if (key === "a") setTool(event.shiftKey ? "elbow" : "arrow");
+    if (key === "t") setTool("text");
+    if (key === "p") setTool("freedraw");
+    if (key === "x" && !editingGroupId) setTool("eraser");
+    if (key === "f" && !editingGroupId) setTool("frame");
   }
 
   onMount(() => {
@@ -1677,7 +1692,7 @@
     ] as item}
       <button
         class:active={tool === item[0]}
-        onclick={() => { tool = item[0] as NativeTool; setSelectedIds([]); }}
+        onclick={() => { setTool(item[0] as NativeTool); setSelectedIds([]); }}
         title={item[1]}
         aria-pressed={tool === item[0]}
       >
