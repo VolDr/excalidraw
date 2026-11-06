@@ -45,7 +45,6 @@ const boxType = (element: ExcalidrawElement) =>
 const closedGroup = (
   scene: SceneFile,
   ids: readonly string[],
-  requireZeroAngle: boolean,
 ): ClosedGroup | null => {
   const unique = new Set(ids);
   if (ids.length < 2 || unique.size !== ids.length) return null;
@@ -59,7 +58,6 @@ const closedGroup = (
       element.locked ||
       !!element.frameId ||
       element.groupIds.at(-1) !== groupId ||
-      (requireZeroAngle && element.angle !== 0) ||
       ![element.x, element.y, element.width, element.height, element.angle]
         .every(Number.isFinite) ||
       element.width <= 0 ||
@@ -170,7 +168,7 @@ export const transformClosedLinkedGroupWithCore = (
   scale: number,
   bounds: Bounds,
 ): SceneFile => {
-  const group = closedGroup(scene, ids, handle !== "rotate");
+  const group = closedGroup(scene, ids);
   if (
     !group ||
     ![point.x, point.y, scale, bounds.x, bounds.y, bounds.width, bounds.height]

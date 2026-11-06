@@ -40,6 +40,15 @@ describe("core transform of linked ordinary arrow groups", () => {
     });
     expect(rotated).not.toBe(group.scene);
     expect(safeGroupMembers(rotated, group.groupId!)).toHaveLength(3);
+    const rotatedBounds = transformableGroup(rotated, ids)?.bounds;
+    expect(rotatedBounds).toBeDefined();
+    const scaledAgain = transformGroup(rotated, ids, "se", {
+      x: rotatedBounds!.x + rotatedBounds!.width * 1.1,
+      y: rotatedBounds!.y + rotatedBounds!.height * 1.1,
+    });
+    // Rotated multi-selection uses the same original bounding-box algorithm.
+    expect(scaledAgain).not.toBe(rotated);
+    expect(safeGroupMembers(scaledAgain, group.groupId!)).toHaveLength(3);
   });
 
   it("supports a fully selected group with one connected arrow end", () => {

@@ -126,13 +126,23 @@ export function transformableGroup(
   // Linked arrows only enter the handle path when ALL links and group
   // members are a validated closed component. The original transform path
   // below owns all point and binding calculations.
-  if (
-    roots.some((element) =>
-      element.type === "arrow" &&
-      !!(element.startBinding || element.endBinding)
-    ) &&
-    !hasClosedNativeSimpleLinks(scene, members)
-  ) return null;
+  if (roots.some((element) =>
+    element.type === "arrow" &&
+    !!(element.startBinding || element.endBinding)
+  )) {
+    // A linked-group transform currently supports a complete graph of
+    // ordinary bound arrows and boxes (with reciprocal captions). Do not
+    // draw transform handles for mixed images/paths that this core adapter
+    // would conservatively refuse to mutate.
+    if (
+      !hasClosedNativeSimpleLinks(scene, members) ||
+      roots.some((element) =>
+        !["rectangle", "ellipse", "diamond"].includes(element.type) &&
+        !(element.type === "arrow" && !element.elbowed &&
+          !!(element.startBinding || element.endBinding))
+      )
+    ) return null;
+  }
 
   // Reuse the same type-aware bounds as Excalidraw (including rotated
   // ellipses, diamonds and two-point arrows).
