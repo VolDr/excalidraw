@@ -15,6 +15,10 @@ export type CoreEditorSelectionState = Pick<
   "selectedElementIds" | "selectedGroupIds" | "editingGroupId"
 >;
 
+export type CoreEditorToolState = Pick<AppState,
+  "activeTool" | "currentItemArrowType"
+>;
+
 export type CoreEditorVersion = {
   id: string;
   version: number;
@@ -54,6 +58,16 @@ const sameVersion = (a: CoreEditorVersion, b: CoreEditorVersion) =>
 export class CoreEditorController {
   private scene: Scene;
   private selection: CoreEditorSelectionState;
+  private tool: CoreEditorToolState = {
+    activeTool: {
+      type: "selection",
+      customType: null,
+      locked: false,
+      fromSelection: false,
+      lastActiveTool: null,
+    },
+    currentItemArrowType: "round",
+  };
   private disposed = false;
   private readonly subscribers = new Set<() => void>();
 
@@ -95,6 +109,31 @@ export class CoreEditorController {
       selectedGroupIds: { ...this.selection.selectedGroupIds },
       editingGroupId: this.selection.editingGroupId,
     };
+  }
+
+  getToolState(): CoreEditorToolState {
+    this.assertOpen();
+    return {
+      activeTool: { ...this.tool.activeTool },
+      currentItemArrowType: this.tool.currentItemArrowType,
+    };
+  }
+
+  setActiveTool(
+    activeTool: AppState["activeTool"],
+    currentItemArrowType: AppState["currentItemArrowType"] =
+      this.tool.currentItemArrowType,
+  ): void {
+    this.assertOpen();
+    if (
+      JSON.stringify(this.tool.activeTool) === JSON.stringify(activeTool) &&
+      this.tool.currentItemArrowType === currentItemArrowType
+    ) return;
+    this.tool = {
+      activeTool: { ...activeTool },
+      currentItemArrowType,
+    };
+    this.notify();
   }
 
   setSelection(
