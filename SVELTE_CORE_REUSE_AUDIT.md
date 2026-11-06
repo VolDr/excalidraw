@@ -18,6 +18,7 @@ still an unverified draft.
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
+| `native/complexElbow.ts` | `@excalidraw/element`: `LinearElementEditor.getSegmentMidPoint`, `moveFixedSegment`, `deleteFixedSegment` | Core-owned complex elbow segment dragging/locking and Alt+click release, validating orthogonal routing and reciprocal imported links |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
 | `native/coreAdapter.ts` | `@excalidraw/element`: `Scene`, `newElementWith`, `dragSelectedElements`, `resizeSingleElement`, `resizeMultipleElements`, `transformElements`, `updateElbowArrowPoints`, `validateElbowPoints`, `LinearElementEditor` geometry/point editing, `bindBindingElement`, `unbindBindingElement`, `fixBindingsAfterDeletion`, text measurement limits | Isolated core transforms for boxes, mixed box/two-point-linear/uncropped-image groups, standard line/arrow endpoints, safe unbound elbow conversion/rerouting and reciprocal simple-arrow bindings; preserves scene metadata and unrelated elements |
@@ -197,6 +198,12 @@ that box lacks the corresponding reverse arrow reference. The original
 `bindBindingElement` rebuilds the reciprocal links in one undoable core
 transaction. Complex imports are never silently normalized; repair is an
 explicit action and is rejected if any unrelated object changes.
+
+The native editor now exposes interior segment handles for validated complex
+orthogonal elbows (including imported fixedSegments and bound labels).
+Dragging calls original `LinearElementEditor.moveFixedSegment`, and
+Alt+click releases a fixed segment via `deleteFixedSegment`. Orphaned,
+non-orthogonal and nonreciprocal imported data remain unchanged.
 
 ## Still custom: do not mistake these for parity
 

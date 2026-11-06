@@ -8,6 +8,11 @@
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
+  import {
+    nativeComplexElbowMidpoints,
+    pickNativeComplexElbowSegment,
+    updateNativeComplexElbowSegment,
+  } from "./native/complexElbow";
   import { missingNativeImportedBindings, repairNativeImportedBindings } from "./native/importedBindings";
   import {
     nativeEnterEditingGroup,
@@ -212,7 +217,7 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment";
     start: Point;
     original: SceneFile;
     latest: SceneFile;
@@ -775,6 +780,20 @@
           }
           ctx.restore();
         }
+        const complexSegments = nativeComplexElbowMidpoints(scene, element.id);
+        if (complexSegments.length) {
+          ctx.save();
+          ctx.lineWidth = 1.5 / zoom;
+          for (const segment of complexSegments) {
+            ctx.fillStyle = segment.fixed ? "#6965db" : "#ffffff";
+            ctx.strokeStyle = "#6965db";
+            ctx.beginPath();
+            ctx.arc(segment.point.x, segment.point.y, 5 / zoom, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
         if (!linked && !orbit && !elbow) {
           const midpoints = linearSegmentMidpoints(element);
           if (midpoints) {
@@ -864,6 +883,19 @@
       selectedId
     ) {
       const selected = scene.elements.find((element) => element.id === selectedId);
+      if (selected) {
+        const segment = pickNativeComplexElbowSegment(
+          scene, selected.id, start, 9 / zoom,
+        );
+        if (segment !== null) {
+          event.preventDefault();
+          const next = updateNativeComplexElbowSegment(
+            scene, selected.id, segment, null,
+          );
+          if (next !== scene) commit(scene, next);
+          return;
+        }
+      }
       if (selected && canEditLinearPoints(selected)) {
         const vertex = pickLinearPoint(selected, start, 9 / zoom);
         if (vertex !== null) {
@@ -925,6 +957,9 @@
            pickElbowEndpoint(selected, start, 9 / zoom)) : null;
       pointIndex = !event.shiftKey && selected && !endpoint
         ? pickLinearPoint(selected, start, 9 / zoom) : null;
+      const elbowSegment = !event.shiftKey && selected && !endpoint
+        ? pickNativeComplexElbowSegment(scene, selected.id, start, 9 / zoom)
+        : null;
       handle = !event.shiftKey && selected
         ? pickHandle(selected, start, 9 / zoom, scene, zoom, editingGroupId) : null;
       if (groupHandle && group) {
@@ -932,6 +967,11 @@
         id = group.id;
         handle = groupHandle;
         ids = [...selectedIds];
+      } else if (elbowSegment !== null && selectedId) {
+        action = "elbow-segment";
+        id = selectedId;
+        pointIndex = elbowSegment;
+        ids = [selectedId];
       } else if ((endpoint || pointIndex !== null) && selectedId) {
         action = "endpoint";
         id = selectedId;
@@ -1035,6 +1075,18 @@
           onChange(next);
         }
       }
+    } else if (g.action === "elbow-segment" && g.id &&
+               g.pointIndex !== null) {
+      if (Math.hypot(dx, dy) > 0.2) {
+        const next = updateNativeComplexElbowSegment(
+          g.original, g.id, g.pointIndex, point,
+        );
+        if (next !== g.original) {
+          g.changed = true;
+          g.latest = next;
+          onChange(next);
+        }
+      }
     } else if (g.action === "endpoint" && g.id &&
                (g.endpoint || g.pointIndex !== null)) {
       if (Math.hypot(dx, dy) > 0.2) {
@@ -1094,7 +1146,7 @@
       viewport.releasePointerCapture(event.pointerId);
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment") &&
       g.changed
     ) {
       // The move was previewed in-place; record the *original* scene once.
@@ -1135,7 +1187,7 @@
       return;
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment") &&
       g.changed
     ) {
       onChange(g.original);
@@ -1608,6 +1660,9 @@
     {/if}
     <span class="zoom">{Math.round(zoom * 100)}%</span>
     {#if selectedIds.length > 1}<span class="zoom">Выделено: {selectedIds.length}</span>{/if}
+    {#if selectedId && nativeComplexElbowMidpoints(scene, selectedId).length}
+      <span class="zoom">Elbow: тяните сегмент; Alt+клик снимает фиксацию</span>
+    {/if}
     {#if selectedId && scene.elements.some((element) => element.id === selectedId && canEditLinearPoints(element))}
       <span class="zoom">Alt+клик: добавить точку на маркере сегмента / удалить внутренний узел</span>
     {:else if selectedId && scene.elements.some((element) => element.id === selectedId &&
