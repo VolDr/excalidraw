@@ -7,7 +7,7 @@ import {
 } from "@excalidraw/element";
 import type { ExcalidrawElement, ExcalidrawFrameElement } from "@excalidraw/element/types";
 
-import { nativeElementsMap } from "./coreAdapter";
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 import { editableSelection } from "./groups";
 import type { Point, SceneFile } from "./scene";
 
@@ -122,7 +122,7 @@ export const unwrapNativeFrame = (
     if (!target || target.type !== "frame") return scene;
     removeAllElementsFromFrame(source, target);
     const next = source.map((item) => item.id === frameId
-      ? { ...item, isDeleted: true } as ExcalidrawElement : item
+      ? updateNativeElement(item, { isDeleted: true }) : item
     );
     if (next.some((item) => item.frameId === frameId)) return scene;
     return { ...scene, elements: reuseUnchanged(scene, next) };
