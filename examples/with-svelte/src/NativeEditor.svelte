@@ -25,6 +25,11 @@
     pickNativeComplexElbowEndpoint,
     reconnectNativeComplexElbowEndpoint,
   } from "./native/complexElbowEndpoints";
+  import {
+    editNativeComplexElbowLabel,
+    nativeComplexElbowLabel,
+    nativeComplexElbowLabelLayout,
+  } from "./native/complexElbowLabel";
   import { missingNativeImportedBindings, repairNativeImportedBindings } from "./native/importedBindings";
   import {
     nativeEnterEditingGroup,
@@ -527,11 +532,13 @@
           ? (existing.originalText ?? existing.text)
           : "",
       width: boxId
-        ? Math.max(
-            40,
-            (scene.elements.find((item) => item.id === boxId)?.width ?? 220) -
-              24,
-          )
+        ? scene.elements.find((item) => item.id === boxId)?.type === "arrow"
+          ? Math.max(80, existing?.width ?? 180)
+          : Math.max(
+              40,
+              (scene.elements.find((item) => item.id === boxId)?.width ?? 220) -
+                24,
+            )
         : existing?.type === "text" && !existing.autoResize
           ? existing.width
           : null,
@@ -553,14 +560,18 @@
     textEditor = null;
     const value = editor.value.trimEnd();
     if (editor.boxId) {
-      const next = nativeCompositeCaptionTarget(scene, editor.boxId)
-        ? updateNativeCompositeCaption(scene, editor.boxId, value)
-        : updateNativeBoxLabel(scene, editor.boxId, value);
+      const container = scene.elements.find((item) => item.id === editor.boxId);
+      const next = container?.type === "arrow"
+        ? editNativeComplexElbowLabel(scene, editor.boxId, value)
+        : nativeCompositeCaptionTarget(scene, editor.boxId)
+          ? updateNativeCompositeCaption(scene, editor.boxId, value)
+          : updateNativeBoxLabel(scene, editor.boxId, value);
       if (next !== scene) {
         commit(scene, next);
       }
       // Keep the whole native group selected after editing an internal label.
-      selectedIds = selectionUnit(next, editor.boxId);
+      selectedIds = container?.type === "arrow"
+        ? [editor.boxId] : selectionUnit(next, editor.boxId);
     } else if (!value.trim()) {
       if (editor.id) {
         commit(scene, deleteById(scene, editor.id));
@@ -610,6 +621,14 @@
       editingGroupId = nextGroupId;
       selectedIds = nativeEditingSelectionUnit(scene, hit.id, nextGroupId);
       return;
+    }
+    if (hit.type === "arrow") {
+      const label = nativeComplexElbowLabel(scene, hit.id);
+      const layout = nativeComplexElbowLabelLayout(scene, hit.id);
+      if (label && layout) {
+        void beginText({ x: layout.x, y: layout.y }, label, hit.id);
+        return;
+      }
     }
     if (
       hit.type === "text" &&
@@ -687,6 +706,13 @@
 
     const draw = (element: ExcalidrawElement) => {
       if (element.isDeleted) return;
+      if (element.type === "text" && element.containerId) {
+        const label = nativeComplexElbowLabelLayout(scene, element.containerId);
+        if (label?.id === element.id) {
+          paintCoreTextElement(ctx, label, theme);
+          return;
+        }
+      }
       if (element.type === "frame") {
         ctx.save();
         ctx.strokeStyle = theme === "dark" ? "#9ba5c0" : "#8091b4";
