@@ -1,5 +1,8 @@
 import { Scene } from "./Scene";
 import { dragSelectedElements } from "./dragElements";
+import { getCommonBounds } from "./bounds";
+import { transformElements } from "./resizeElements";
+import type { MaybeTransformHandleType } from "./transformHandles";
 import { getElementsInGroup, selectGroupsFromGivenElements } from "./groups";
 
 import type {
@@ -384,6 +387,67 @@ export class CoreEditorController {
     return this.transact((scene, state) => {
       this.applyOriginalDrag(scene, state.selectedElementIds, dx, dy);
     });
+  }
+
+  /**
+   * Multi-selection geometry and reciprocal binding updates are delegated
+   * wholesale to the original transformElements. This includes complex
+   * elbows, imported binding graphs, frames and nested groups where the
+   * original editor permits transforming them.
+   */
+  previewTransformSelection(
+    originalElements: readonly ExcalidrawElement[],
+    selectedIds: ReadonlySet<string>,
+    handle: MaybeTransformHandleType,
+    pointer: { x: number; y: number },
+    center: { x: number; y: number },
+  ): CoreEditorTransactionResult {
+    if (
+      ![pointer.x, pointer.y, center.x, center.y]
+        .every(Number.isFinite) || !handle
+    ) {
+      throw new Error("Invalid transform handle or pointer");
+    }
+    return this.previewTransaction(originalElements, (scene) => {
+      const selected = scene.getSelectedElements({
+        selectedElementIds: Object.fromEntries(
+          [...selectedIds].map((id) => [id, true]),
+        ),
+      });
+      if (!selected.length) return;
+      const originalElementsMap = new Map<string, NonDeleted<ExcalidrawElement>>(
+        scene.getNonDeletedElements().map((el) => [
+          el.id, structuredClone(el),
+        ]),
+      );
+      transformElements(
+        originalElementsMap as PointerDownState["originalElements"],
+        handle,
+        selected,
+        scene,
+        false,
+        false,
+        true,
+        pointer.x, pointer.y,
+        center.x, center.y,
+      );
+    });
+  }
+
+  /** Selection bounds are calculated by the original Excalidraw geometry. */
+  getSelectionBounds(
+    ids: readonly string[],
+  ): [number, number, number, number] | null {
+    this.assertOpen();
+    if (ids.length < 2 || new Set(ids).size !== ids.length) return null;
+    const selected = ids.map((id) => this.scene.getNonDeletedElement(id));
+    if (selected.some((el) => !el)) return null;
+    const [x1, y1, x2, y2] = getCommonBounds(
+      selected as NonDeleted<ExcalidrawElement>[],
+    );
+    return [x1, y1, x2, y2].every(Number.isFinite) &&
+      x2 > x1 && y2 > y1
+      ? [x1, y1, x2, y2] : null;
   }
 
   previewDragSelection(
