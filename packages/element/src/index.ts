@@ -90,6 +90,7 @@ export * from "./renderEnvironment";
 export * from "./resizeElements";
 export * from "./resizeTest";
 export * from "./Scene";
+export * from "./EditorController";
 export * from "./selection";
 export * from "./shape";
 export * from "./showSelectedShapeActions";
