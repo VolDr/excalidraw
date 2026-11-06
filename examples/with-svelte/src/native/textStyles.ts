@@ -36,6 +36,7 @@ const ALLOWED_FONT_SIZES = [12, 16, 20, 24, 28, 36, 48, 64, 72];
 export const nativeTypographyTarget = (
   scene: SceneFile,
   id: string | null,
+  editingGroupId: string | null = null,
 ): ExcalidrawTextElement | null => {
   if (!id) {
     return null;
@@ -47,7 +48,7 @@ export const nativeTypographyTarget = (
 
   // Standalone typography: preserve the existing conservative policy.
   if (selected.type === "text") {
-    const element = nativeStyleTarget(scene, id);
+    const element = nativeStyleTarget(scene, id, editingGroupId);
     return element?.type === "text" &&
       element.containerId === null &&
       !element.boundElements?.length &&
@@ -75,8 +76,9 @@ export const applyNativeTypography = (
   scene: SceneFile,
   id: string,
   change: NativeTypographyChange,
+  editingGroupId: string | null = null,
 ): SceneFile => {
-  const initial = nativeTypographyTarget(scene, id);
+  const initial = nativeTypographyTarget(scene, id, editingGroupId);
   if (!initial || initial[change.key] === change.value) {
     return scene;
   }

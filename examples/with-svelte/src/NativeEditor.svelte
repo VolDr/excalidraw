@@ -125,8 +125,8 @@
   let layoutAvailable = $derived(canLayoutNativeSelection(scene, selectedIds));
   let layoutUnits = $derived(nativeLayoutUnitCount(scene, selectedIds));
   let layerAvailable = $derived(canMoveNativeLayer(scene, selectedIds));
-  let styleTarget = $derived(nativeStyleTarget(scene, selectedId));
-  let typographyTarget = $derived(nativeTypographyTarget(scene, selectedId));
+  let styleTarget = $derived(nativeStyleTarget(scene, selectedId, editingGroupId));
+  let typographyTarget = $derived(nativeTypographyTarget(scene, selectedId, editingGroupId));
   let selectedRaster = $derived(
     scene.elements.find(
       (element) =>
@@ -351,7 +351,7 @@
     if (!typographyTarget || gesture || textEditor) {
       return;
     }
-    const next = applyNativeTypography(scene, selectedId ?? typographyTarget.id, change);
+    const next = applyNativeTypography(scene, selectedId ?? typographyTarget.id, change, editingGroupId);
     if (next !== scene) {
       commit(scene, next);
     }
@@ -361,7 +361,7 @@
     if (!styleTarget || gesture || textEditor) {
       return;
     }
-    const next = applyNativeStyle(scene, styleTarget.id, change);
+    const next = applyNativeStyle(scene, styleTarget.id, change, editingGroupId);
     if (next !== scene) {
       commit(scene, next);
     }
@@ -419,7 +419,7 @@
   }
 
   function groupSelected() {
-    if (gesture || textEditor) {
+    if (gesture || textEditor || editingGroupId) {
       return;
     }
     const result = groupSelection(scene, selectedIds);
@@ -430,7 +430,7 @@
   }
 
   function ungroupSelected() {
-    if (gesture || textEditor) {
+    if (gesture || textEditor || editingGroupId) {
       return;
     }
     const result = ungroupSelection(scene, selectedIds);
@@ -1348,7 +1348,7 @@
     <button disabled={!undoAvailable} onclick={undo} title="Отменить (Ctrl+Z)">↶</button>
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
-    <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
+    <button disabled={selectedIds.length < 2 || !!editingGroupId} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
     <button disabled={!selectedIds.length || !!editingGroupId} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
     {#if editingGroupId}
       <button

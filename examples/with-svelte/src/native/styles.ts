@@ -8,6 +8,7 @@ import type {
 } from "@excalidraw/element/types";
 
 import { updateNativeElement } from "./coreAdapter";
+import { editableNativeGroupSelection } from "./groupEditing";
 import { canEditIndependently, editableSelection } from "./groups";
 import { isNativeShape } from "./scene";
 
@@ -17,9 +18,10 @@ import type { SceneFile } from "./scene";
  * The Svelte property panel is deliberately a UI adapter for Excalidraw's
  * immutable element update mechanism, not another drawing/style engine.
  *
- * Only independent native roots are editable here. Groups, captions,
- * linked arrows, frames and damaged external references must go through
- * their full Excalidraw lifecycle before exposing style transactions.
+ * Outside group editing, only independent native roots are editable.
+ * Inside a validated editingGroupId we can style a single independent
+ * child without touching group ancestry or reciprocal external bindings.
+ * Excalidraw's newElementWith still owns update and version semantics.
  */
 export type NativeStyleChange =
   | { key: "strokeColor"; value: string }
@@ -37,14 +39,25 @@ const isHexColor = (value: string) => /^#[0-9a-f]{6}$/i.test(value);
 export function nativeStyleTarget(
   scene: SceneFile,
   id: string | null,
+  editingGroupId: string | null = null,
 ): ExcalidrawElement | null {
   if (!id) {
     return null;
   }
   const element = scene.elements.find((candidate) => candidate.id === id);
-  if (
-    !element ||
-    !isNativeShape(element) ||
+  if (!element || !isNativeShape(element)) return null;
+  if (editingGroupId) {
+    if (
+      editableNativeGroupSelection(scene, [id], editingGroupId).length !== 1 ||
+      element.isDeleted ||
+      element.locked ||
+      !!element.frameId ||
+      !!element.boundElements?.length ||
+      (element.type === "text" && element.containerId !== null) ||
+      (element.type === "arrow" &&
+        !!(element.startBinding || element.endBinding))
+    ) return null;
+  } else if (
     !canEditIndependently(element) ||
     editableSelection(scene, [id]).length !== 1
   ) {
@@ -57,8 +70,9 @@ export function applyNativeStyle(
   scene: SceneFile,
   id: string,
   change: NativeStyleChange,
+  editingGroupId: string | null = null,
 ): SceneFile {
-  const element = nativeStyleTarget(scene, id);
+  const element = nativeStyleTarget(scene, id, editingGroupId);
   if (!element) {
     return scene;
   }

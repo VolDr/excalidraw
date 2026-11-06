@@ -169,6 +169,12 @@ delegates group-ID changes to Excalidraw's own `addToGroup` and
 requires the original group-editing interaction model; Svelte intentionally
 selects only whole outer groups. Fixtures authored, not run.
 
+Inside an active nested group-editing scope, single independent children
+also expose native style and standalone typography controls. Property
+mutations use original `newElementWith` and `redrawTextBoundingBox`, while
+linked arrows, grouped labels and partially edited child groups retain
+their conservative read-only restrictions.
+
 Double-clicking into a whole group now enters its original
 `editingGroupId` hierarchy: immediate child groups remain atomic until
 entered, while direct children can be selected and moved individually.
