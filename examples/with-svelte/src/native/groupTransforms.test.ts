@@ -125,6 +125,46 @@ describe("native flat group transforms", () => {
     expect(history.redo(original)).toEqual(rotated);
   });
 
+  it("rotates and resizes a complete nested group with original core algorithms", () => {
+    const a = createShape("rectangle", { x: 20, y: 20 }, { x: 160, y: 110 });
+    const b = createShape("ellipse", { x: 240, y: 20 }, { x: 330, y: 110 });
+    const c = createShape("diamond", { x: 410, y: 20 }, { x: 510, y: 120 });
+    const labeled = updateNativeBoxLabel(
+      { ...blankScene(), elements: [a, b, c] }, a.id, "nested caption",
+    );
+    const inner = groupSelection(labeled, [a.id, b.id]);
+    const outer = groupSelection(inner.scene, [a.id, b.id, c.id]);
+    const ids = [a.id, b.id, c.id];
+    const frame = transformableGroup(outer.scene, ids);
+    expect(frame).not.toBeNull();
+    expect(frame?.id).toBe(outer.groupId);
+
+    const grown = transformGroup(outer.scene, ids, "se", {
+      x: frame!.bounds.x + frame!.bounds.width * 1.3,
+      y: frame!.bounds.y + frame!.bounds.height * 1.3,
+    });
+    expect(grown).not.toBe(outer.scene);
+    expect(grown.elements[0].width).toBeGreaterThan(a.width);
+    expect(grown.elements[0].groupIds).toEqual([inner.groupId, outer.groupId]);
+    expect(grown.elements[1].groupIds).toEqual(grown.elements[0].groupIds);
+    expect(grown.elements[2].groupIds).toEqual([outer.groupId]);
+    const caption = grown.elements.find((e) => e.type === "text");
+    expect(caption?.groupIds).toEqual(grown.elements[0].groupIds);
+
+    const center = {
+      x: frame!.bounds.x + frame!.bounds.width / 2,
+      y: frame!.bounds.y + frame!.bounds.height / 2,
+    };
+    const rotated = transformGroup(outer.scene, ids, "rotate", {
+      x: center.x + 180, y: center.y,
+    });
+    expect(rotated).not.toBe(outer.scene);
+    expect(rotated.elements[0].angle).toBeCloseTo(Math.PI / 2);
+    expect(rotated.elements[2].angle).toBeCloseTo(Math.PI / 2);
+    expect(rotated.elements.find((e) => e.type === "text")?.groupIds)
+      .toEqual([inner.groupId, outer.groupId]);
+  });
+
   it("rejects direct multi-resize when imported group has external relationships", () => {
     const first = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
     const second = createShape("diamond", { x: 150, y: 30 }, { x: 250, y: 130 });

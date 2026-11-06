@@ -87,8 +87,8 @@ const isSimpleLinear = (element: ExcalidrawElement): boolean => {
 /**
  * Supported groups include ordinary boxes, raster images and strictly
  * unbound two-point lines/arrows. Text is transformed only with its box.
- * Freehand, standalone text, routed/linked arrows and nested groups are
- * movable, but not transformable through native group handles.
+ * Freehand, standalone text and routed/linked arrows are not transformed
+ * natively. Safe complete nested groups delegate to the original core.
  */
 export function transformableGroup(
   scene: SceneFile,
@@ -99,7 +99,7 @@ export function transformableGroup(
     return null;
   }
   const first = scene.elements.find((element) => selected.has(element.id));
-  const groupId = first?.groupIds.length === 1 ? first.groupIds[0] : null;
+  const groupId = first?.groupIds[first.groupIds.length - 1] ?? null;
   if (!groupId) {
     return null;
   }
@@ -234,12 +234,15 @@ export function transformGroup(
       nativeImageSource(scene, element) !== null)
   );
   if (handle === "rotate" && coreGroup) {
-    return rotateNativeGroupWithCore(
+    const next = rotateNativeGroupWithCore(
       scene,
       roots.map((element) => element.id),
       point,
       bounds,
     );
+    return next !== scene && !safeGroupMembers(next, group.id).length
+      ? scene
+      : next;
   }
 
   // Core multi-resize scales normalized local linear points, preserves
@@ -251,13 +254,16 @@ export function transformGroup(
     coreGroup &&
     roots.every((element) => element.angle === 0)
   ) {
-    return resizeNativeGroupWithCore(
+    const next = resizeNativeGroupWithCore(
       scene,
       roots.map((element) => element.id),
       handle,
       scale,
       bounds,
     );
+    return next !== scene && !safeGroupMembers(next, group.id).length
+      ? scene
+      : next;
   }
 
   const byId = new Map<string, ExcalidrawElement>();

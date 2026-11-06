@@ -1737,13 +1737,10 @@ const isCoreGroupLinear = (
 };
 
 /**
- * A group can be transformed by core only if its complete flat membership
- * consists of supported box roots and, optionally, one exact reciprocal text
- * label per box. Returning the labels lets the caller validate every core
- * mutation before adopting it into the immutable Svelte scene.
- *
- * Unsupported/foreign links, unselected members, nested groups, invalid
- * geometry and arrow references all fail closed.
+ * Validate entire outer groups (including nested descendants) for original
+ * multi-element resize and rotation. Labels must preserve their container's
+ * full group ancestry. Foreign links, incomplete groups and bound arrows
+ * remain guarded while the core owns every transform calculation.
  */
 const getSafeCoreGroupLabels = (
   scene: SceneFile,
@@ -1756,7 +1753,7 @@ const getSafeCoreGroupLabels = (
     return null;
   }
   const roots = scene.elements.filter((element) => selected.has(element.id));
-  const groupId = roots[0]?.groupIds.length === 1 ? roots[0].groupIds[0] : null;
+  const groupId = roots[0]?.groupIds[roots[0].groupIds.length - 1] ?? null;
   if (!groupId || roots.length !== selected.size || roots.some((element) =>
     !(
       ["rectangle", "ellipse", "diamond"].includes(element.type) ||
@@ -1767,8 +1764,8 @@ const getSafeCoreGroupLabels = (
     element.isDeleted ||
     element.locked ||
     element.frameId !== null ||
-    element.groupIds.length !== 1 ||
-    element.groupIds[0] !== groupId ||
+    element.groupIds.length === 0 ||
+    element.groupIds[element.groupIds.length - 1] !== groupId ||
     (!allowRotated && element.angle !== 0) ||
     !Number.isFinite(element.angle) ||
     !Number.isFinite(element.width) ||
@@ -1796,8 +1793,8 @@ const getSafeCoreGroupLabels = (
       label.isDeleted ||
       label.locked ||
       label.frameId !== null ||
-      label.groupIds.length !== 1 ||
-      label.groupIds[0] !== groupId ||
+      label.groupIds.length !== root.groupIds.length ||
+      label.groupIds.some((id, index) => id !== root.groupIds[index]) ||
       label.containerId !== root.id ||
       !label.autoResize ||
       label.boundElements?.length ||
@@ -1877,8 +1874,8 @@ const acceptCoreGroupLabels = (
     if (selected.has(original.id) && (
       updated.isDeleted ||
       updated.type !== original.type ||
-      updated.groupIds.length !== 1 ||
-      updated.groupIds[0] !== original.groupIds[0] ||
+      updated.groupIds.length !== original.groupIds.length ||
+      updated.groupIds.some((id, index) => id !== original.groupIds[index]) ||
       JSON.stringify(updated.boundElements ?? null) !==
         JSON.stringify(original.boundElements ?? null) ||
       ![updated.x, updated.y, updated.width, updated.height, updated.angle]
@@ -1958,8 +1955,8 @@ const acceptCoreGroupLabels = (
       box.isDeleted ||
       bound.containerId !== box.id ||
       bound.originalText !== label.originalText ||
-      bound.groupIds.length !== 1 ||
-      bound.groupIds[0] !== label.groupIds[0] ||
+      bound.groupIds.length !== label.groupIds.length ||
+      bound.groupIds.some((id, index) => id !== label.groupIds[index]) ||
       box.boundElements?.length !== 1 ||
       box.boundElements[0].id !== label.id ||
       box.boundElements[0].type !== "text" ||
@@ -1988,7 +1985,7 @@ const acceptCoreGroupLabels = (
 };
 
 /**
- * Use original multi-element resize for complete flat groups of boxes,
+ * Use original multi-element resize for complete nested groups of boxes,
  * unbound two-point lines/arrows and uncropped embedded rasters, including
  * validated reciprocal box captions. Cropped rasters and linked paths
  * remain on the guarded native path.
@@ -2056,7 +2053,7 @@ export function resizeNativeGroupWithCore(
 }
 
 /**
- * Original Excalidraw multi-selection rotation for safe flat groups of
+ * Original Excalidraw multi-selection rotation for safe nested groups of
  * boxes and simple two-point lines/arrows. Bound captions follow their boxes
  * through the same core Scene transaction.
  */

@@ -12,7 +12,7 @@ still an unverified draft.
 | `native/scene.ts` | `@excalidraw/element`: `newElement`, `newLinearElement`, `newArrowElement`, `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | All native shape constructors, text metrics, precise pointer hit tests |
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Complete outer-group selection, nested ancestry validation, wrapping and unwrapping without replacing original group-ID manipulation |
-| `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Flat groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images now delegate resize/rotation to core; cropped images retain guarded native geometry |
+| `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
 | `native/bindings.ts` | `@excalidraw/element`: `LinearElementEditor`, `intersectElementWithLineSegment`, `getGlobalFixedPointForBindableElement`, core bind/unbind via adapter; `@excalidraw/math`: `pointRotateRads`, `pointFrom` | Both safe two-point `inside` arrows and shared-target elbow `orbit` links use original reciprocal binding operations; orbit cases validate closed multi-arrow components before core rerouting |
@@ -145,6 +145,12 @@ dragged via Excalidraw's original `dragSelectedElements`. Svelte validates
 the reciprocal relationship and keeps all referenced shapes within the
 selection. Orphan, partial, foreign and mixed box-caption-arrow graphs still
 fail closed. No independent routing or fixed-point geometry was added.
+
+Whole nested groups made of boxes, unbound simple lines/arrows, image
+rasters and reciprocal captions now expose resize/rotation handles. Their
+geometry is delegated to Excalidraw's original `resizeMultipleElements`
+and `transformElements`, followed by full ancestry and caption checks.
+Closed linked-arrow groups still cannot be resized or rotated safely.
 
 Nested native groups can now be selected as complete outer units, duplicated, moved,
 deleted, wrapped in a higher-level group, and ungrouped one outer level at a
