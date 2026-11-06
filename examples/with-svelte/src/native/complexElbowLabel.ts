@@ -3,7 +3,7 @@ import {
   normalizeText,
   redrawTextBoundingBox,
 } from "@excalidraw/element";
-import type { ExcalidrawTextElement } from "@excalidraw/element/types";
+import type { ExcalidrawTextElement, ExcalidrawTextElementWithContainer } from "@excalidraw/element/types";
 import { nativeEditableComplexElbow } from "./complexElbow";
 import { nativeElementsMap, withNativeCoreScene } from "./coreAdapter";
 import type { SceneFile } from "./scene";
@@ -44,7 +44,7 @@ export const nativeComplexElbowLabelLayout = (
   if (!arrow || !text) return null;
   try {
     const { x, y } = LinearElementEditor.getBoundTextElementPosition(
-      arrow, text, nativeElementsMap(scene),
+      arrow, text as ExcalidrawTextElementWithContainer, nativeElementsMap(scene),
     );
     return Number.isFinite(x) && Number.isFinite(y)
       ? { ...text, x, y } : null;
