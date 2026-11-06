@@ -10,6 +10,7 @@ import type {
   ExcalidrawTextElementWithContainer,
   ElementsMap,
   NonDeletedExcalidrawElement,
+  NonDeleted,
 } from "@excalidraw/element/types";
 
 import { hasClosedNativeSimpleLinks, safeGroupMembers } from "./groups";
@@ -179,11 +180,13 @@ export const transformClosedLinkedGroupWithCore = (
     bounds.height <= 0
   ) return scene;
 
-  const next = withNativeCoreScene(scene, (core) => {
-    const all = core.getNonDeletedElements();
-    const originals = new Map(
-      all.map((element) => [element.id, structuredClone(element)]),
-    ) as ElementsMap;
+  let next: SceneFile;
+  try {
+    next = withNativeCoreScene(scene, (core) => {
+      const all = core.getNonDeletedElements();
+      const originals = new Map<string, NonDeleted<ExcalidrawElement>>(
+        all.map((element) => [element.id, structuredClone(element)]),
+      );
     const selected = ids.map((id) => core.getNonDeletedElement(id));
     if (selected.some((element) => !element)) return;
     const roots = selected as NonDeletedExcalidrawElement[];
@@ -207,7 +210,7 @@ export const transformClosedLinkedGroupWithCore = (
         core.getNonDeletedElementsMap(),
         handle,
         core,
-        originals,
+        originals as ElementsMap,
         {
           shouldMaintainAspectRatio: true,
           shouldResizeFromCenter: false,
@@ -228,6 +231,10 @@ export const transformClosedLinkedGroupWithCore = (
         },
       );
     }
-  });
+    });
+  } catch {
+    // No partial mutation of the original scene on malformed imports.
+    return scene;
+  }
   return acceptClosedGroup(scene, next, group);
 };

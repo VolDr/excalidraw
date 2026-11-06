@@ -1,6 +1,6 @@
 import { transformElements } from "@excalidraw/element";
 
-import type { ElementsMap, ExcalidrawElement, NonDeletedExcalidrawElement } from "@excalidraw/element/types";
+import type { ExcalidrawElement, NonDeleted, NonDeletedExcalidrawElement } from "@excalidraw/element/types";
 
 import { nativeReciprocalCaption } from "./boundText";
 import { validBinding } from "./bindings";
@@ -78,14 +78,16 @@ export const transformNativeInnerBoxWithCore = (
   const members = safeGroupMembers(scene, outer);
   const memberIds = new Set(members.map((element) => element.id));
 
-  const result = withNativeCoreScene(scene, (core) => {
-    const target = core.getNonDeletedElement(id);
-    if (!target || !isBox(target)) return;
-    const originals = new Map(
-      core.getNonDeletedElements().map((element) => [
-        element.id, structuredClone(element),
-      ]),
-    ) as ElementsMap;
+  let result: SceneFile;
+  try {
+    result = withNativeCoreScene(scene, (core) => {
+      const target = core.getNonDeletedElement(id);
+      if (!target || !isBox(target)) return;
+      const originals = new Map<string, NonDeleted<ExcalidrawElement>>(
+        core.getNonDeletedElements().map((element) => [
+          element.id, structuredClone(element),
+        ]),
+      );
     transformElements(
       originals,
       handle === "rotate" ? "rotation" : handle,
@@ -99,7 +101,11 @@ export const transformNativeInnerBoxWithCore = (
       sourceBox.x + sourceBox.width / 2,
       sourceBox.y + sourceBox.height / 2,
     );
-  });
+    });
+  } catch {
+    // Original source is immutable even if core rejects an imported shape.
+    return scene;
+  }
   if (result === scene || !safeGroupMembers(result, outer).length) {
     return scene;
   }
