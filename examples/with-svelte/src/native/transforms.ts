@@ -135,6 +135,62 @@ export function coreHandleLocations(
     : null;
 }
 
+/**
+ * Transform handles from the original Excalidraw renderer for every eligible
+ * element type. No Svelte-only whitelist of rectangles/arrow modes/groups.
+ * Missing handles (e.g. rotation on frames or some arrows) stay missing.
+ */
+export const coreAvailableHandles = (
+  element: ExcalidrawElement,
+  scene: SceneFile,
+  zoom: number,
+): Partial<Record<Handle, Point>> => {
+  if (
+    !Number.isFinite(zoom) || zoom <= 0 ||
+    element.isDeleted || element.locked ||
+    element.type === "frame" || element.type === "magicframe" ||
+    ![element.x, element.y, element.width, element.height, element.angle]
+      .every(Number.isFinite)
+  ) return {};
+  try {
+    const raw = getTransformHandles(
+      element,
+      { value: zoom } as Parameters<typeof getTransformHandles>[1],
+      nativeElementsMap(scene),
+      "mouse",
+    );
+    const points: Partial<Record<Handle, Point>> = {};
+    for (const key of [...corners, "rotate"] as Handle[]) {
+      const rect = raw[key === "rotate" ? "rotation" : key];
+      if (!rect || !rect.every(Number.isFinite)) continue;
+      points[key] = {
+        x: rect[0] + rect[2] / 2,
+        y: rect[1] + rect[3] / 2,
+      };
+    }
+    return points;
+  } catch {
+    return {};
+  }
+};
+
+export const pickCoreAvailableHandle = (
+  element: ExcalidrawElement,
+  scene: SceneFile,
+  at: Point,
+  zoom: number,
+  tolerance = 9,
+): Handle | null => {
+  const handles = coreAvailableHandles(element, scene, zoom);
+  for (const key of [...corners, "rotate"] as Handle[]) {
+    const point = handles[key];
+    if (point && Math.hypot(point.x - at.x, point.y - at.y) <= tolerance) {
+      return key;
+    }
+  }
+  return null;
+};
+
 export function pickHandle(
   element: ExcalidrawElement,
   point: Point,

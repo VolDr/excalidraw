@@ -92,10 +92,9 @@
   import {
     deleteSelection,
     flipNativeImage,
-    handleLocations,
-    coreHandleLocations,
+    coreAvailableHandles,
+    pickCoreAvailableHandle,
     isBoxTransformable,
-    pickHandle,
     type Handle,
   } from "./native/transforms";
   import {
@@ -875,28 +874,34 @@
       );
       ctx.restore();
 
-      if (selectedId === element.id && isBoxTransformable(element, scene, editingGroupId)) {
-        const handles = coreHandleLocations(element, zoom, scene, editingGroupId) ?? handleLocations(element);
-        const top = {
-          x: (handles.nw.x + handles.ne.x) / 2,
-          y: (handles.nw.y + handles.ne.y) / 2,
-        };
+      if (selectedId === element.id) {
+        const handles = coreAvailableHandles(element, scene, zoom);
+        const nw = handles.nw;
+        const ne = handles.ne;
+        const rotate = handles.rotate;
+        ctx.save();
         ctx.strokeStyle = "#6965db";
         ctx.lineWidth = 1.5 / zoom;
-        ctx.beginPath();
-        ctx.moveTo(top.x, top.y);
-        ctx.lineTo(handles.rotate.x, handles.rotate.y);
-        ctx.stroke();
+        if (nw && ne && rotate) {
+          ctx.beginPath();
+          ctx.moveTo((nw.x + ne.x) / 2, (nw.y + ne.y) / 2);
+          ctx.lineTo(rotate.x, rotate.y);
+          ctx.stroke();
+        }
         ctx.fillStyle = theme === "dark" ? "#282637" : "#ffffff";
         for (const key of ["nw", "ne", "sw", "se"] as const) {
           const p = handles[key];
+          if (!p) continue;
           ctx.fillRect(p.x - 5 / zoom, p.y - 5 / zoom, 10 / zoom, 10 / zoom);
           ctx.strokeRect(p.x - 5 / zoom, p.y - 5 / zoom, 10 / zoom, 10 / zoom);
         }
-        ctx.beginPath();
-        ctx.arc(handles.rotate.x, handles.rotate.y, 6 / zoom, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        if (rotate) {
+          ctx.beginPath();
+          ctx.arc(rotate.x, rotate.y, 6 / zoom, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
       }
       if (selectedId === element.id) {
         const linked = nativeLinkedEndpoints(scene, element);
@@ -1173,7 +1178,8 @@
         ? pickNativeComplexElbowSegment(scene, selected.id, start, 9 / zoom)
         : null;
       handle = !event.shiftKey && selected
-        ? pickHandle(selected, start, 9 / zoom, scene, zoom, editingGroupId) : null;
+        ? pickCoreAvailableHandle(selected, scene, start, zoom, 9 / zoom)
+        : null;
       if (frameHandle && selectedId) {
         action = "frame-transform";
         id = selectedId;
