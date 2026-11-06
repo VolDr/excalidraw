@@ -13,7 +13,7 @@ import { canEditIndependently, editableSelection, safeGroupMembers } from "./gro
 import { canTransformNativeInnerBox, transformNativeInnerBoxWithCore } from "./innerElementTransforms";
 import { editableNativeGroupSelection } from "./groupEditing";
 import { unwrapNativeFrame } from "./frames";
-import { moveNativeFrameWithCore } from "./frameMove";
+import { moveNativeFrameWithCore, moveNativeFrameChildWithCore } from "./frameMove";
 import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
@@ -266,10 +266,12 @@ export function moveSelection(
   }
   if (selected.size === 1) {
     const id = [...selected][0];
-    if (scene.elements.some((element) =>
-      element.id === id && element.type === "frame"
-    )) {
+    const root = scene.elements.find((element) => element.id === id);
+    if (root?.type === "frame") {
       return moveNativeFrameWithCore(scene, id, dx, dy);
+    }
+    if (root?.frameId) {
+      return moveNativeFrameChildWithCore(scene, id, dx, dy);
     }
   }
   // Core owns group movement, bound labels and reciprocal arrow updates.

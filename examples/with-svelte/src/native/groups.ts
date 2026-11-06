@@ -17,6 +17,7 @@ import { updateNativeElement } from "./coreAdapter";
 import { nativeEditableLabel, nativeLabelBox, nativeReciprocalCaption } from "./boundText";
 import { nativeImageSource } from "./images";
 import { isNativeShape } from "./scene";
+import { isSafeNativeFrameChild } from "./frameMove";
 
 import type { SceneFile } from "./scene";
 
@@ -316,9 +317,10 @@ export function selectionUnit(scene: SceneFile, id: string): string[] {
   ) {
     return [id];
   }
-  return isIndependent(element) && isSupportedRoot(scene, element)
-    ? [id]
-    : [];
+  return (
+    isSafeNativeFrameChild(scene, element) ||
+    isIndependent(element) && isSupportedRoot(scene, element)
+  ) ? [id] : [];
 }
 
 /** Accept only whole groups and roots of valid reciprocal label pairs. */
@@ -346,6 +348,7 @@ export function editableSelection(
         selected.has(element.id) &&
         !isBoundLabel(element) &&
         ((canEditIndependently(element) && isSupportedRoot(scene, element)) ||
+          isSafeNativeFrameChild(scene, element) ||
           (isSafeBoundBox(scene, element) && !!element.boundElements?.length) ||
           (element.groupIds.length > 0 &&
             allowedGroups.has(element.groupIds[element.groupIds.length - 1]))),
