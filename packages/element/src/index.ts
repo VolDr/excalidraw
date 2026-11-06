@@ -93,6 +93,7 @@ export * from "./Scene";
 export * from "./EditorController";
 export * from "./EditorHistory";
 export * from "./EditorSession";
+export * from "./EditorGraph";
 export * from "./selection";
 export * from "./shape";
 export * from "./showSelectedShapeActions";
