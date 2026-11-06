@@ -1,5 +1,4 @@
 import {
-  getElementsInResizingFrame,
   getTransformHandles,
   transformElements,
 } from "@excalidraw/element";
@@ -9,9 +8,9 @@ import type {
   ExcalidrawFrameElement,
   NonDeleted,
 } from "@excalidraw/element/types";
-import type { AppState } from "@excalidraw/excalidraw/types";
 
 import { nativeElementsMap, withNativeCoreScene } from "./coreAdapter";
+import { reconcileNativeResizedFrameMembership } from "./frameMembership";
 
 import type { Point, SceneFile } from "./scene";
 
@@ -88,10 +87,10 @@ export const pickNativeFrameHandle = (
 /**
  * Resize an original frame with original transformElements.
  *
- * While full React frame-membership updates are not connected to Svelte,
- * accept ONLY resizing that retains exactly the previous child set. This
- * avoids silently capturing nearby elements or dropping clipped children.
- * The original getElementsInResizingFrame determines the eligible set.
+ * Preserve the full original frame-membership algorithm: original
+ * getElementsInResizingFrame proposes adoption/release of eligible roots.
+ * Changes to reciprocal bound graphs or imported group ancestry are
+ * rejected by frameMembership, without making a Svelte geometry fork.
  */
 export const resizeNativeFrameWithCore = (
   scene: SceneFile,
@@ -130,25 +129,7 @@ export const resizeNativeFrameWithCore = (
           el.id !== id && el !== scene.elements[index]
         )) return scene;
 
-    const previousChildren = new Set(
-      scene.elements.filter((el) => el.frameId === id).map((el) => el.id),
-    );
-    // The original frame membership algorithm requires AppState solely
-    // for group selection; no UI state or React component is involved.
-    const state = {
-      editingGroupId: null,
-      selectedElementIds: { [id]: true },
-      selectedGroupIds: {},
-    } as unknown as AppState;
-    const eligible = getElementsInResizingFrame(
-      next.elements, after, state, nativeElementsMap(next),
-    );
-    const nextChildren = new Set(eligible.map((el) => el.id));
-    if (
-      previousChildren.size !== nextChildren.size ||
-      [...previousChildren].some((child) => !nextChildren.has(child))
-    ) return scene;
-    return next;
+    return reconcileNativeResizedFrameMembership(scene, next, id);
   } catch {
     return scene;
   }
