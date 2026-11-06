@@ -1314,7 +1314,14 @@
       }
     } else if (g.action === "transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        const next = transformSelected(g.original, g.id, g.handle, point, editingGroupId);
+        const core = transformNativeGraphWithCore(
+          g.original, [g.id], g.handle, point, coreController,
+          event.shiftKey,
+        );
+        const next = core !== g.original
+          ? core : transformSelected(
+              g.original, g.id, g.handle, point, editingGroupId,
+            );
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;

@@ -219,9 +219,10 @@ export function transformNativeGraphWithCore(
   handle: "nw" | "ne" | "sw" | "se" | "rotate",
   pointer: { x: number; y: number },
   controller: CoreEditorController,
+  shouldMaintainAspectRatio = selectedIds.length > 1,
 ): SceneFile {
   if (
-    selectedIds.length < 2 ||
+    selectedIds.length < 1 ||
     new Set(selectedIds).size !== selectedIds.length ||
     ![pointer.x, pointer.y].every(Number.isFinite)
   ) return source;
@@ -242,6 +243,7 @@ export function transformNativeGraphWithCore(
       handle === "rotate" ? "rotation" : handle,
       pointer,
       { x: (left + right) / 2, y: (top + bottom) / 2 },
+      shouldMaintainAspectRatio,
     );
     const next = adoptCoreTransaction(source, tx);
     return next !== source &&

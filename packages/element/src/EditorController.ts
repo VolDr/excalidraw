@@ -410,6 +410,7 @@ export class CoreEditorController {
     handle: MaybeTransformHandleType,
     pointer: { x: number; y: number },
     center: { x: number; y: number },
+    shouldMaintainAspectRatio = selectedIds.size > 1,
   ): CoreEditorTransactionResult {
     if (
       ![pointer.x, pointer.y, center.x, center.y]
@@ -436,7 +437,7 @@ export class CoreEditorController {
         scene,
         false,
         false,
-        true,
+        shouldMaintainAspectRatio,
         pointer.x, pointer.y,
         center.x, center.y,
       );
