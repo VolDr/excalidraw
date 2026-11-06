@@ -1,5 +1,5 @@
 import { isElbowArrow, LinearElementEditor, validateElbowPoints } from "@excalidraw/element";
-import type { ExcalidrawElbowArrowElement, ExcalidrawElement } from "@excalidraw/element/types";
+import type { ExcalidrawElbowArrowElement } from "@excalidraw/element/types";
 import { nativeElementsMap, withNativeCoreScene } from "./coreAdapter";
 import type { Point, SceneFile } from "./scene";
 
