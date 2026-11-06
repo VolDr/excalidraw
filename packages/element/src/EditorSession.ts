@@ -1,4 +1,5 @@
 import { CoreEditorController } from "./EditorController";
+import type { AppState } from "../../excalidraw/types";
 import {
   CoreEditorHistory,
   type CoreEditorDocumentLike,
@@ -22,9 +23,9 @@ export class CoreEditorSession<
   private currentDocument: TDoc;
   private disposed = false;
 
-  constructor(document: TDoc) {
+  constructor(document: TDoc, initialAppState: Partial<AppState> = {}) {
     this.currentDocument = document;
-    this.controller = new CoreEditorController(document.elements);
+    this.controller = new CoreEditorController(document.elements, initialAppState);
   }
 
   get document(): TDoc {
