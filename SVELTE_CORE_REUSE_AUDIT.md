@@ -20,6 +20,7 @@ still an unverified draft.
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
 | `native/frames.ts` | `@excalidraw/element`: `newFrameElement`, `getElementsInNewFrame`, `addElementsToFrame`, `getCommonBounds`, `removeAllElementsFromFrame` | Frame creation, automatic membership, wrapping selection, drag with original core, unwrapping without deleting children |
+| `native/lasso.ts` | `packages/excalidraw/lasso/utils.ts`: original `getLassoSelectedElementIds`, `getElementLineSegments` | Native freehand polygon selection, full-containment/intersection modes, complete safe group selection and frame-aware clipping |
 | `native/eraser.ts` | `@excalidraw/element`: original element hit-testing and `fixBindingsAfterDeletion` through core Scene | Adds gesture-based eraser with one history transaction and whole-group/caption-safe deletion |
 | `native/complexElbow.ts` | `@excalidraw/element`: `LinearElementEditor.getSegmentMidPoint`, `moveFixedSegment`, `deleteFixedSegment` | Core-owned complex elbow segment dragging/locking and Alt+click release, validating orthogonal routing and reciprocal imported links |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
@@ -230,6 +231,12 @@ orbit elbow bindings that lack the reverse box reference. The original
 `bindBindingElement` restores the binding and triggers the original
 orthogonal router; unsupported imports are never silently rewritten.
 Both inside and orbit repair paths use one undo step for a click.
+
+Lasso selection now calls the original React editor's pure polygon
+selection function `getLassoSelectedElementIds`, with its original
+contour, group and frame clipping rules. The Svelte pointer adapter only
+records a world-space path and draws the preview; users can toggle
+contain/overlap mode and Shift-add to selection.
 
 ## Still custom: do not mistake these for parity
 

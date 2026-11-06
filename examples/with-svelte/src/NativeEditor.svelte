@@ -9,6 +9,7 @@
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
+  import { elementsInNativeLasso, type NativeLassoMode } from "./native/lasso";
   import {
     createNativeFrameWithCore,
     nativeFrameFromDrag,
@@ -170,6 +171,8 @@
   );
   let preview = $state.raw<ExcalidrawElement | null>(null);
   let marquee = $state<{ start: Point; end: Point } | null>(null);
+  let lassoPoints = $state<Point[]>([]);
+  let lassoMode = $state<NativeLassoMode>("contain");
   let zoom = $state(1);
   let pan = $state<Point>({ x: 0, y: 0 });
   let viewSize = $state<Point>({ x: 0, y: 0 });
@@ -244,7 +247,7 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment" | "erase";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment" | "erase" | "lasso";
     start: Point;
     original: SceneFile;
     latest: SceneFile;
@@ -917,6 +920,20 @@
       ctx.stroke();
       ctx.restore();
     }
+    if (lassoPoints.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+      for (const p of lassoPoints.slice(1)) ctx.lineTo(p.x, p.y);
+      if (lassoPoints.length > 2) ctx.closePath();
+      ctx.fillStyle = "rgba(105, 101, 219, 0.06)";
+      ctx.strokeStyle = "#6965db";
+      ctx.lineWidth = 1.5 / zoom;
+      ctx.setLineDash([5 / zoom, 3 / zoom]);
+      if (lassoPoints.length > 2) ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     if (marquee) {
       const { x, y, width, height } = rectangleBetween(marquee.start, marquee.end);
       ctx.save();
@@ -938,6 +955,7 @@
     preview;
     selectedIds;
     marquee;
+    lassoPoints;
     zoom;
     pan;
     viewSize;
@@ -1024,8 +1042,10 @@
         ? "pan"
         : tool === "selection"
           ? "move"
-          : tool === "eraser"
-            ? "erase"
+          : tool === "lasso"
+            ? "lasso"
+            : tool === "eraser"
+              ? "erase"
             : tool === "freedraw"
               ? "free"
               : "draw";
@@ -1096,6 +1116,9 @@
           action = "select";
         }
       }
+    } else if (action === "lasso") {
+      lassoPoints = [start];
+      if (!event.shiftKey) selectedIds = [];
     } else if (action === "draw" && tool === "frame") {
       selectedIds = [];
     } else if (action === "draw" || action === "free") {
@@ -1151,6 +1174,14 @@
     const dy = point.y - g.start.y;
     if (g.action === "erase") {
       eraseAt(point);
+    } else if (g.action === "lasso") {
+      if (g.points.length < 4096) {
+        const last = g.points[g.points.length - 1];
+        if (Math.hypot(point.x - last.x, point.y - last.y) >= 2 / zoom) {
+          g.points.push(point);
+          lassoPoints = [...g.points];
+        }
+      }
     } else if (g.action === "move" && g.id) {
       if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
         const next = moveSelection(g.original, g.ids, dx, dy, editingGroupId);
@@ -1259,6 +1290,11 @@
       // The move was previewed in-place; record the *original* scene once.
       history.commit(g.original, g.latest);
       refreshHistory();
+    } else if (g.action === "lasso") {
+      const hits = elementsInNativeLasso(g.original, g.points, lassoMode, zoom);
+      selectedIds = event.shiftKey
+        ? [...new Set([...g.initialSelection, ...hits])]
+        : hits;
     } else if (g.action === "select" && g.changed && marquee) {
       const hits = elementsInMarquee(g.original, marquee.start, marquee.end);
       selectedIds = event.shiftKey
@@ -1307,6 +1343,7 @@
     }
     preview = null;
     marquee = null;
+    lassoPoints = [];
     gesture = null;
   }
 
@@ -1322,9 +1359,10 @@
       onChange(g.original);
     }
     pan = g.initialPan;
-    if (g.action === "select") {
+    if (g.action === "select" || g.action === "lasso") {
       selectedIds = g.initialSelection;
     }
+    lassoPoints = [];
     marquee = null;
     preview = null;
     gesture = null;
@@ -1435,6 +1473,7 @@
     }
     const key = event.key.toLowerCase();
     if (key === "v") tool = "selection";
+    if (key === "q") tool = "lasso";
     if (key === "r") tool = "rectangle";
     if (key === "e") tool = "ellipse";
     if (key === "d") tool = "diamond";
@@ -1483,6 +1522,7 @@
   <div class="native-toolbar" aria-label="Инструменты Svelte">
     {#each [
       ["selection", "Выделение"],
+      ["lasso", "Лассо"],
       ["rectangle", "Прямоугольник"],
       ["ellipse", "Эллипс"],
       ["diamond", "Ромб"],
@@ -1504,6 +1544,12 @@
         {item[1]}
       </button>
     {/each}
+    {#if tool === "lasso"}
+      <button
+        title="Переключить стандартный режим лассо Excalidraw: полное охватывание / пересечение"
+        onclick={() => { lassoMode = lassoMode === "contain" ? "overlap" : "contain"; }}
+      >{lassoMode === "contain" ? "Лассо: внутри" : "Лассо: пересечение"}</button>
+    {/if}
     <span class="separator"></span>
     <input
       class="file-input"
