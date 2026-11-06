@@ -55,6 +55,7 @@ export class CoreEditorController {
   private scene: Scene;
   private selection: CoreEditorSelectionState;
   private disposed = false;
+  private readonly subscribers = new Set<() => void>();
 
   constructor(
     elements: readonly ExcalidrawElement[] = [],
@@ -69,6 +70,22 @@ export class CoreEditorController {
       selectedElementIds: { ...state.selectedElementIds },
       selectedGroupIds: { ...state.selectedGroupIds },
     };
+  }
+
+  /**
+   * Host subscriptions only signal that the core state has changed.
+   * Consumers read snapshots explicitly; no React component is needed.
+   */
+  onUpdate(callback: () => void): () => void {
+    this.assertOpen();
+    this.subscribers.add(callback);
+    return () => {
+      this.subscribers.delete(callback);
+    };
+  }
+
+  private notify(): void {
+    for (const subscriber of this.subscribers) subscriber();
   }
 
   getSelection(): CoreEditorSelectionState {
@@ -96,6 +113,7 @@ export class CoreEditorController {
       selectedGroupIds: { ...selectedGroupIds },
       editingGroupId,
     };
+    this.notify();
   }
 
   readElements(): readonly ExcalidrawElement[] {
@@ -139,22 +157,34 @@ export class CoreEditorController {
         versionNonce: element.versionNonce,
       }));
     const before = new Map(baseline.map((v) => [v.id, v]));
+    // Some of the original Scene APIs replace arrays or reorder elements
+    // without bumping the element version. Version-only detection silently
+    // discarded those operations, so retain an immutable data baseline too.
+    const beforeData = new Map(
+      draft.getElementsIncludingDeleted().map((element) => [
+        element.id, JSON.stringify(element),
+      ]),
+    );
     try {
       operation(draft, this.getSelection());
       const after = draft.getElementsIncludingDeleted();
       const changedIds = new Set<string>();
-      for (const element of after) {
+      for (let i = 0; i < after.length; i++) {
+        const element = after[i];
         const old = before.get(element.id);
-        if (!old || !sameVersion(old, element)) {
+        if (
+          !old || !sameVersion(old, element) ||
+          beforeData.get(element.id) !== JSON.stringify(element) ||
+          baseline[i]?.id !== element.id
+        ) {
           changedIds.add(element.id);
         }
       }
-      if (
-        after.length !== baseline.length ||
-        after.some((el, i) => el.id !== baseline[i]?.id)
-      ) {
+      if (after.length !== baseline.length) {
         for (const old of baseline) {
-          if (!after.some((el) => el.id === old.id)) changedIds.add(old.id);
+          if (!after.some((el) => el.id === old.id)) {
+            changedIds.add(old.id);
+          }
         }
       }
 
@@ -169,6 +199,12 @@ export class CoreEditorController {
       const previous = this.scene;
       this.scene = draft;
       previous.destroy();
+      // Remove stale selection after deleting/replacing elements.
+      this.selection.selectedElementIds = Object.fromEntries(
+        Object.entries(this.selection.selectedElementIds)
+          .filter(([id]) => !!this.scene.getNonDeletedElement(id)),
+      );
+      this.notify();
       return { elements, baseline, changedIds };
     } catch (error) {
       draft.destroy();
@@ -210,6 +246,7 @@ export class CoreEditorController {
   destroy(): void {
     if (this.disposed) return;
     this.scene.destroy();
+    this.subscribers.clear();
     this.disposed = true;
   }
 
