@@ -221,6 +221,7 @@ Frame drawing, wrapping selection and unwrapping now use original
 `newFrameElement`, `getElementsInNewFrame`,
 `addElementsToFrame` and `removeAllElementsFromFrame`. Moving a frame
 delegates to original `dragSelectedElements`, which moves its children.
+Frame naming is also editable through original `newElementWith`.
 Full frame resize and advanced frame editing remain guarded. The Svelte
 canvas draws a lightweight frame outline, not its own membership engine.
 

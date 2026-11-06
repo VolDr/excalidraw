@@ -130,3 +130,28 @@ export const unwrapNativeFrame = (
     return scene;
   }
 };
+
+/**
+ * Frame names are first-class original Excalidraw metadata.
+ * Svelte only delegates the immutable element edit to newElementWith.
+ */
+export const renameNativeFrame = (
+  scene: SceneFile,
+  id: string,
+  value: string,
+): SceneFile => {
+  const frame = scene.elements.find((element) => element.id === id);
+  const name = value.trim().slice(0, 120);
+  if (
+    !frame || frame.type !== "frame" ||
+    frame.isDeleted || frame.locked ||
+    (frame.name ?? "") === name
+  ) return scene;
+  const renamed = updateNativeElement(frame, { name: name || null });
+  return {
+    ...scene,
+    elements: scene.elements.map((element) =>
+      element.id === id ? renamed : element
+    ),
+  };
+};

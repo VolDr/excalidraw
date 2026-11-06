@@ -14,6 +14,7 @@
     nativeFrameFromDrag,
     wrapNativeSelectionInFrame,
     unwrapNativeFrame,
+    renameNativeFrame,
   } from "./native/frames";
   import {
     nativeComplexElbowMidpoints,
@@ -1515,6 +1516,20 @@
     >В рамку</button>
     {#if selectedId && scene.elements.some((element) =>
       element.id === selectedId && element.type === "frame" && !element.isDeleted)}
+      <label>
+        Название рамки
+        <input type="text"
+          aria-label="Название рамки"
+          value={scene.elements.find((element) =>
+            element.id === selectedId && element.type === "frame"
+          )?.name ?? ""}
+          onchange={(event) => {
+            if (!selectedId) return;
+            const next = renameNativeFrame(scene, selectedId, event.currentTarget.value);
+            if (next !== scene) commit(scene, next);
+          }}
+        />
+      </label>
       <button
         onclick={removeSelectedFrame}
         title="Удалить рамку и сохранить ее содержимое"
