@@ -6,7 +6,7 @@
 
   import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { CoreEditorSession, type CoreEditorSelectionState, type CoreEditorToolState } from "@excalidraw/element";
-  import { nativeElementsMap, dragNativeGraphWithCore } from "./native/coreAdapter";
+  import { nativeElementsMap, dragNativeGraphWithCore, transformNativeGraphWithCore } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import { elementsInNativeLasso, type NativeLassoMode } from "./native/lasso";
@@ -195,6 +195,16 @@
   $effect(() => {
     syncCoreScene(scene);
   });
+  function coreTransformBounds(ids: readonly string[]) {
+    if (ids.length < 2) return null;
+    const [x, y, right, bottom] =
+      coreController.getSelectionBounds(ids) ?? [NaN, NaN, NaN, NaN];
+    return [x, y, right, bottom].every(Number.isFinite) &&
+      right > x && bottom > y
+      ? { x, y, width: right - x, height: bottom - y }
+      : null;
+  }
+
   let selectedFrame = $derived(
     scene.elements.find((element) =>
       element.id === selectedId && element.type === "frame" && !element.isDeleted
@@ -963,10 +973,11 @@
       }
       ctx.restore();
     }
-    const selectedGroup = transformableGroup(scene, selectedIds);
-    if (selectedGroup) {
-      const { x, y, width, height } = selectedGroup.bounds;
-      const handles = groupHandleLocations(selectedGroup.bounds);
+    const selectedBounds = transformableGroup(scene, selectedIds)?.bounds ??
+      coreTransformBounds(selectedIds);
+    if (selectedBounds) {
+      const { x, y, width, height } = selectedBounds;
+      const handles = groupHandleLocations(selectedBounds);
       const pad = 5 / zoom;
       ctx.save();
       ctx.strokeStyle = "#6965db";
@@ -1144,8 +1155,11 @@
       const group = !event.shiftKey
         ? transformableGroup(scene, selectedIds)
         : null;
-      const groupHandle = group
-        ? pickGroupHandle(group.bounds, start, 9 / zoom)
+      const groupBounds = !event.shiftKey
+        ? group?.bounds ?? coreTransformBounds(selectedIds)
+        : null;
+      const groupHandle = groupBounds
+        ? pickGroupHandle(groupBounds, start, 9 / zoom)
         : null;
       const frameHandle = !event.shiftKey && selectedId
         ? pickNativeFrameHandle(scene, selectedId, start, zoom, 9 / zoom)
@@ -1168,9 +1182,9 @@
         id = selectedId;
         handle = frameHandle;
         ids = [selectedId];
-      } else if (groupHandle && group) {
+      } else if (groupHandle && groupBounds) {
         action = "group-transform";
-        id = group.id;
+        id = group?.id ?? selectedIds[0];
         handle = groupHandle;
         ids = [...selectedIds];
       } else if (elbowSegment !== null && selectedId) {
@@ -1321,7 +1335,13 @@
       }
     } else if (g.action === "group-transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        const next = transformGroup(g.original, g.ids, g.handle, point);
+        // The original transformElements handles arbitrary imported graphs.
+        // Legacy safe-group adapters are only a compatibility fallback.
+        const native = transformNativeGraphWithCore(
+          g.original, g.ids, g.handle, point, coreController,
+        );
+        const next = native !== g.original
+          ? native : transformGroup(g.original, g.ids, g.handle, point);
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;
