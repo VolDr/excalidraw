@@ -358,7 +358,10 @@ export class CoreEditorController {
       }
 
       if (!changedIds.size) {
-        const elements = structuredClone(this.scene.getElementsIncludingDeleted());
+        // A pointer preview may be evaluated from an older gesture-start
+        // snapshot; returning the controller's latest committed document
+        // here would splice unrelated changes into a no-op preview.
+        const elements = structuredClone(originalElements);
         draft.destroy();
         return { elements, baseline, changedIds };
       }
@@ -366,10 +369,11 @@ export class CoreEditorController {
       // Output must not expose mutable Scene-owned element references.
       const elements = structuredClone(after);
       if (adopt) {
-        const previous = this.scene;
-        this.scene = draft;
-        previous.destroy();
-        // Drop selected references to deleted elements on committed actions.
+        // An editor owns one Scene for its whole lifetime. Keep its object
+        // identity, subscriptions and selection caches; adopt only the
+        // successfully computed elements from the isolated draft.
+        this.scene.replaceAllElements([...after], { skipValidation: true });
+        draft.destroy();
         this.selection.selectedElementIds = Object.fromEntries(
           Object.entries(this.selection.selectedElementIds)
             .filter(([id]) => !!this.scene.getNonDeletedElement(id)),
