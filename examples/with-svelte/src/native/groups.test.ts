@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { blankScene, createShape } from "./scene";
 import { updateNativeBoxLabel, nativeLabelBox } from "./boundText";
+import { appendNativeArrow } from "./bindings";
 const sceneJson = (scene: unknown) => JSON.stringify(scene);
 import { deleteSelection, moveSelection } from "./transforms";
 import {
@@ -96,6 +97,34 @@ describe("Svelte groups with original Excalidraw nesting", () => {
     expect(nextLabel.type).toBe("text");
     expect(nextLabel.groupIds).toEqual(text.groupIds);
     expect(nextLabel.x).toBeCloseTo(text.x + 20);
+  });
+
+  it("groups closed arrow links without rewriting their reciprocal binding graph", () => {
+    const a = createShape("rectangle", { x: 10, y: 10 }, { x: 110, y: 110 });
+    const b = createShape("ellipse", { x: 260, y: 10 }, { x: 360, y: 110 });
+    const base = { ...blankScene(), elements: [a, b] };
+    const arrow = createShape("arrow", { x: 90, y: 50 }, { x: 290, y: 50 });
+    const linked = appendNativeArrow(base, arrow, { x: 90, y: 50 }, { x: 290, y: 50 });
+    const linkedArrow = linked.elements.find((el) => el.type === "arrow");
+    expect(linkedArrow?.type).toBe("arrow");
+    if (linkedArrow?.type !== "arrow") return;
+    expect(linkedArrow.startBinding?.elementId).toBe(a.id);
+    expect(linkedArrow.endBinding?.elementId).toBe(b.id);
+    const ids = [a.id, b.id, linkedArrow.id];
+    const grouped = groupSelection(linked, ids);
+    expect(grouped.groupId).toBeTruthy();
+    expect(editableSelection(grouped.scene, ids)).toEqual(ids);
+    expect(selectionUnit(grouped.scene, linkedArrow.id)).toEqual(ids);
+    const moved = moveSelection(grouped.scene, ids, 30, 12);
+    expect(moved).not.toBe(grouped.scene);
+    const movedArrow = moved.elements.find((el) => el.id === linkedArrow.id);
+    expect(movedArrow?.type).toBe("arrow");
+    if (movedArrow?.type === "arrow") {
+      expect(movedArrow.startBinding?.elementId).toBe(a.id);
+      expect(movedArrow.endBinding?.elementId).toBe(b.id);
+    }
+    expect(moved.elements[0].x).toBe(a.x + 30);
+    expect(groupSelection(linked, [a.id, linkedArrow.id]).scene).toBe(linked);
   });
 
   it("does not change partially selected, nested, bound or locked groups", () => {

@@ -9,7 +9,7 @@ import {
   isSafeBoundBox,
   syncNativeBindings,
 } from "./bindings";
-import { canEditIndependently, editableSelection } from "./groups";
+import { canEditIndependently, editableSelection, safeGroupMembers } from "./groups";
 import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
@@ -265,6 +265,31 @@ export function moveSelection(
     )
   )) {
     return scene;
+  }
+  if (moved !== scene) {
+    const after = new Map(moved.elements.map((element) => [element.id, element]));
+    for (const element of scene.elements) {
+      if (
+        !selected.has(element.id) ||
+        element.type !== "arrow" ||
+        !(element.startBinding || element.endBinding) ||
+        !element.groupIds.length
+      ) continue;
+      const updated = after.get(element.id);
+      if (
+        !updated || updated.type !== "arrow" ||
+        JSON.stringify(updated.startBinding) !== JSON.stringify(element.startBinding) ||
+        JSON.stringify(updated.endBinding) !== JSON.stringify(element.endBinding)
+      ) return scene;
+    }
+    const groupIds = new Set(
+      scene.elements
+        .filter((element) => selected.has(element.id) && element.groupIds.length)
+        .map((element) => element.groupIds[element.groupIds.length - 1]),
+    );
+    for (const groupId of groupIds) {
+      if (!safeGroupMembers(moved, groupId).length) return scene;
+    }
   }
   return moved;
 }

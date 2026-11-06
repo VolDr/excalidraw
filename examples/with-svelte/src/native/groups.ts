@@ -10,6 +10,8 @@ import {
   isSafeBoundBox,
   isNativeLinkedArrow,
   isNativeOrbitLinkedArrow,
+  isTwoPointArrow,
+  validBinding,
 } from "./bindings";
 import { updateNativeElement } from "./coreAdapter";
 import { nativeEditableLabel, nativeLabelBox } from "./boundText";
@@ -97,6 +99,94 @@ export const canEditIndependently = (element: ExcalidrawElement): boolean =>
   isIndependent(element) && element.groupIds.length === 0;
 
 /**
+ * Recognize a *closed* ordinary-arrow binding component. This validator
+ * never calculates an endpoint or mutates its binding: all geometry and
+ * reciprocity updates remain in Excalidraw's original Scene operations.
+ *
+ * External references and mixed box-caption-arrow graphs remain guarded.
+ */
+export function hasClosedNativeSimpleLinks(
+  scene: SceneFile,
+  members: readonly ExcalidrawElement[],
+): boolean {
+  const byId = new Map(members.map((element) => [element.id, element]));
+  const memberIds = new Set(byId.keys());
+  if (!members.some(
+    (el) => el.type === "arrow" && !!(el.startBinding || el.endBinding),
+  )) {
+    return false;
+  }
+
+  for (const element of members) {
+    if (element.isDeleted || element.locked || element.frameId) {
+      return false;
+    }
+    if (isBoundLabel(element)) {
+      if (!nativeLabelBox(scene, element)) return false;
+      continue;
+    }
+    if (element.type === "arrow" && (element.startBinding || element.endBinding)) {
+      if (
+        !isTwoPointArrow(element, true) ||
+        !validBinding(element.startBinding) ||
+        !validBinding(element.endBinding) ||
+        ![element.x, element.y, element.angle, element.width, element.height]
+          .every(Number.isFinite) ||
+        element.points.some((point) => point.some((value) => !Number.isFinite(value)))
+      ) return false;
+
+      const targets = new Set<string>();
+      for (const binding of [element.startBinding, element.endBinding]) {
+        if (!binding) continue;
+        const target = byId.get(binding.elementId);
+        if (
+          !target ||
+          !["rectangle", "ellipse", "diamond"].includes(target.type) ||
+          targets.has(target.id) ||
+          target.locked ||
+          target.isDeleted ||
+          !target.boundElements?.some(
+            (ref) => ref.type === "arrow" && ref.id === element.id,
+          )
+        ) return false;
+        targets.add(target.id);
+      }
+      continue;
+    }
+    if (
+      ["rectangle", "ellipse", "diamond"].includes(element.type) &&
+      element.boundElements?.some((ref) => ref.type === "arrow")
+    ) {
+      if (
+        element.boundElements.length > 32 ||
+        new Set(element.boundElements.map((ref) => ref.id)).size !== element.boundElements.length ||
+        element.boundElements.some((ref) => {
+          if (ref.type !== "arrow") return true;
+          const arrow = byId.get(ref.id);
+          return !arrow ||
+            arrow.type !== "arrow" ||
+            !(arrow.startBinding?.elementId === element.id ||
+              arrow.endBinding?.elementId === element.id);
+        })
+      ) return false;
+      continue;
+    }
+    if (!isSupportedRoot(scene, element)) return false;
+  }
+
+  return !scene.elements.some((external) =>
+    !external.isDeleted && !memberIds.has(external.id) &&
+    (
+      (external.type === "arrow" &&
+        ((external.startBinding && memberIds.has(external.startBinding.elementId)) ||
+          (external.endBinding && memberIds.has(external.endBinding.elementId)))) ||
+      (external.type === "text" && external.containerId && memberIds.has(external.containerId)) ||
+      external.boundElements?.some((ref) => memberIds.has(ref.id))
+    )
+  );
+}
+
+/**
  * Validate every descendant of a group, including nested groups and the
  * internal labels of selected boxes. An inner group cannot also appear under
  * another parent: all members must agree about that group's outer ancestry.
@@ -114,6 +204,7 @@ export function safeGroupMembers(
   const memberIds = new Set(members.map((element) => element.id));
   const ancestry = new Map<string, string>();
   const rootsByGroup = new Map<string, Set<string>>();
+  const closedLinks = hasClosedNativeSimpleLinks(scene, members);
   if (members.length < 2) {
     return [];
   }
@@ -149,7 +240,7 @@ export function safeGroupMembers(
       if (!box || !memberIds.has(box.id)) {
         return [];
       }
-    } else if (!isSupportedRoot(scene, element)) {
+    } else if (!isSupportedRoot(scene, element) && !closedLinks) {
       return [];
     } else {
       const label = nativeEditableLabel(scene, element);
@@ -248,6 +339,11 @@ export function groupSelection(
   const selected = new Set(ids);
   const roots = scene.elements.filter((element) => selected.has(element.id));
   const allowed = new Set(editableSelection(scene, ids));
+  const candidates = roots.flatMap((element) => {
+    const label = nativeEditableLabel(scene, element);
+    return label ? [element, label] : [element];
+  });
+  const closedLinks = hasClosedNativeSimpleLinks(scene, candidates);
   const units = new Set<string>();
   for (const root of roots) {
     const outermost = root.groupIds[root.groupIds.length - 1];
@@ -256,9 +352,19 @@ export function groupSelection(
   if (
     !roots.length ||
     roots.length !== selected.size ||
-    allowed.size !== selected.size ||
+    (!closedLinks && allowed.size !== selected.size) ||
     units.size < 2 ||
-    roots.some((element) => !isSupportedRoot(scene, element))
+    roots.some((element) => {
+      const outermost = element.groupIds[element.groupIds.length - 1];
+      if (outermost) {
+        const members = safeGroupMembers(scene, outermost);
+        if (!members.length ||
+            selectionRoots(members).some((root) => !selected.has(root.id))) {
+          return true;
+        }
+      }
+      return !isSupportedRoot(scene, element) && !closedLinks;
+    })
   ) {
     return { scene, ids: [], groupId: null };
   }

@@ -121,6 +121,12 @@ single reciprocal captioned box as one logical unit, using the original
 The UI rejects partial groups and non-contiguous legacy group ranges,
 leaving them untouched for the full editor. Tests were authored but not run.
 
+Complete simple two-point arrow/box binding graphs can now be grouped and
+dragged via Excalidraw's original `dragSelectedElements`. Svelte validates
+the reciprocal relationship and keeps all referenced shapes within the
+selection. Orphan, partial, foreign and mixed box-caption-arrow graphs still
+fail closed. No independent routing or fixed-point geometry was added.
+
 Nested native groups can now be selected as complete outer units, duplicated, moved,
 deleted, wrapped in a higher-level group, and ungrouped one outer level at a
 time. Validation checks every member's ancestry, including reciprocal labels,

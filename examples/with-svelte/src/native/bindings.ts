@@ -36,7 +36,10 @@ const EPS = 0.00001;
 const isBox = (el: ExcalidrawElement): el is Box =>
   el.type === "rectangle" || el.type === "ellipse" || el.type === "diamond";
 
-const isTwoPointArrow = (el: ExcalidrawElement): el is ExcalidrawArrowElement =>
+export const isTwoPointArrow = (
+  el: ExcalidrawElement,
+  allowGrouped = false,
+): el is ExcalidrawArrowElement =>
   el.type === "arrow" &&
   "elbowed" in el &&
   el.elbowed === false &&
@@ -44,10 +47,10 @@ const isTwoPointArrow = (el: ExcalidrawElement): el is ExcalidrawArrowElement =>
   !el.isDeleted &&
   !el.locked &&
   !el.frameId &&
-  el.groupIds.length === 0 &&
+  (allowGrouped || el.groupIds.length === 0) &&
   !el.boundElements?.length;
 
-const validBinding = (
+export const validBinding = (
   binding: ExcalidrawArrowElement["startBinding"],
 ): boolean =>
   !binding ||
