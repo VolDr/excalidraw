@@ -11,6 +11,7 @@ still an unverified draft.
 | --- | --- | --- |
 | `native/scene.ts` | `@excalidraw/element`: `newElement`, `newLinearElement`, `newArrowElement`, `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | All native shape constructors, text metrics, precise pointer hit tests |
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
+| `native/groupEditing.ts` | `@excalidraw/element`: `getElementsInGroup`; original group-ID ancestry | Enter/exit nested group editing levels, select immediate child units and move individual boxes through original core drag/binding updates |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Complete outer-group selection, nested ancestry validation, wrapping and unwrapping without replacing original group-ID manipulation |
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
@@ -167,6 +168,14 @@ delegates group-ID changes to Excalidraw's own `addToGroup` and
 `removeFromSelectedGroups`. Individual editing inside nested groups still
 requires the original group-editing interaction model; Svelte intentionally
 selects only whole outer groups. Fixtures authored, not run.
+
+Double-clicking into a whole group now enters its original
+`editingGroupId` hierarchy: immediate child groups remain atomic until
+entered, while direct children can be selected and moved individually.
+Escape or the toolbar button exits one level and restores parent selection.
+Movement is still delegated to `dragSelectedElements` and the original
+binding update logic, with closed-group revalidation. Transform handles for
+individual bound/grouped children need a separate safe core bridge.
 
 ## Still custom: do not mistake these for parity
 

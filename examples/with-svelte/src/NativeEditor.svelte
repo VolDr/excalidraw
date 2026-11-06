@@ -8,6 +8,11 @@
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
+  import {
+    nativeEnterEditingGroup,
+    nativeEditingSelectionUnit,
+    nativeExitEditingGroup,
+  } from "./native/groupEditing";
   import { indexInsertedNativeElements } from "./native/ordering";
   import { canMoveNativeLayer, moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
@@ -115,6 +120,7 @@
 
   let tool = $state<NativeTool>("selection");
   let selectedIds = $state<string[]>([]);
+  let editingGroupId = $state<string | null>(null);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
   let layoutAvailable = $derived(canLayoutNativeSelection(scene, selectedIds));
   let layoutUnits = $derived(nativeLayoutUnitCount(scene, selectedIds));
@@ -231,6 +237,7 @@
     lastPastedText = null;
     pasteNumber = 0;
     selectedIds = [];
+    editingGroupId = null;
     marquee = null;
     undoAvailable = false;
     redoAvailable = false;
@@ -554,6 +561,12 @@
     }
     const hit = pickElement(scene.elements, getPoint(event), 8 / zoom);
     if (!hit) {
+      return;
+    }
+    const nextGroupId = nativeEnterEditingGroup(scene, hit.id, editingGroupId);
+    if (nextGroupId) {
+      editingGroupId = nextGroupId;
+      selectedIds = nativeEditingSelectionUnit(scene, hit.id, nextGroupId);
       return;
     }
     if (
@@ -921,7 +934,7 @@
         ids = [selectedId];
       } else {
         const target = pickElement(scene.elements, start, 8 / zoom);
-        const unit = target ? selectionUnit(scene, target.id) : [];
+        const unit = target ? nativeEditingSelectionUnit(scene, target.id, editingGroupId) : [];
         if (event.shiftKey) {
           if (unit.length) {
             const fullySelected = unit.every((item) => selectedIds.includes(item));
@@ -988,8 +1001,8 @@
     const dx = point.x - g.start.x;
     const dy = point.y - g.start.y;
     if (g.action === "move" && g.id) {
-      if (Math.hypot(dx, dy) > 0.2 && editableSelection(g.original, g.ids).length) {
-        const next = moveSelection(g.original, g.ids, dx, dy);
+      if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
+        const next = moveSelection(g.original, g.ids, dx, dy, editingGroupId);
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;
@@ -1195,7 +1208,13 @@
       return;
     }
     if (event.key === "Escape") {
-      selectedIds = [];
+      if (editingGroupId) {
+        const parent = nativeExitEditingGroup(scene, editingGroupId);
+        editingGroupId = parent.editingGroupId;
+        selectedIds = parent.selectedIds;
+      } else {
+        selectedIds = [];
+      }
       preview = null;
       tool = "selection";
       return;
@@ -1215,6 +1234,7 @@
         selectedIds,
         offset.x * multiplier,
         offset.y * multiplier,
+        editingGroupId,
       );
       if (next !== scene && next.elements.some((el, i) => el !== scene.elements[i])) {
         commit(scene, next);
@@ -1329,7 +1349,21 @@
     <button disabled={!redoAvailable} onclick={redo} title="Повторить (Ctrl+Shift+Z)">↷</button>
     <button disabled={!selectedIds.length} onclick={duplicate} title="Дублировать (Ctrl+D)">Дублировать</button>
     <button disabled={selectedIds.length < 2} onclick={groupSelected} title="Группировать (Ctrl+G)">Группа</button>
-    <button disabled={!selectedIds.length} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
+    <button disabled={!selectedIds.length || !!editingGroupId} onclick={ungroupSelected} title="Разгруппировать (Ctrl+Shift+G)">Разгруппа</button>
+    {#if editingGroupId}
+      <button
+        onclick={() => {
+          const parent = nativeExitEditingGroup(scene, editingGroupId!);
+          editingGroupId = parent.editingGroupId;
+          selectedIds = parent.selectedIds;
+        }}
+        title="Вернуться на уровень выше (Esc)"
+      >↑ Из группы</button>
+      <span class="zoom" title={editingGroupId}>Редактирование группы</span>
+    {:else if selectedIds.length && scene.elements.some((element) =>
+      selectedIds.includes(element.id) && element.groupIds.length)}
+      <span class="zoom">Двойной клик: войти в группу</span>
+    {/if}
     {#if layoutAvailable}
       <div class="native-layout-controls" role="group" aria-label="Выравнивание элементов">
         <label>

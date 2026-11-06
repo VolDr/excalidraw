@@ -10,6 +10,7 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { canEditIndependently, editableSelection, safeGroupMembers } from "./groups";
+import { editableNativeGroupSelection } from "./groupEditing";
 import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
@@ -241,12 +242,17 @@ export function moveSelection(
   ids: readonly string[],
   dx: number,
   dy: number,
+  editingGroupId: string | null = null,
 ): SceneFile {
   if ((!dx && !dy) || ids.length === 0) {
     return scene;
   }
-  const selected = new Set(editableSelection(scene, ids));
-  if (!selected.size) {
+  const selected = new Set(
+    editingGroupId
+      ? editableNativeGroupSelection(scene, ids, editingGroupId)
+      : editableSelection(scene, ids),
+  );
+  if (!selected.size || selected.size !== new Set(ids).size) {
     return scene;
   }
   // Core owns group movement, bound labels and reciprocal arrow updates.
