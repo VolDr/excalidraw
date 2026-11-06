@@ -293,10 +293,18 @@ export class CoreEditorController {
     } finally {
       staged.destroy();
     }
+    const editingGroupId = this.selection.editingGroupId;
+    const remains = editingGroupId
+      ? getElementsInGroup(
+          this.scene.getNonDeletedElementsMap(),
+          editingGroupId,
+        ).length > 0
+      : false;
+    // A new document may have deleted/reorganized groups. Re-derive the
+    // selected groups using Excalidraw's current Scene, not a stale copy.
     this.setSelection(
       Object.keys(this.selection.selectedElementIds),
-      this.selection.editingGroupId,
-      this.selection.selectedGroupIds,
+      remains ? editingGroupId : null,
     );
   }
 
@@ -393,11 +401,16 @@ export class CoreEditorController {
         // successfully computed elements from the isolated draft.
         this.scene.replaceAllElements([...after], { skipValidation: true });
         draft.destroy();
-        this.selection.selectedElementIds = Object.fromEntries(
-          Object.entries(this.selection.selectedElementIds)
-            .filter(([id]) => !!this.scene.getNonDeletedElement(id)),
-        );
-        this.notify();
+        const activeIds = Object.keys(this.selection.selectedElementIds)
+          .filter((id) => !!this.scene.getNonDeletedElement(id));
+        const editingGroupId = this.selection.editingGroupId;
+        const remains = editingGroupId
+          ? getElementsInGroup(
+              this.scene.getNonDeletedElementsMap(),
+              editingGroupId,
+            ).length > 0
+          : false;
+        this.setSelection(activeIds, remains ? editingGroupId : null);
       } else {
         draft.destroy();
       }
