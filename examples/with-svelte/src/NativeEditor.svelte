@@ -19,6 +19,11 @@
     renameNativeFrame,
   } from "./native/frames";
   import {
+    nativeFrameHandleLocations,
+    pickNativeFrameHandle,
+    resizeNativeFrameWithCore,
+  } from "./native/frameResize";
+  import {
     nativeComplexElbowMidpoints,
     pickNativeComplexElbowSegment,
     updateNativeComplexElbowSegment,
@@ -251,7 +256,7 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment" | "erase" | "lasso" | "laser";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "frame-transform" | "group-transform" | "select" | "endpoint" | "elbow-segment" | "erase" | "lasso" | "laser";
     start: Point;
     original: SceneFile;
     latest: SceneFile;
@@ -904,6 +909,20 @@
         }
       }
     }
+    if (selectedFrame && selectedId) {
+      const handles = nativeFrameHandleLocations(scene, selectedId, zoom);
+      ctx.save();
+      ctx.lineWidth = 1.5 / zoom;
+      ctx.strokeStyle = "#6965db";
+      ctx.fillStyle = theme === "dark" ? "#282637" : "#ffffff";
+      for (const key of ["nw", "ne", "sw", "se"] as const) {
+        const point = handles[key];
+        if (!point) continue;
+        ctx.fillRect(point.x - 5 / zoom, point.y - 5 / zoom, 10 / zoom, 10 / zoom);
+        ctx.strokeRect(point.x - 5 / zoom, point.y - 5 / zoom, 10 / zoom, 10 / zoom);
+      }
+      ctx.restore();
+    }
     const selectedGroup = transformableGroup(scene, selectedIds);
     if (selectedGroup) {
       const { x, y, width, height } = selectedGroup.bounds;
@@ -1088,6 +1107,9 @@
       const groupHandle = group
         ? pickGroupHandle(group.bounds, start, 9 / zoom)
         : null;
+      const frameHandle = !event.shiftKey && selectedId
+        ? pickNativeFrameHandle(scene, selectedId, start, zoom, 9 / zoom)
+        : null;
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
         ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
@@ -1101,7 +1123,12 @@
         : null;
       handle = !event.shiftKey && selected
         ? pickHandle(selected, start, 9 / zoom, scene, zoom, editingGroupId) : null;
-      if (groupHandle && group) {
+      if (frameHandle && selectedId) {
+        action = "frame-transform";
+        id = selectedId;
+        handle = frameHandle;
+        ids = [selectedId];
+      } else if (groupHandle && group) {
         action = "group-transform";
         id = group.id;
         handle = groupHandle;
@@ -1233,6 +1260,18 @@
           onChange(next);
         }
       }
+    } else if (g.action === "frame-transform" && g.id &&
+               g.handle && g.handle !== "rotate") {
+      if (Math.hypot(dx, dy) > 0.2) {
+        const next = resizeNativeFrameWithCore(
+          g.original, g.id, g.handle, point,
+        );
+        if (next !== g.original) {
+          g.changed = true;
+          g.latest = next;
+          onChange(next);
+        }
+      }
     } else if (g.action === "group-transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
         const next = transformGroup(g.original, g.ids, g.handle, point);
@@ -1317,7 +1356,7 @@
       viewport.releasePointerCapture(event.pointerId);
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment" || g.action === "erase") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment" || g.action === "erase" || g.action === "frame-transform") &&
       g.changed
     ) {
       // The move was previewed in-place; record the *original* scene once.
@@ -1395,7 +1434,7 @@
       return;
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment" || g.action === "erase") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment" || g.action === "erase" || g.action === "frame-transform") &&
       g.changed
     ) {
       onChange(g.original);
