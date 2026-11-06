@@ -4,7 +4,7 @@
 
   import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
-  import type { ExcalidrawElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
+  import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
@@ -150,6 +150,11 @@
   let selectedIds = $state<string[]>([]);
   let editingGroupId = $state<string | null>(null);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
+  let selectedFrame = $derived(
+    scene.elements.find((element) =>
+      element.id === selectedId && element.type === "frame" && !element.isDeleted
+    ) as ExcalidrawFrameElement | undefined
+  );
   let layoutAvailable = $derived(canLayoutNativeSelection(scene, selectedIds));
   let layoutUnits = $derived(nativeLayoutUnitCount(scene, selectedIds));
   let layerAvailable = $derived(canMoveNativeLayer(scene, selectedIds));
@@ -1514,15 +1519,12 @@
       onclick={wrapSelectedInFrame}
       title="Поместить выделение в оригинальный Excalidraw Frame"
     >В рамку</button>
-    {#if selectedId && scene.elements.some((element) =>
-      element.id === selectedId && element.type === "frame" && !element.isDeleted)}
+    {#if selectedFrame}
       <label>
         Название рамки
         <input type="text"
           aria-label="Название рамки"
-          value={scene.elements.find((element) =>
-            element.id === selectedId && element.type === "frame"
-          )?.name ?? ""}
+          value={selectedFrame.name ?? ""}
           onchange={(event) => {
             if (!selectedId) return;
             const next = renameNativeFrame(scene, selectedId, event.currentTarget.value);
