@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { blankScene, createShape } from "./scene";
-import { updateNativeBoxLabel, nativeLabelBox } from "./boundText";
+import { updateNativeBoxLabel, nativeLabelBox, nativeReciprocalCaption } from "./boundText";
 import { appendNativeArrow } from "./bindings";
 const sceneJson = (scene: unknown) => JSON.stringify(scene);
 import { deleteSelection, moveSelection } from "./transforms";
@@ -146,6 +146,7 @@ describe("Svelte groups with original Excalidraw nesting", () => {
     expect(source.elements[0].boundElements?.some((ref) =>
       ref.type === "arrow" && ref.id === actualArrow.id
     )).toBe(true);
+    expect(nativeReciprocalCaption(source, caption)?.id).toBe(a.id);
     const ids = [a.id, b.id, actualArrow.id];
     // The internal text never becomes a separately selectable root.
     const result = groupSelection(source, ids);

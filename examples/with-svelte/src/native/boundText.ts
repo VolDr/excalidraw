@@ -123,7 +123,7 @@ export function nativeReciprocalCaption(
     ) ||
     new Set(box.boundElements.map((ref) => ref.id)).size !== box.boundElements.length ||
     scene.elements.some((other) =>
-      !other.isDeleted && other.id !== label.id &&
+      !other.isDeleted && other.id !== label.id && other.id !== box.id &&
       ((other.type === "text" && other.containerId === box.id) ||
         other.boundElements?.some((ref) => ref.id === label.id))
     )
