@@ -6,7 +6,7 @@ import {
 } from "./EditorHistory";
 
 /**
- * One framework-independent lifetime for Scene, the core AppState subset and
+ * One framework-independent lifetime for Scene, full typed AppState and
  * Excalidraw's ElementsDelta-based document history.
  *
  * Presentation hosts (React, Svelte, etc.) supply immutable document
