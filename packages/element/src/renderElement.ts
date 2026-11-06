@@ -457,92 +457,88 @@ export const withSavedContext = (
   }
 };
 
-const drawElementOnCanvas = (
-  element: NonDeletedExcalidrawElement,
-  rc: RoughCanvas,
+/**
+ * Text glyph painting shared by the React renderer and Svelte host.
+ * The caller owns element positioning/rotation and opacity. This is the
+ * original text path extracted from drawElementOnCanvas.
+ */
+export const paintTextElementOnCanvas = (
+  element: ExcalidrawTextElement,
   context: CanvasRenderingContext2D,
-  renderConfig: StaticCanvasRenderConfig,
-) => {
-  switch (element.type) {
-    case "stickynote": {
-      withSavedContext(context, () => {
-        context.fillStyle = `rgba(0, 0, 0, ${STICKY_NOTE_SHADOW_OPACITY})`;
-        fillStickyNoteShape(
-          context,
-          getStickyNotePathCommands(element, { shadow: true }),
-        );
-
-        const commands = getStickyNotePathCommands(element);
-        context.fillStyle = applyDarkModeFilter(
-          element.backgroundColor,
-          renderConfig.theme === THEME.DARK,
-        );
-        fillStickyNoteShape(context, commands);
-        strokeStickyNoteEdge(context, commands);
-
-        // the label is absolute, so this cached canvas only goes stale at a
-        // year boundary — and is regenerated on the next zoom, theme or
-        // element change anyway
-        const footer = getStickyNoteFooter(element);
-        if (footer) {
-          context.font = `${STICKY_NOTE_FOOTER.fontSize}px ${STICKY_NOTE_FOOTER.fontFamily}`;
-          context.textAlign = "right";
-          context.textBaseline = "alphabetic";
+  theme: AppState["theme"],
+): void => {
+        const rtl = isRTL(element.text);
+        // NOTE: `isConnected === false` rather than `!isConnected` -- a
+        // non-DOM canvas (node-canvas et al) has no such property, and must
+        // not be handed to `document.body`
+        const shouldTemporarilyAttach =
+          rtl &&
+          context.canvas.isConnected === false &&
+          typeof document !== "undefined";
+        if (shouldTemporarilyAttach) {
+          // to correctly render RTL text mixed with LTR, we have to append it
+          // to the DOM
+          document.body.appendChild(context.canvas);
+        }
+        if (typeof context.canvas.setAttribute === "function") {
+          context.canvas.setAttribute("dir", rtl ? "rtl" : "ltr");
+        }
+        withSavedContext(context, () => {
+          context.font = getFontString(element);
           context.fillStyle = applyDarkModeFilter(
             element.strokeColor,
-            renderConfig.theme === THEME.DARK,
+            theme === THEME.DARK,
           );
-          context.globalAlpha *= STICKY_NOTE_FOOTER.opacity;
-          context.fillText(footer.text, footer.x, footer.y);
-        }
-      });
-      break;
-    }
-    case "rectangle":
-    case "iframe":
-    case "embeddable":
-    case "diamond":
-    case "ellipse": {
-      context.lineJoin = "round";
-      context.lineCap = "round";
+          context.textAlign = element.textAlign as CanvasTextAlign;
 
-      rc.draw(ShapeCache.generateElementShape(element, renderConfig));
-      break;
-    }
-    case "arrow":
-    case "line": {
-      context.lineJoin = "round";
-      context.lineCap = "round";
+          // Canvas does not support multiline text by default
+          const lines = element.text.replace(/\r\n?/g, "\n").split("\n");
 
-      ShapeCache.generateElementShape(element, renderConfig).forEach(
-        (shape) => {
-          rc.draw(shape);
-        },
-      );
-      break;
-    }
-    case "freedraw": {
-      // Draw directly to canvas
-      withSavedContext(context, () => {
-        const shapes = ShapeCache.generateElementShape(element, renderConfig);
-        const createPath = getCreatePath(renderConfig.renderEnvironment);
+          const horizontalOffset =
+            element.textAlign === "center"
+              ? element.width / 2
+              : element.textAlign === "right"
+              ? element.width
+              : 0;
 
-        for (const shape of shapes) {
-          if (typeof shape === "string") {
-            context.fillStyle = applyDarkModeFilter(
-              element.strokeColor,
-              renderConfig.theme === THEME.DARK,
+          const lineHeightPx = getLineHeightInPx(
+            element.fontSize,
+            element.lineHeight,
+          );
+
+          const verticalOffset = getVerticalOffset(
+            element.fontFamily,
+            element.fontSize,
+            lineHeightPx,
+          );
+
+          for (let index = 0; index < lines.length; index++) {
+            context.fillText(
+              lines[index],
+              horizontalOffset,
+              index * lineHeightPx + verticalOffset,
             );
-            context.fill(createPath(shape));
-          } else {
-            rc.draw(shape);
           }
+        });
+        if (shouldTemporarilyAttach) {
+          context.canvas.remove();
         }
-      });
-      break;
-    }
-    case "image": {
-      withSavedContext(context, () => {
+};
+
+/**
+ * Raster painting shared by React and Svelte. Coordinates are local to the
+ * image's top-left corner, with rotation/flip and opacity applied by the caller.
+ * This is the existing image branch extracted unchanged from the renderer.
+ */
+export const paintImageElementOnCanvas = (
+  element: ExcalidrawImageElement,
+  context: CanvasRenderingContext2D,
+  renderConfig: Pick<
+    StaticCanvasRenderConfig,
+    "imageCache" | "theme" | "scale" | "renderEnvironment"
+  >,
+): void => {
+  withSavedContext(context, () => {
         const cacheEntry =
           element.fileId !== null
             ? renderConfig.imageCache.get(element.fileId)
@@ -653,67 +649,100 @@ const drawElementOnCanvas = (
             getRenderEnvironment(renderConfig.renderEnvironment),
           );
         }
-      });
-      break;
-    }
-    default: {
-      if (isTextElement(element)) {
-        const rtl = isRTL(element.text);
-        // NOTE: `isConnected === false` rather than `!isConnected` -- a
-        // non-DOM canvas (node-canvas et al) has no such property, and must
-        // not be handed to `document.body`
-        const shouldTemporarilyAttach =
-          rtl &&
-          context.canvas.isConnected === false &&
-          typeof document !== "undefined";
-        if (shouldTemporarilyAttach) {
-          // to correctly render RTL text mixed with LTR, we have to append it
-          // to the DOM
-          document.body.appendChild(context.canvas);
-        }
-        if (typeof context.canvas.setAttribute === "function") {
-          context.canvas.setAttribute("dir", rtl ? "rtl" : "ltr");
-        }
-        withSavedContext(context, () => {
-          context.font = getFontString(element);
+  });
+};
+
+const drawElementOnCanvas = (
+  element: NonDeletedExcalidrawElement,
+  rc: RoughCanvas,
+  context: CanvasRenderingContext2D,
+  renderConfig: StaticCanvasRenderConfig,
+) => {
+  switch (element.type) {
+    case "stickynote": {
+      withSavedContext(context, () => {
+        context.fillStyle = `rgba(0, 0, 0, ${STICKY_NOTE_SHADOW_OPACITY})`;
+        fillStickyNoteShape(
+          context,
+          getStickyNotePathCommands(element, { shadow: true }),
+        );
+
+        const commands = getStickyNotePathCommands(element);
+        context.fillStyle = applyDarkModeFilter(
+          element.backgroundColor,
+          renderConfig.theme === THEME.DARK,
+        );
+        fillStickyNoteShape(context, commands);
+        strokeStickyNoteEdge(context, commands);
+
+        // the label is absolute, so this cached canvas only goes stale at a
+        // year boundary — and is regenerated on the next zoom, theme or
+        // element change anyway
+        const footer = getStickyNoteFooter(element);
+        if (footer) {
+          context.font = `${STICKY_NOTE_FOOTER.fontSize}px ${STICKY_NOTE_FOOTER.fontFamily}`;
+          context.textAlign = "right";
+          context.textBaseline = "alphabetic";
           context.fillStyle = applyDarkModeFilter(
             element.strokeColor,
             renderConfig.theme === THEME.DARK,
           );
-          context.textAlign = element.textAlign as CanvasTextAlign;
-
-          // Canvas does not support multiline text by default
-          const lines = element.text.replace(/\r\n?/g, "\n").split("\n");
-
-          const horizontalOffset =
-            element.textAlign === "center"
-              ? element.width / 2
-              : element.textAlign === "right"
-              ? element.width
-              : 0;
-
-          const lineHeightPx = getLineHeightInPx(
-            element.fontSize,
-            element.lineHeight,
-          );
-
-          const verticalOffset = getVerticalOffset(
-            element.fontFamily,
-            element.fontSize,
-            lineHeightPx,
-          );
-
-          for (let index = 0; index < lines.length; index++) {
-            context.fillText(
-              lines[index],
-              horizontalOffset,
-              index * lineHeightPx + verticalOffset,
-            );
-          }
-        });
-        if (shouldTemporarilyAttach) {
-          context.canvas.remove();
+          context.globalAlpha *= STICKY_NOTE_FOOTER.opacity;
+          context.fillText(footer.text, footer.x, footer.y);
         }
+      });
+      break;
+    }
+    case "rectangle":
+    case "iframe":
+    case "embeddable":
+    case "diamond":
+    case "ellipse": {
+      context.lineJoin = "round";
+      context.lineCap = "round";
+
+      rc.draw(ShapeCache.generateElementShape(element, renderConfig));
+      break;
+    }
+    case "arrow":
+    case "line": {
+      context.lineJoin = "round";
+      context.lineCap = "round";
+
+      ShapeCache.generateElementShape(element, renderConfig).forEach(
+        (shape) => {
+          rc.draw(shape);
+        },
+      );
+      break;
+    }
+    case "freedraw": {
+      // Draw directly to canvas
+      withSavedContext(context, () => {
+        const shapes = ShapeCache.generateElementShape(element, renderConfig);
+        const createPath = getCreatePath(renderConfig.renderEnvironment);
+
+        for (const shape of shapes) {
+          if (typeof shape === "string") {
+            context.fillStyle = applyDarkModeFilter(
+              element.strokeColor,
+              renderConfig.theme === THEME.DARK,
+            );
+            context.fill(createPath(shape));
+          } else {
+            rc.draw(shape);
+          }
+        }
+      });
+      break;
+    }
+    case "image": {
+      paintImageElementOnCanvas(element, context, renderConfig);
+      break;
+    }
+    default: {
+      if (isTextElement(element)) {
+        paintTextElementOnCanvas(element, context, renderConfig.theme);
       } else {
         throw new Error(`Unimplemented type ${element.type}`);
       }

@@ -1,25 +1,209 @@
-import { pointFrom } from "@excalidraw/math";
-
+import { LinearElementEditor } from "@excalidraw/element";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
-import type { LocalPoint } from "@excalidraw/math";
+
+import {
+  canEditNativeLinearPoints,
+  canEditNativeElbowArrow,
+  convertNativeArrowToElbowWithCore,
+  moveNativeElbowEndpointWithCore,
+  deleteNativeLinearMidpointWithCore,
+  insertNativeLinearMidpointWithCore,
+  moveNativeLinearEndpointWithCore,
+  moveNativeLinearPointWithCore,
+  nativeElementsMap,
+} from "./coreAdapter";
+
+import { blankScene } from "./scene";
 
 import type { Point, SceneFile } from "./scene";
 
 export type Endpoint = "start" | "end";
 
+/**
+ * Index-based handles for every vertex of an open polyline or simple arrow.
+ * Bound arrows and elbow routes remain outside native point editing.
+ */
+export const canEditLinearPoints = canEditNativeLinearPoints;
+
+export function linearPointLocations(
+  element: ExcalidrawElement,
+): Point[] | null {
+  if (!canEditLinearPoints(element)) {
+    return null;
+  }
+  const map = nativeElementsMap({ elements: [element] });
+  const points = LinearElementEditor.getPointsGlobalCoordinates(element, map);
+  return points.every((point) => point.every(Number.isFinite))
+    ? points.map(([x, y]) => ({ x, y }))
+    : null;
+}
+
+/** Prefer the last (topmost) vertex if handles overlap. */
+export function pickLinearPoint(
+  element: ExcalidrawElement,
+  location: Point,
+  tolerance = 9,
+): number | null {
+  if (!Number.isFinite(location.x) || !Number.isFinite(location.y) ||
+      !Number.isFinite(tolerance) || tolerance < 0) {
+    return null;
+  }
+  const points = linearPointLocations(element);
+  if (!points) {
+    return null;
+  }
+  for (let i = points.length - 1; i >= 0; --i) {
+    const point = points[i];
+    if (Math.hypot(point.x - location.x, point.y - location.y) <= tolerance) {
+      return i;
+    }
+  }
+  return null;
+}
+
+/** Move a selected polyline vertex through the original core point editor. */
+export function updateLinearPoint(
+  scene: SceneFile,
+  id: string,
+  index: number,
+  target: Point,
+): SceneFile {
+  const element = scene.elements.find((item) => item.id === id);
+  return element && canEditLinearPoints(element)
+    ? moveNativeLinearPointWithCore(scene, id, index, target)
+    : scene;
+}
+
+/** Midpoints are provided by Excalidraw's original segment geometry. */
+export function linearSegmentMidpoints(
+  element: ExcalidrawElement,
+): Point[] | null {
+  if (!canEditLinearPoints(element) || element.points.length >= 128) {
+    return null;
+  }
+  const map = nativeElementsMap({ elements: [element] });
+  try {
+    const midpoints = Array.from(
+      { length: element.points.length - 1 },
+      (_, i) => LinearElementEditor.getSegmentMidPoint(element, i + 1, map),
+    );
+    return midpoints.every((p) => p.every(Number.isFinite))
+      ? midpoints.map(([x, y]) => ({ x, y }))
+      : null;
+  } catch {
+    // An unsupported imported path must never break pointer hit-testing.
+    return null;
+  }
+}
+
+/** Locate the nearest midpoint handle; return its left segment index. */
+export function pickLinearSegmentMidpoint(
+  element: ExcalidrawElement,
+  location: Point,
+  tolerance = 9,
+): number | null {
+  if (
+    ![location.x, location.y, tolerance].every(Number.isFinite) ||
+    tolerance < 0
+  ) {
+    return null;
+  }
+  const midpoints = linearSegmentMidpoints(element);
+  if (!midpoints) {
+    return null;
+  }
+  let closest: number | null = null;
+  let distance = tolerance;
+  for (const [i, point] of midpoints.entries()) {
+    const current = Math.hypot(point.x - location.x, point.y - location.y);
+    if (current <= distance) {
+      closest = i;
+      distance = current;
+    }
+  }
+  return closest;
+}
+
+export function insertLinearMidpoint(
+  scene: SceneFile,
+  id: string,
+  segmentIndex: number,
+): SceneFile {
+  return insertNativeLinearMidpointWithCore(scene, id, segmentIndex);
+}
+
+/** Removing first/last endpoints is deliberately unsupported. */
+export function deleteLinearMidpoint(
+  scene: SceneFile,
+  id: string,
+  pointIndex: number,
+): SceneFile {
+  return deleteNativeLinearMidpointWithCore(scene, id, pointIndex);
+}
+
+/** Native elbow endpoint handles, never intermediate route-bend handles. */
+export const canEditElbowEndpoints = canEditNativeElbowArrow;
+
+export function elbowEndpointLocations(
+  element: ExcalidrawElement,
+): { start: Point; end: Point } | null {
+  if (!canEditElbowEndpoints(element)) {
+    return null;
+  }
+  const map = nativeElementsMap({ elements: [element] });
+  const start = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element, 0, map,
+  );
+  const end = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element, -1, map,
+  );
+  return [...start, ...end].every(Number.isFinite)
+    ? {
+        start: { x: start[0], y: start[1] },
+        end: { x: end[0], y: end[1] },
+      }
+    : null;
+}
+
+export function pickElbowEndpoint(
+  element: ExcalidrawElement,
+  pointer: Point,
+  tolerance = 9,
+): Endpoint | null {
+  if (![pointer.x, pointer.y, tolerance].every(Number.isFinite) ||
+      tolerance < 0) {
+    return null;
+  }
+  const coords = elbowEndpointLocations(element);
+  if (!coords) {
+    return null;
+  }
+  for (const endpoint of ["end", "start"] as const) {
+    if (Math.hypot(
+      pointer.x - coords[endpoint].x,
+      pointer.y - coords[endpoint].y,
+    ) <= tolerance) {
+      return endpoint;
+    }
+  }
+  return null;
+}
+
+export const convertArrowToElbow = convertNativeArrowToElbowWithCore;
+
+export function updateElbowEndpoint(
+  scene: SceneFile,
+  id: string,
+  endpoint: Endpoint,
+  pointer: Point,
+): SceneFile {
+  return moveNativeElbowEndpointWithCore(scene, id, endpoint, pointer);
+}
+
 /** Limit native line editing to two-point, unbound, ungrouped straight lines. */
 export function canEditEndpoints(element: ExcalidrawElement): boolean {
   return (
-    (element.type === "line" || element.type === "arrow") &&
-    !element.isDeleted &&
-    !element.locked &&
-    !element.frameId &&
-    !element.groupIds.length &&
-    !element.boundElements?.length &&
-    !element.startBinding &&
-    !element.endBinding &&
-    (element.type === "line" ||
-      ("elbowed" in element && element.elbowed === false)) &&
+    canEditLinearPoints(element) &&
     element.points.length === 2
   );
 }
@@ -33,20 +217,21 @@ export function endpointLocations(
   if (element.type !== "line" && element.type !== "arrow") {
     return null;
   }
-  const points = element.points;
-  const cx = element.x + element.width / 2;
-  const cy = element.y + element.height / 2;
-  const rotate = (p: readonly [number, number]): Point => {
-    const x = element.x + p[0];
-    const y = element.y + p[1];
-    const dx = x - cx;
-    const dy = y - cy;
-    return {
-      x: cx + dx * Math.cos(element.angle) - dy * Math.sin(element.angle),
-      y: cy + dx * Math.sin(element.angle) + dy * Math.cos(element.angle),
-    };
+  const map = nativeElementsMap({ elements: [element] });
+  const [startX, startY] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element,
+    0,
+    map,
+  );
+  const [endX, endY] = LinearElementEditor.getPointAtIndexGlobalCoordinates(
+    element,
+    -1,
+    map,
+  );
+  return {
+    start: { x: startX, y: startY },
+    end: { x: endX, y: endY },
   };
-  return { start: rotate(points[0]), end: rotate(points[1]) };
 }
 
 export function pickEndpoint(
@@ -68,49 +253,37 @@ export function pickEndpoint(
 }
 
 /**
- * Rewrite endpoints in world space and normalize to an unrotated, two-point
- * Excalidraw element. The endpoint opposite the dragged one stays fixed.
+ * Framework-neutral compatibility wrapper around the core Scene point
+ * editor. Direct callers still receive an element; scene callers preserve
+ * all unrelated objects, index metadata and the original snapshot.
  */
 export function moveEndpoint(
   element: ExcalidrawElement,
   endpoint: Endpoint,
   target: Point,
 ): ExcalidrawElement {
-  const points = endpointLocations(element);
-  if (!points) {
+  if (!canEditEndpoints(element)) {
     return element;
   }
-  const start = endpoint === "start" ? target : points.start;
-  const end = endpoint === "end" ? target : points.end;
-  const x = Math.min(start.x, end.x);
-  const y = Math.min(start.y, end.y);
-  return {
-    ...element,
-    x,
-    y,
-    width: Math.abs(end.x - start.x),
-    height: Math.abs(end.y - start.y),
-    angle: 0 as ExcalidrawElement["angle"],
-    points: [
-      pointFrom<LocalPoint>(start.x - x, start.y - y),
-      pointFrom<LocalPoint>(end.x - x, end.y - y),
-    ],
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  } as ExcalidrawElement;
+  const source = { ...blankScene(), elements: [element] };
+  const updated = moveNativeLinearEndpointWithCore(
+    source,
+    element.id,
+    endpoint,
+    target,
+  );
+  return updated.elements[0];
 }
 
+/** Edit the selected line inside an isolated original Excalidraw Scene. */
 export function updateLineEndpoint(
   scene: SceneFile,
   id: string,
   endpoint: Endpoint,
   target: Point,
 ): SceneFile {
-  return {
-    ...scene,
-    elements: scene.elements.map((element) =>
-      element.id === id ? moveEndpoint(element, endpoint, target) : element,
-    ),
-  };
+  const item = scene.elements.find((element) => element.id === id);
+  return item && canEditEndpoints(item)
+    ? moveNativeLinearEndpointWithCore(scene, id, endpoint, target)
+    : scene;
 }

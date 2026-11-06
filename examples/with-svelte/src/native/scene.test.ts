@@ -35,8 +35,13 @@ describe("native scene compatibility", () => {
       img1: { mimeType: "image/png", dataURL: "data:image/png;base64,AAAA" },
     };
     original.appState = { viewBackgroundColor: "#fdfaf3", gridSize: 20 };
-    const restored = parseScene(serializeScene(original));
-    expect(restored).toEqual(original);
+    const withExtensions = {
+      ...original,
+      customSceneMetadata: { owner: "external", revision: 42 },
+    };
+    const restored = parseScene(serializeScene(withExtensions));
+    expect(restored).toEqual(withExtensions);
+    expect(restored.elements).toEqual(original.elements);
     expect(unsupportedCount(restored)).toBe(0);
   });
 
@@ -102,6 +107,29 @@ describe("native scene compatibility", () => {
     const line = createShape("arrow", { x: 10, y: 10 }, { x: 100, y: 100 });
     expect(hitTest(line, { x: 50, y: 50 })).toBe(true);
     expect(hitTest(line, { x: 90, y: 10 })).toBe(false);
+  });
+
+  it("rejects corrupted group IDs, geometry, broken polylines and duplicate element IDs", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 140, y: 120 });
+    const arrow = createShape("arrow", { x: 160, y: 40 }, { x: 270, y: 130 });
+    const valid = { ...blankScene(), elements: [box, arrow] };
+    expect(parseScene(serializeScene(valid))).toEqual(valid);
+
+    const invalid = [
+      [{ ...box, groupIds: null }, arrow],
+      [{ ...box, width: "large" }, arrow],
+      [{ ...box, angle: Infinity }, arrow],
+      [{ ...box, boundElements: [{ type: "text" }] }, arrow],
+      [box, { ...arrow, points: null }],
+      [box, { ...arrow, points: [[0, 0], [NaN, 10]] }],
+      [box, { ...arrow, groupIds: ["ok", 3] }],
+      [box, { ...box, x: 200 }],
+    ];
+    for (const elements of invalid) {
+      expect(() =>
+        parseScene(JSON.stringify({ ...valid, elements })),
+      ).toThrow("Файл содержит некорректные элементы.");
+    }
   });
 
   it("rejects non-Excalidraw input", () => {

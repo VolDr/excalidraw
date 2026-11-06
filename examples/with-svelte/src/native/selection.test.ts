@@ -5,7 +5,8 @@ import {
   nativeLabelBox,
   updateNativeBoxLabel,
 } from "./boundText";
-import { groupSelection } from "./groups";
+import { groupSelection, safeGroupMembers } from "./groups";
+import { appendNativeArrow } from "./bindings";
 import {
   blankScene,
   createShape,
@@ -159,6 +160,71 @@ describe("native marquee and duplication", () => {
     expect(copyA.id).not.toBe(a.id);
     expect(copyB.x).toBe(124);
     expect(duplicated.scene.elements[0].groupIds).toEqual([originalGroupId]);
+  });
+
+  it("duplicates nested groups with fresh IDs for every ancestry level and reciprocal text", () => {
+    const a = createShape("rectangle", { x: 20, y: 20 }, { x: 190, y: 120 });
+    const b = createShape("ellipse", { x: 220, y: 20 }, { x: 300, y: 100 });
+    const c = createShape("diamond", { x: 360, y: 20 }, { x: 440, y: 140 });
+    const base = updateNativeBoxLabel(
+      { ...blankScene(), elements: [a, b, c] },
+      a.id,
+      "nested caption",
+    );
+    const inner = groupSelection(base, [a.id, b.id]);
+    const outer = groupSelection(inner.scene, [a.id, b.id, c.id]);
+    expect(outer.groupId).toBeTruthy();
+    const originals = outer.scene.elements;
+    expect(duplicateSelection(outer.scene, [a.id, b.id]).scene).toBe(outer.scene);
+    const copied = duplicateSelection(outer.scene, [a.id, b.id, c.id], 30);
+    expect(copied.ids).toHaveLength(3);
+    expect(copied.scene.elements).toHaveLength(originals.length * 2);
+    const duplicated = copied.scene.elements.slice(originals.length);
+    const copyByType = new Map(copied.ids.map((id) => [
+      id,
+      copied.scene.elements.find((element) => element.id === id)!,
+    ]));
+    const copiedBox = [...copyByType.values()].find((e) => e.type === "rectangle")!;
+    const copiedEllipse = [...copyByType.values()].find((e) => e.type === "ellipse")!;
+    const copiedDiamond = [...copyByType.values()].find((e) => e.type === "diamond")!;
+    const copiedText = duplicated.find((e) => e.type === "text")!;
+    expect(copiedBox.groupIds).toHaveLength(2);
+    expect(copiedBox.groupIds).toEqual(copiedEllipse.groupIds);
+    expect(copiedDiamond.groupIds).toEqual([copiedBox.groupIds[1]]);
+    expect(copiedBox.groupIds).not.toContain(inner.groupId);
+    expect(copiedBox.groupIds).not.toContain(outer.groupId);
+    expect(copiedText.groupIds).toEqual(copiedBox.groupIds);
+    expect(copiedBox.boundElements?.[0].id).toBe(copiedText.id);
+    expect(copiedText.type === "text" && copiedText.containerId).toBe(copiedBox.id);
+    expect(copiedBox.x).toBe(a.x + 30);
+    expect(originals[0].id).toBe(a.id);
+  });
+
+  it("duplicates a closed linked group using the original reciprocal remapper", () => {
+    const boxA = createShape("rectangle", { x: 10, y: 10 }, { x: 120, y: 110 });
+    const boxB = createShape("diamond", { x: 250, y: 10 }, { x: 380, y: 130 });
+    const plain = { ...blankScene(), elements: [boxA, boxB] };
+    const arrow = createShape("arrow", { x: 90, y: 55 }, { x: 280, y: 55 });
+    const linked = appendNativeArrow(plain, arrow, { x: 90, y: 55 }, { x: 280, y: 55 });
+    const link = linked.elements.find((e) => e.type === "arrow");
+    expect(link?.type).toBe("arrow");
+    if (link?.type !== "arrow") return;
+    const group = groupSelection(linked, [boxA.id, boxB.id, link.id]);
+    expect(group.groupId).toBeTruthy();
+    const copied = duplicateSelection(group.scene, [boxA.id, boxB.id, link.id]);
+    expect(copied.ids).toHaveLength(3);
+    const next = copied.scene.elements.slice(group.scene.elements.length);
+    expect(next).toHaveLength(3);
+    const copiedArrow = next.find((e) => e.type === "arrow");
+    expect(copiedArrow?.type).toBe("arrow");
+    if (copiedArrow?.type !== "arrow") return;
+    const [nextA, nextB] = next.filter((e) => e.type !== "arrow");
+    expect(copiedArrow.startBinding?.elementId).toBe(nextA.id);
+    expect(copiedArrow.endBinding?.elementId).toBe(nextB.id);
+    expect(nextA.boundElements?.some((ref) => ref.id === copiedArrow.id)).toBe(true);
+    expect(nextB.boundElements?.some((ref) => ref.id === copiedArrow.id)).toBe(true);
+    expect(safeGroupMembers(copied.scene, copiedArrow.groupIds.at(-1)!)).toHaveLength(3);
+    expect(group.scene.elements[0].boundElements?.[0].id).toBe(link.id);
   });
 
   it("supports rectangle direction and partly intersected elements", () => {
