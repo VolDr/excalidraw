@@ -1,6 +1,6 @@
 import {
   bindBindingElement,
-  dragSelectedElements,
+  CoreEditorController,
   fixBindingsAfterDeletion,
   getGlobalFixedPointForBindableElement,
   getBoundTextMaxHeight,
@@ -30,7 +30,7 @@ import type {
   ExcalidrawTextElement,
   ExcalidrawTextElementWithContainer,
 } from "@excalidraw/element/types";
-import type { AppClassProperties, PointerDownState } from "@excalidraw/excalidraw/types";
+import type { AppClassProperties } from "@excalidraw/excalidraw/types";
 import { pointFrom } from "@excalidraw/math";
 
 import type { GlobalPoint } from "@excalidraw/math";
@@ -67,50 +67,59 @@ export const nativeElementsMap = (
  * explicitly, and adopt only elements whose versions changed in the core
  * transaction. Unknown extension fields and unrelated objects survive.
  */
+/**
+ * All native Scene operations enter the shared framework-independent
+ * CoreEditorController. This is the same mutation/selection lifecycle
+ * available to non-React editors; per-feature adapters must not create
+ * their own copies of Excalidraw's state or event controller.
+ *
+ * Excalidraw Scene may normalize old fractional indices. Only versions
+ * changed *inside* the transaction can flow back to an imported document.
+ * Original immutable scene references, custom data and untouched elements
+ * retain their identity.
+ */
+const adoptCoreTransaction = (
+  source: SceneFile,
+  tx: ReturnType<CoreEditorController["transact"]>,
+): SceneFile => {
+  const nextElements = tx.elements;
+  if (
+    nextElements.length !== source.elements.length ||
+    nextElements.some((element, index) => element.id !== source.elements[index].id)
+  ) {
+    throw new Error("Use the controller's insertion transaction for reordering");
+  }
+  let changed = false;
+  const elements = source.elements.map((original, index) => {
+    const updated = nextElements[index];
+    const initial = tx.baseline[index];
+    if (
+      updated.version === initial.version &&
+      updated.versionNonce === initial.versionNonce
+    ) return original;
+
+    changed = true;
+    return {
+      ...updated,
+      index: original.index,
+      version: original.version + (updated.version - initial.version),
+    };
+  });
+  return changed ? { ...source, elements } : source;
+};
+
 export function withNativeCoreScene(
   scene: SceneFile,
   operation: (core: Scene) => void,
 ): SceneFile {
-  const core = new Scene(structuredClone(scene.elements), {
-    skipValidation: true,
-  });
-  // Scene repairs null/invalid fractional indices during construction,
-  // bumping element versions. Treat that as private setup, never as a Svelte
-  // edit. Compare against this baseline, not against the imported versions.
-  const baseline = core.getElementsIncludingDeleted().map((element) => ({
-    version: element.version,
-    versionNonce: element.versionNonce,
-  }));
+  const controller = new CoreEditorController(scene.elements);
   try {
-    operation(core);
-    const nextElements = core.getElementsIncludingDeleted();
-    if (
-      nextElements.length !== scene.elements.length ||
-      nextElements.some((element, index) => element.id !== scene.elements[index].id)
-    ) {
-      throw new Error("Core Scene adapter cannot insert or reorder elements");
-    }
-
-    let changed = false;
-    const elements = scene.elements.map((original, index) => {
-      const updated = nextElements[index];
-      const initial = baseline[index];
-      if (
-        updated.version === initial.version &&
-        updated.versionNonce === initial.versionNonce
-      ) {
-        return original;
-      }
-      changed = true;
-      return {
-        ...updated,
-        index: original.index,
-        version: original.version + (updated.version - initial.version),
-      };
-    });
-    return changed ? { ...scene, elements } : scene;
+    return adoptCoreTransaction(
+      scene,
+      controller.transact((core) => operation(core)),
+    );
   } finally {
-    core.destroy();
+    controller.destroy();
   }
 }
 
@@ -133,27 +142,15 @@ export function dragNativeSelectionWithCore(
   if (!ids.size || (!dx && !dy) || !Number.isFinite(dx) || !Number.isFinite(dy)) {
     return scene;
   }
-  return withNativeCoreScene(scene, (core) => {
-    const selected = Array.from(ids, (id) => core.getNonDeletedElement(id));
-    if (selected.some((element) => !element)) {
-      return;
-    }
-    const originalElements = new Map<string, NonDeleted<ExcalidrawElement>>();
-    for (const element of core.getNonDeletedElements()) {
-      originalElements.set(element.id, structuredClone(element));
-    }
-    // Verified against dragElements.ts: this function only reads the
-    // pointerDownState.originalElements field.
-    const pointerDown = { originalElements } as PointerDownState;
-    dragSelectedElements(
-      pointerDown,
-      selected as NonDeleted<ExcalidrawElement>[],
-      { x: dx, y: dy },
-      core,
-      { x: 0, y: 0 },
-      null,
-    );
-  });
+  const controller = new CoreEditorController(scene.elements);
+  try {
+    controller.setSelection([...ids]);
+    // The original Scene.getSelectedElements and dragSelectedElements
+    // live together in the controller. No synthetic Svelte pointer state.
+    return adoptCoreTransaction(scene, controller.dragSelection(dx, dy));
+  } finally {
+    controller.destroy();
+  }
 }
 
 /**
