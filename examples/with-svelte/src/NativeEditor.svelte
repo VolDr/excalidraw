@@ -5,7 +5,7 @@
   import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
   import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
-  import { CoreEditorSession, type CoreEditorSelectionState, type CoreEditorToolState } from "@excalidraw/element";
+  import { CoreEditorSession } from "@excalidraw/element";
   import { nativeElementsMap, dragNativeGraphWithCore, transformNativeGraphWithCore } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
@@ -148,22 +148,31 @@
   // The original Excalidraw Scene and selection state now outlive pointer
   // events. Svelte observes the controller instead of maintaining a second
   // independent selection/group-editing state.
-  const editorSession = new CoreEditorSession<SceneFile>(scene);
+  const editorSession = new CoreEditorSession<SceneFile>(scene, {
+    theme,
+    viewBackgroundColor: typeof scene.appState.viewBackgroundColor === "string"
+      ? scene.appState.viewBackgroundColor : "#ffffff",
+  });
   const coreController = editorSession.controller;
-  let selectionState = $state<CoreEditorSelectionState>(coreController.getSelection());
-  let toolState = $state<CoreEditorToolState>(coreController.getToolState());
+  // All durable editor state comes from the same core AppState, including
+  // selection, tool, zoom and scroll. No parallel Svelte camera stores.
+  let appState = $state.raw(coreController.getAppState());
   let tool = $derived(
-    (toolState.activeTool.type === "arrow" &&
-     toolState.currentItemArrowType === "elbow"
-      ? "elbow" : toolState.activeTool.type) as NativeTool
+    (appState.activeTool.type === "arrow" &&
+     appState.currentItemArrowType === "elbow"
+      ? "elbow" : appState.activeTool.type) as NativeTool
   );
-  let selectedIds = $derived(Object.keys(selectionState.selectedElementIds)
-    .filter((id) => selectionState.selectedElementIds[id]));
-  let editingGroupId = $derived(selectionState.editingGroupId);
+  let selectedIds = $derived(Object.keys(appState.selectedElementIds)
+    .filter((id) => appState.selectedElementIds[id]));
+  let editingGroupId = $derived(appState.editingGroupId);
   let selectedId = $derived(selectedIds.length === 1 ? selectedIds[0] : null);
+  let zoom = $derived(appState.zoom.value);
+  let pan = $derived<Point>({
+    x: appState.scrollX * zoom,
+    y: appState.scrollY * zoom,
+  });
   const unsubscribeCore = coreController.onUpdate(() => {
-    selectionState = coreController.getSelection();
-    toolState = coreController.getToolState();
+    appState = coreController.getAppState();
   });
 
   function setTool(nextTool: NativeTool) {
@@ -190,6 +199,16 @@
   // refresh the same controller, not spawn a new controller per gesture.
   $effect(() => {
     syncCoreScene(scene);
+    const background = typeof scene.appState.viewBackgroundColor === "string"
+      ? scene.appState.viewBackgroundColor : "#ffffff";
+    if (coreController.getAppState().viewBackgroundColor !== background) {
+      coreController.setAppState({ viewBackgroundColor: background });
+    }
+  });
+  $effect(() => {
+    if (coreController.getAppState().theme !== theme) {
+      coreController.setAppState({ theme });
+    }
   });
   function coreTransformBounds(ids: readonly string[]) {
     if (ids.length < 2) return null;
@@ -226,8 +245,6 @@
   let laserOutline = $state<Point[]>([]);
   let laserStroke: NativeLaserStroke | null = null;
   let laserClearTimer: ReturnType<typeof setTimeout> | null = null;
-  let zoom = $state(1);
-  let pan = $state<Point>({ x: 0, y: 0 });
   let viewSize = $state<Point>({ x: 0, y: 0 });
   let undoAvailable = $state(false);
   let redoAvailable = $state(false);
@@ -439,8 +456,7 @@
       scene, selectedIds, mode, viewSize, zoom, pan,
     );
     if (fitted) {
-      zoom = fitted.zoom;
-      pan = fitted.pan;
+      coreController.setViewport(fitted.zoom, fitted.pan);
     }
   }
 
@@ -771,8 +787,7 @@
     ctx.clearRect(0, 0, w, h);
     const canvasBackgroundColor = theme === "dark"
       ? "#1e1e1e"
-      : (typeof scene.appState.viewBackgroundColor === "string"
-        ? scene.appState.viewBackgroundColor : "#ffffff");
+      : appState.viewBackgroundColor;
     ctx.fillStyle = canvasBackgroundColor;
     ctx.fillRect(0, 0, w, h);
 
@@ -1276,10 +1291,10 @@
         x: g.start.x * zoom + g.initialPan.x,
         y: g.start.y * zoom + g.initialPan.y,
       };
-      pan = {
+      coreController.setViewport(zoom, {
         x: g.initialPan.x + current.x - startScreen.x,
         y: g.initialPan.y + current.y - startScreen.y,
-      };
+      });
       return;
     }
     const point = getPoint(event);
@@ -1513,7 +1528,7 @@
     ) {
       onChange(g.original);
     }
-    pan = g.initialPan;
+    coreController.setViewport(zoom, g.initialPan);
     if (g.action === "select" || g.action === "lasso") {
       setSelectedIds(g.initialSelection);
     }
@@ -1646,14 +1661,16 @@
   }
 
   onMount(() => {
-    const observer = new ResizeObserver(() => {
-      viewSize = {
-        x: viewport.clientWidth,
-        y: viewport.clientHeight,
-      };
-    });
+    const resizeViewport = () => {
+      viewSize = { x: viewport.clientWidth, y: viewport.clientHeight };
+      coreController.setAppState({
+        width: viewSize.x,
+        height: viewSize.y,
+      });
+    };
+    const observer = new ResizeObserver(resizeViewport);
     observer.observe(viewport);
-    viewSize = { x: viewport.clientWidth, y: viewport.clientHeight };
+    resizeViewport();
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
@@ -1664,10 +1681,15 @@
         const sx = (px - pan.x) / zoom;
         const sy = (py - pan.y) / zoom;
         const nextZoom = Math.max(0.2, Math.min(5, zoom * Math.exp(-event.deltaY * 0.003)));
-        zoom = nextZoom;
-        pan = { x: px - sx * zoom, y: py - sy * zoom };
+        coreController.setViewport(nextZoom, {
+          x: px - sx * nextZoom,
+          y: py - sy * nextZoom,
+        });
       } else {
-        pan = { x: pan.x - event.deltaX, y: pan.y - event.deltaY };
+        coreController.setViewport(zoom, {
+          x: pan.x - event.deltaX,
+          y: pan.y - event.deltaY,
+        });
       }
     };
     viewport.addEventListener("wheel", onWheel, { passive: false });
@@ -2042,7 +2064,7 @@
     {/if}
     <button onclick={() => fitView("all")} title="Показать все объекты (Shift+1)">По содержимому</button>
     <button disabled={!selectedIds.length} onclick={() => fitView("selection")} title="Приблизить выделение (Shift+2)">К выделению</button>
-    <button onclick={() => { zoom = 1; pan = { x: 0, y: 0 }; }} title="Сбросить масштаб">100%</button>
+    <button onclick={() => coreController.setViewport(1, { x: 0, y: 0 })} title="Сбросить масштаб">100%</button>
   </div>
 
   {#if imageError}
