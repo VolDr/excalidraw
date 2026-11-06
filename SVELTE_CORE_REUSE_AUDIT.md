@@ -5,6 +5,31 @@ second geometry/binding engine. Svelte is the UI host. This file tracks
 actual imports and the remaining architectural debt; the current PR is
 still an unverified draft.
 
+## Shared controller and AppState milestone (PR #2)
+
+The persistent `CoreEditorController` now owns the **whole typed Excalidraw
+`AppState`**, initialized with the original `getDefaultAppState` rather than
+duplicated defaults. Existing selection/group editing and active-tool APIs are
+backed by this same object; `getAppState`/`setAppState` expose other core
+preferences and editor UI state. The `CoreEditorSession` retains the original
+Scene and the core element-delta undo/redo lifecycle.
+
+The native Svelte host subscribes to **one core AppState snapshot**. Its
+selection, editing group, active tool, zoom and scroll now derive from that
+snapshot. Wheel zoom, mouse pan, fit-to-view, viewport resize and 100% reset
+update the core state instead of local independent Svelte zoom/pan stores.
+The pixel-pan conversion is only a display-coordinate boundary: Excalidraw
+owns `zoom.value`, `scrollX` and `scrollY`. Imported file background color
+and host theme are synchronized explicitly. The JSON scene's arbitrary
+`appState` fields are **not** blindly cast to runtime AppState.
+
+**Still open:** Route the remaining clipboard, text, style, grouping, layer,
+frame, import/export and tool gesture transitions through shared controller
+commands. Replace the remaining native algorithm-specific adapters only
+after all their call sites have migrated and React/Svelte behavior has
+actually been checked. The React implementation remains the fallback.
+No build, tests or CI were executed in this milestone; parity is not verified.
+
 ## Reused directly in `examples/with-svelte`
 
 | Native adapter | Existing Excalidraw implementation | Current usage |
