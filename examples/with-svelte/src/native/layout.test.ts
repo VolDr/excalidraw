@@ -99,6 +99,28 @@ describe("native align/distribute delegates to Excalidraw", () => {
     }
   });
 
+  it("aligns complete nested groups as one unit through original core group bounds", () => {
+    const source = sample();
+    const fourth = createShape("rectangle", { x: 630, y: 20 }, { x: 720, y: 90 });
+    const four = indexInsertedNativeElements(source, {
+      ...source, elements: [...source.elements, fourth],
+    });
+    const ids = four.elements.map((element) => element.id);
+    const inner = groupSelection(four, ids.slice(0, 2));
+    const nested = groupSelection(inner.scene, ids.slice(0, 3));
+    expect(nativeLayoutUnitCount(nested.scene, ids)).toBe(2);
+    const next = layoutNativeSelectionWithCore(nested.scene, ids, {
+      kind: "align", alignment: { axis: "y", position: "start" },
+    });
+    expect(next).not.toBe(nested.scene);
+    // Inner group geometry remains rigid, while the outer group moves as a unit.
+    expect(next.elements[1].y - next.elements[0].y).toBe(
+      nested.scene.elements[1].y - nested.scene.elements[0].y,
+    );
+    expect(next.elements[3].y).toBe(20);
+    expect(next.elements[0].groupIds).toEqual(nested.scene.elements[0].groupIds);
+  });
+
   it("does not edit groups, single elements or partially valid sets", () => {
     const source = sample();
     expect(canLayoutNativeSelection(source, [source.elements[0].id])).toBe(false);

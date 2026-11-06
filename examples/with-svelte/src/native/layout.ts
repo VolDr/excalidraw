@@ -54,8 +54,8 @@ const nativeLayoutSelection = (
       return null;
     }
 
-    if (element.groupIds.length === 1) {
-      const groupId = element.groupIds[0];
+    if (element.groupIds.length > 0) {
+      const groupId = element.groupIds[element.groupIds.length - 1];
       // Group policy comes from the existing native safeGroupMembers guard:
       // labels are included in the group, but never selected on their own.
       const members = safeGroupMembers(scene, groupId);
@@ -71,9 +71,6 @@ const nativeLayoutSelection = (
       continue;
     }
 
-    if (element.groupIds.length) {
-      return null;
-    }
     if (
       !nativeStyleTarget(scene, id) &&
       !(
@@ -123,7 +120,7 @@ export const layoutNativeSelectionWithCore = (
     return scene;
   }
 
-  return withNativeCoreScene(scene, (core) => {
+  const result = withNativeCoreScene(scene, (core) => {
     const selected = ids.map((id) => core.getNonDeletedElement(id));
     if (selected.some((element) => !element)) {
       return;
@@ -147,4 +144,27 @@ export const layoutNativeSelectionWithCore = (
       );
     }
   });
+  if (result === scene) return scene;
+
+  // The original core can move a complete nested group as one unit.
+  // Verify that no selected arrow lost or changed its reciprocal binding
+  // and that every selected group's ancestry remains valid afterwards.
+  for (const id of Object.keys(selection.selectedGroupIds)) {
+    if (!safeGroupMembers(result, id).length) return scene;
+  }
+  const afterById = new Map(result.elements.map((element) => [element.id, element]));
+  for (const element of scene.elements) {
+    if (
+      element.type !== "arrow" ||
+      !(element.startBinding || element.endBinding) ||
+      !ids.includes(element.id)
+    ) continue;
+    const updated = afterById.get(element.id);
+    if (
+      !updated || updated.type !== "arrow" ||
+      JSON.stringify(updated.startBinding) !== JSON.stringify(element.startBinding) ||
+      JSON.stringify(updated.endBinding) !== JSON.stringify(element.endBinding)
+    ) return scene;
+  }
+  return result;
 };

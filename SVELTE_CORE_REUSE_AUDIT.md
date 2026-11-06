@@ -21,7 +21,7 @@ still an unverified draft.
 | `native/imageCrop.ts` | `@excalidraw/element`: `getUncroppedImageElement`, `cropElement`; `@excalidraw/math`: `pointRotateRads` | Native center-crop and crop reset actions using original crop/source rectangle/rotated geometry |
 | `native/viewport.ts` | `@excalidraw/element`: `getCommonBounds`; `@excalidraw/excalidraw` (public export): `zoomToFitBounds` | Svelte commands fit all / selected elements via original bounds and zoom algorithm; only pixel/scene scroll conversion belongs to the host |
 | `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on complete native selections, including contiguous flat groups and safe bound captions; no custom layer algorithm |
-| `native/layout.ts` | `@excalidraw/element`: `alignElements`, `distributeElements`, `Scene` via adapter | Original group-aware bounds, translations and version updates for independent roots, complete flat groups and reciprocal single-label boxes; incomplete selections and unsafe links stay guarded |
+| `native/layout.ts` | `@excalidraw/element`: `alignElements`, `distributeElements`, `Scene` via adapter | Original group-aware bounds, translations and version updates for independent roots, complete nested groups and reciprocal captioned boxes; postchecks reject detached arrow links or broken group ancestry |
 | `native/history.ts` | `@excalidraw/element`: `ElementsDelta.calculate`, `ElementsDelta.inverse`, `ElementsDelta.applyTo`, `validateFractionalIndices` | Core delta-based undo/redo for valid same-identity edits with original binding reconciliation and revision semantics; snapshots remain fallback for insertion, deletion, reordering and imported incompatibilities |
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
 | `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text and validated reciprocal box captions use original font metrics, wrapping and container resize; imported/rotated/complex bindings remain guarded |
@@ -106,7 +106,7 @@ with React's Store and History. Tests/CI are not run.
 Native Svelte now exposes all six Excalidraw alignment directions and
 horizontal/vertical equal-gap distribution. The actions call the original
 `alignElements` and `distributeElements` inside an isolated `Scene`.
-The adapter also recognizes complete safe flat groups as one logical item
+The adapter also recognizes complete safe nested groups as one logical item
 and reciprocal single-label boxes, using the original selectedGroupIds
 semantics. Partial groups, foreign bindings and nested groups remain read-only.
 Fixtures are authored but not executed.

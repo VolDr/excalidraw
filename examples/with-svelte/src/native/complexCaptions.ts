@@ -6,7 +6,7 @@ import {
   updateBoundElements,
 } from "@excalidraw/element";
 
-import type { ExcalidrawTextElement } from "@excalidraw/element/types";
+import type { ExcalidrawTextElement, ExcalidrawTextElementWithContainer } from "@excalidraw/element/types";
 
 import { nativeReciprocalCaption } from "./boundText";
 import { withNativeCoreScene } from "./coreAdapter";
@@ -100,7 +100,7 @@ export const updateNativeCompositeCaption = (
     ![nextLabel.x, nextLabel.y, nextLabel.width, nextLabel.height]
       .every(Number.isFinite) ||
     nextLabel.width > getBoundTextMaxWidth(nextBox, nextLabel) + 0.5 ||
-    nextLabel.height > getBoundTextMaxHeight(nextBox, nextLabel) + 0.5
+    nextLabel.height > getBoundTextMaxHeight(nextBox, nextLabel as ExcalidrawTextElementWithContainer) + 0.5
   ) return scene;
 
   // No mutations to foreign roots, deleted items, group ancestry or
