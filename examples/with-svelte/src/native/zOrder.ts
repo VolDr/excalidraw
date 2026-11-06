@@ -68,8 +68,10 @@ export const canMoveNativeLayer = (
     if (!element || element.isDeleted || element.locked || element.frameId) {
       return false;
     }
-    if (element.groupIds.length === 1) {
-      const members = safeGroupMembers(scene, element.groupIds[0]);
+    if (element.groupIds.length > 0) {
+      const members = safeGroupMembers(
+        scene, element.groupIds[element.groupIds.length - 1],
+      );
       if (
         !members.length ||
         members
@@ -79,9 +81,6 @@ export const canMoveNativeLayer = (
         return false;
       }
       continue;
-    }
-    if (element.groupIds.length) {
-      return false;
     }
     if (nativeStyleTarget(scene, id)) {
       continue;

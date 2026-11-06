@@ -121,6 +121,12 @@ single reciprocal captioned box as one logical unit, using the original
 The UI rejects partial groups and non-contiguous legacy group ranges,
 leaving them untouched for the full editor. Tests were authored but not run.
 
+Whole linked-arrow groups can now be duplicated through Excalidraw's
+`duplicateElement` and `fixDuplicatedBindingsAfterDuplication`; the
+adapter revalidates the copied component before adopting it. Layer
+reordering also accepts whole verified nested and linked groups.
+Fixtures are present but unexecuted.
+
 Complete simple two-point arrow/box binding graphs can now be grouped and
 dragged via Excalidraw's original `dragSelectedElements`. Svelte validates
 the reciprocal relationship and keeps all referenced shapes within the

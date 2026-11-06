@@ -15,6 +15,7 @@ import { nativeElementsMap } from "./coreAdapter";
 import {
   canEditIndependently,
   editableSelection,
+  safeGroupMembers,
   selectionUnit,
 } from "./groups";
 
@@ -97,7 +98,9 @@ export function duplicateSelection(
     }
     if (
       canEditIndependently(element) ||
-      (element.groupIds.length > 0 && !element.boundElements?.length)
+      (element.groupIds.length > 0 &&
+        (!element.boundElements?.length ||
+          element.boundElements.every((ref) => ref.type === "arrow")))
     ) {
       selected.add(element.id);
       copiedParents.add(element.id);
@@ -144,8 +147,23 @@ export function duplicateSelection(
     duplicateMap,
   );
 
+  const candidate = { ...scene, elements: [...scene.elements, ...duplicates] };
+  // Only adopt a linked duplicate if the core remapped BOTH its endpoint
+  // references and every new box's reciprocal boundElements record.
+  for (const duplicate of duplicates) {
+    if (
+      duplicate.type !== "arrow" ||
+      !(duplicate.startBinding || duplicate.endBinding) ||
+      !duplicate.groupIds.length
+    ) continue;
+    const outer = duplicate.groupIds[duplicate.groupIds.length - 1];
+    if (!safeGroupMembers(candidate, outer).length) {
+      return { scene, ids: [] };
+    }
+  }
+
   return {
-    scene: { ...scene, elements: [...scene.elements, ...duplicates] },
+    scene: candidate,
     // Select copied boxes, not their separately bound text elements.
     ids: scene.elements
       .filter((element) => copiedParents.has(element.id))
