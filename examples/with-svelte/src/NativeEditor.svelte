@@ -1057,7 +1057,7 @@
       selectedIds = [];
       draft = action === "free"
         ? createFreeDraw([start], [event.pressure || 0.5])
-        : createShape(tool as NativeShape, start, start);
+        : createShape((tool === "elbow" ? "arrow" : tool) as NativeShape, start, start);
       preview = draft;
     }
     gesture = {
@@ -1187,7 +1187,7 @@
     } else if (g.action === "draw" && tool === "frame") {
       preview = nativeFrameFromDrag(g.start, point);
     } else if (g.action === "draw" && g.draft) {
-      const shape = createShape(tool as NativeShape, g.start, point);
+      const shape = createShape((tool === "elbow" ? "arrow" : tool) as NativeShape, g.start, point);
       preview = {
         ...shape,
         id: g.draft.id,
@@ -1237,9 +1237,22 @@
       }
     } else if (g.action === "draw" && preview) {
       if (Math.max(preview.width, preview.height) >= 3 / zoom) {
-        const next = preview.type === "arrow"
-          ? appendNativeArrow(g.original, preview, g.start, getPoint(event))
-          : { ...g.original, elements: [...g.original.elements, preview] };
+        const plain = { ...g.original, elements: [...g.original.elements, preview] };
+        const routed = tool === "elbow"
+          ? convertArrowToElbow(plain, preview.id)
+          : plain;
+        // Elbow routing uses the original core algorithm. Do not silently
+        // insert a normal arrow if the route was rejected.
+        const next = tool === "elbow"
+          ? routed
+          : preview.type === "arrow"
+            ? appendNativeArrow(g.original, preview, g.start, getPoint(event))
+            : plain;
+        if (tool === "elbow" && routed === plain) {
+          preview = null;
+          gesture = null;
+          return;
+        }
         commit(g.original, next);
         selectedIds = [preview.id];
         tool = "selection";
@@ -1379,7 +1392,7 @@
     if (key === "e") tool = "ellipse";
     if (key === "d") tool = "diamond";
     if (key === "l") tool = "line";
-    if (key === "a") tool = "arrow";
+    if (key === "a") tool = event.shiftKey ? "elbow" : "arrow";
     if (key === "t") tool = "text";
     if (key === "p") tool = "freedraw";
     if (key === "x" && !editingGroupId) tool = "eraser";
@@ -1428,6 +1441,7 @@
       ["diamond", "Ромб"],
       ["line", "Линия"],
       ["arrow", "Стрелка"],
+      ["elbow", "Угловая"],
       ["freedraw", "Карандаш"],
       ["eraser", "Ластик"],
       ["frame", "Рамка"],

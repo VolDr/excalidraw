@@ -44,6 +44,7 @@ export type NativeTool =
   | "diamond"
   | "line"
   | "arrow"
+  | "elbow"
   | "text"
   | "freedraw"
   | "eraser"
@@ -52,7 +53,7 @@ export type NativeTool =
 
 export type NativeShape = Exclude<
   NativeTool,
-  "selection" | "hand" | "text" | "freedraw" | "eraser" | "frame"
+  "selection" | "hand" | "text" | "freedraw" | "eraser" | "frame" | "elbow"
 >;
 export type Point = { x: number; y: number };
 

@@ -212,6 +212,10 @@ logical units, delegates actual deletion and binding cleanup to the original
 core, and commits a whole stroke as one undo step. Invalid imported
 relationships remain unchanged, rather than silently losing half their links.
 
+The new "Угловая" drawing tool now routes freshly drawn two-point arrows
+with Excalidraw's `updateElbowArrowPoints` conversion instead of a custom
+orthogonal path generator. Existing ordinary arrows keep their own tool.
+
 Frame drawing, wrapping selection and unwrapping now use original
 `newFrameElement`, `getElementsInNewFrame`,
 `addElementsToFrame` and `removeAllElementsFromFrame`. Moving a frame
