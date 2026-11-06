@@ -20,6 +20,7 @@ still an unverified draft.
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
 | `native/frames.ts` | `@excalidraw/element`: `newFrameElement`, `getElementsInNewFrame`, `addElementsToFrame`, `getCommonBounds`, `removeAllElementsFromFrame` | Frame creation, automatic membership, wrapping selection, drag with original core, unwrapping without deleting children |
+| `native/laser.ts` | `@excalidraw/laser-pointer`: original `LaserPointer` stroke smoothing and outline generation | Adds transient non-document laser pointer gestures; native canvas paints returned core polygon, no scene mutation or undo |
 | `native/lasso.ts` | `packages/excalidraw/lasso/utils.ts`: original `getLassoSelectedElementIds`, `getElementLineSegments` | Native freehand polygon selection, full-containment/intersection modes, complete safe group selection and frame-aware clipping |
 | `native/eraser.ts` | `@excalidraw/element`: original element hit-testing and `fixBindingsAfterDeletion` through core Scene | Adds gesture-based eraser with one history transaction and whole-group/caption-safe deletion |
 | `native/complexElbow.ts` | `@excalidraw/element`: `LinearElementEditor.getSegmentMidPoint`, `moveFixedSegment`, `deleteFixedSegment` | Core-owned complex elbow segment dragging/locking and Alt+click release, validating orthogonal routing and reciprocal imported links |
@@ -237,6 +238,12 @@ selection function `getLassoSelectedElementIds`, with its original
 contour, group and frame clipping rules. The Svelte pointer adapter only
 records a world-space path and draws the preview; users can toggle
 contain/overlap mode and Shift-add to selection.
+
+The Svelte laser pointer now wraps Excalidraw's original
+`@excalidraw/laser-pointer` stroke engine. The non-persistent trace
+is rendered in canvas and disappears after release; it never modifies
+the scene or the Undo stack. Collaborative laser streams and full
+fade animation still belong to the React experience.
 
 ## Still custom: do not mistake these for parity
 

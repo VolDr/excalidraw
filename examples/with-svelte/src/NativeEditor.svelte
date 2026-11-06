@@ -10,6 +10,7 @@
   import { SceneHistory } from "./native/history";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import { elementsInNativeLasso, type NativeLassoMode } from "./native/lasso";
+  import { NativeLaserStroke } from "./native/laser";
   import {
     createNativeFrameWithCore,
     nativeFrameFromDrag,
@@ -173,6 +174,9 @@
   let marquee = $state<{ start: Point; end: Point } | null>(null);
   let lassoPoints = $state<Point[]>([]);
   let lassoMode = $state<NativeLassoMode>("contain");
+  let laserOutline = $state<Point[]>([]);
+  let laserStroke: NativeLaserStroke | null = null;
+  let laserClearTimer: ReturnType<typeof setTimeout> | null = null;
   let zoom = $state(1);
   let pan = $state<Point>({ x: 0, y: 0 });
   let viewSize = $state<Point>({ x: 0, y: 0 });
@@ -247,7 +251,7 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment" | "erase" | "lasso";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment" | "erase" | "lasso" | "laser";
     start: Point;
     original: SceneFile;
     latest: SceneFile;
@@ -276,6 +280,13 @@
     selectedIds = [];
     editingGroupId = null;
     marquee = null;
+    lassoPoints = [];
+    laserOutline = [];
+    laserStroke = null;
+    if (laserClearTimer !== null) {
+      clearTimeout(laserClearTimer);
+      laserClearTimer = null;
+    }
     undoAvailable = false;
     redoAvailable = false;
   });
@@ -920,6 +931,16 @@
       ctx.stroke();
       ctx.restore();
     }
+    if (laserOutline.length > 2) {
+      ctx.save();
+      ctx.fillStyle = theme === "dark" ? "#ff8585" : "#eb3d54";
+      ctx.beginPath();
+      ctx.moveTo(laserOutline[0].x, laserOutline[0].y);
+      for (const p of laserOutline.slice(1)) ctx.lineTo(p.x, p.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
     if (lassoPoints.length > 1) {
       ctx.save();
       ctx.beginPath();
@@ -956,6 +977,7 @@
     selectedIds;
     marquee;
     lassoPoints;
+    laserOutline;
     zoom;
     pan;
     viewSize;
@@ -1044,7 +1066,9 @@
           ? "move"
           : tool === "lasso"
             ? "lasso"
-            : tool === "eraser"
+            : tool === "laser"
+              ? "laser"
+              : tool === "eraser"
               ? "erase"
             : tool === "freedraw"
               ? "free"
@@ -1119,6 +1143,11 @@
     } else if (action === "lasso") {
       lassoPoints = [start];
       if (!event.shiftKey) selectedIds = [];
+    } else if (action === "laser") {
+      if (laserClearTimer !== null) clearTimeout(laserClearTimer);
+      laserClearTimer = null;
+      laserStroke = new NativeLaserStroke(zoom);
+      laserOutline = laserStroke.add(start, event.pressure || 0.5);
     } else if (action === "draw" && tool === "frame") {
       selectedIds = [];
     } else if (action === "draw" || action === "free") {
@@ -1174,6 +1203,10 @@
     const dy = point.y - g.start.y;
     if (g.action === "erase") {
       eraseAt(point);
+    } else if (g.action === "laser") {
+      if (laserStroke) {
+        laserOutline = laserStroke.add(point, event.pressure || 0.5);
+      }
     } else if (g.action === "lasso") {
       if (g.points.length < 4096) {
         const last = g.points[g.points.length - 1];
@@ -1290,6 +1323,15 @@
       // The move was previewed in-place; record the *original* scene once.
       history.commit(g.original, g.latest);
       refreshHistory();
+    } else if (g.action === "laser") {
+      if (laserStroke) {
+        laserOutline = laserStroke.close();
+        laserStroke = null;
+      }
+      laserClearTimer = setTimeout(() => {
+        laserOutline = [];
+        laserClearTimer = null;
+      }, 750);
     } else if (g.action === "lasso") {
       const hits = elementsInNativeLasso(g.original, g.points, lassoMode, zoom);
       selectedIds = event.shiftKey
@@ -1363,6 +1405,14 @@
       selectedIds = g.initialSelection;
     }
     lassoPoints = [];
+    if (g.action === "laser") {
+      laserOutline = [];
+      laserStroke = null;
+      if (laserClearTimer !== null) {
+        clearTimeout(laserClearTimer);
+        laserClearTimer = null;
+      }
+    }
     marquee = null;
     preview = null;
     gesture = null;
@@ -1474,6 +1524,7 @@
     const key = event.key.toLowerCase();
     if (key === "v") tool = "selection";
     if (key === "q") tool = "lasso";
+    if (key === "k") tool = "laser";
     if (key === "r") tool = "rectangle";
     if (key === "e") tool = "ellipse";
     if (key === "d") tool = "diamond";
@@ -1514,6 +1565,9 @@
     return () => {
       observer.disconnect();
       viewport.removeEventListener("wheel", onWheel);
+      if (laserClearTimer !== null) clearTimeout(laserClearTimer);
+      laserClearTimer = null;
+      laserStroke = null;
     };
   });
 </script>
@@ -1523,6 +1577,7 @@
     {#each [
       ["selection", "Выделение"],
       ["lasso", "Лассо"],
+      ["laser", "Лазер"],
       ["rectangle", "Прямоугольник"],
       ["ellipse", "Эллипс"],
       ["diamond", "Ромб"],

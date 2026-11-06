@@ -40,6 +40,7 @@ export interface SceneFile {
 export type NativeTool =
   | "selection"
   | "lasso"
+  | "laser"
   | "rectangle"
   | "ellipse"
   | "diamond"
@@ -54,7 +55,7 @@ export type NativeTool =
 
 export type NativeShape = Exclude<
   NativeTool,
-  "selection" | "lasso" | "hand" | "text" | "freedraw" | "eraser" | "frame" | "elbow"
+  "selection" | "lasso" | "laser" | "hand" | "text" | "freedraw" | "eraser" | "frame" | "elbow"
 >;
 export type Point = { x: number; y: number };
 
