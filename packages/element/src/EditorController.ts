@@ -1,5 +1,6 @@
 import { Scene } from "./Scene";
 import { dragSelectedElements } from "./dragElements";
+import { getElementsInGroup, selectGroupsFromGivenElements } from "./groups";
 
 import type {
   ExcalidrawElement,
@@ -7,6 +8,7 @@ import type {
 } from "./types";
 import type {
   AppState,
+  InteractiveCanvasAppState,
   PointerDownState,
 } from "../../excalidraw/types";
 
@@ -136,20 +138,67 @@ export class CoreEditorController {
     this.notify();
   }
 
+  /**
+   * React's group selection is based on the original innermost-to-outermost
+   * groupIds and getElementsInGroup, not on Svelte's safeGroupMembers lists.
+   * Entering an editingGroupId selects immediate children; nested child
+   * groups stay atomic until entered. Container labels select their owner.
+   */
+  getSelectionUnit(
+    id: string,
+    editingGroupId: string | null = this.selection.editingGroupId,
+  ): string[] {
+    this.assertOpen();
+    const hit = this.scene.getNonDeletedElement(id);
+    if (!hit || hit.locked) return [];
+    const element = hit.type === "text" && hit.containerId
+      ? this.scene.getNonDeletedElement(hit.containerId) : hit;
+    if (!element || element.locked) return [];
+    const index = editingGroupId
+      ? element.groupIds.indexOf(editingGroupId)
+      : element.groupIds.length;
+    if (index < 0) return [];
+    const groupId = index > 0 ? element.groupIds[index - 1] : null;
+    if (!groupId) return [element.id];
+    return getElementsInGroup(
+      this.scene.getNonDeletedElementsMap(), groupId,
+    )
+      .filter((member) =>
+        !member.isDeleted &&
+        !(member.type === "text" && !!member.containerId)
+      )
+      .map((member) => member.id);
+  }
+
   setSelection(
     selectedElementIds: readonly string[],
     editingGroupId: string | null = this.selection.editingGroupId,
-    selectedGroupIds: AppState["selectedGroupIds"] = {},
+    selectedGroupIds?: AppState["selectedGroupIds"],
   ): void {
     this.assertOpen();
     const elements = this.scene.getNonDeletedElementsMap();
+    const normalized = Object.fromEntries(
+      [...new Set(selectedElementIds)]
+        .filter((id) => !!elements.get(id))
+        .map((id) => [id, true] as const),
+    ) as AppState["selectedElementIds"];
+    // Original Excalidraw group selection implementation determines which
+    // groups are selected, including group-editing scopes.
+    const selected = this.scene.getSelectedElements({
+      selectedElementIds: normalized,
+    });
+    const groups = selectedGroupIds ??
+      selectGroupsFromGivenElements(
+        selected,
+        {
+          selectedElementIds: normalized,
+          selectedGroupIds: {},
+          editingGroupId,
+        } as InteractiveCanvasAppState,
+      );
     this.selection = {
-      selectedElementIds: Object.fromEntries(
-        selectedElementIds
-          .filter((id) => elements.has(id))
-          .map((id) => [id, true]),
-      ),
-      selectedGroupIds: { ...selectedGroupIds },
+      selectedElementIds: normalized,
+      selectedGroupIds: { ...groups },
       editingGroupId,
     };
     this.notify();
