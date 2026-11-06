@@ -1289,7 +1289,7 @@
       }
     } else if (g.action === "move" && g.id) {
       if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
-        const next = moveSelection(g.original, g.ids, dx, dy, editingGroupId);
+        const next = moveSelection(g.original, g.ids, dx, dy, editingGroupId, coreController);
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;
@@ -1604,6 +1604,7 @@
         offset.x * multiplier,
         offset.y * multiplier,
         editingGroupId,
+        coreController,
       );
       if (next !== scene && next.elements.some((el, i) => el !== scene.elements[i])) {
         commit(scene, next);

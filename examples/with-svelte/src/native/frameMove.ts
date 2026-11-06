@@ -1,5 +1,6 @@
 import { dragNativeSelectionWithCore } from "./coreAdapter";
 import { isNativeShape } from "./scene";
+import type { CoreEditorController } from "@excalidraw/element";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import type { SceneFile } from "./scene";
@@ -15,6 +16,7 @@ export const moveNativeFrameWithCore = (
   id: string,
   dx: number,
   dy: number,
+  core?: CoreEditorController,
 ): SceneFile => {
   const frame = scene.elements.find((element) => element.id === id);
   if (
@@ -42,7 +44,7 @@ export const moveNativeFrameWithCore = (
 
   let next: SceneFile;
   try {
-    next = dragNativeSelectionWithCore(scene, new Set([id]), dx, dy);
+    next = dragNativeSelectionWithCore(scene, new Set([id]), dx, dy, core);
   } catch {
     return scene;
   }
@@ -124,6 +126,7 @@ export const moveNativeFrameChildWithCore = (
   id: string,
   dx: number,
   dy: number,
+  core?: CoreEditorController,
 ): SceneFile => {
   const root = scene.elements.find((el) => el.id === id);
   if (!root || !isSafeNativeFrameChild(scene, root) ||
@@ -132,7 +135,7 @@ export const moveNativeFrameChildWithCore = (
   }
   let next: SceneFile;
   try {
-    next = dragNativeSelectionWithCore(scene, new Set([id]), dx, dy);
+    next = dragNativeSelectionWithCore(scene, new Set([id]), dx, dy, core);
   } catch {
     return scene;
   }

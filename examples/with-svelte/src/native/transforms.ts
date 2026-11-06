@@ -1,6 +1,7 @@
 import { getNextSingleWidthAndHeightFromPointer, getTransformHandles } from "@excalidraw/element";
 import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
+import type { CoreEditorController } from "@excalidraw/element";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
@@ -252,6 +253,7 @@ export function moveSelection(
   dx: number,
   dy: number,
   editingGroupId: string | null = null,
+  core?: CoreEditorController,
 ): SceneFile {
   if ((!dx && !dy) || ids.length === 0) {
     return scene;
@@ -268,16 +270,16 @@ export function moveSelection(
     const id = [...selected][0];
     const root = scene.elements.find((element) => element.id === id);
     if (root?.type === "frame") {
-      return moveNativeFrameWithCore(scene, id, dx, dy);
+      return moveNativeFrameWithCore(scene, id, dx, dy, core);
     }
     if (root?.frameId) {
-      return moveNativeFrameChildWithCore(scene, id, dx, dy);
+      return moveNativeFrameChildWithCore(scene, id, dx, dy, core);
     }
   }
   // Core owns group movement, bound labels and reciprocal arrow updates.
   // Native policy has already narrowed this to valid editable roots/groups.
   const moved = syncNativeBoundLabels(
-    dragNativeSelectionWithCore(scene, selected, dx, dy),
+    dragNativeSelectionWithCore(scene, selected, dx, dy, core),
     selected,
   );
   // The core drag engine calls updateBoundElements for moved boxes. Refuse
