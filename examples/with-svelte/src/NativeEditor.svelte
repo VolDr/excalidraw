@@ -728,8 +728,8 @@
       );
       ctx.restore();
 
-      if (selectedId === element.id && isBoxTransformable(element, scene)) {
-        const handles = coreHandleLocations(element, zoom, scene) ?? handleLocations(element);
+      if (selectedId === element.id && isBoxTransformable(element, scene, editingGroupId)) {
+        const handles = coreHandleLocations(element, zoom, scene, editingGroupId) ?? handleLocations(element);
         const top = {
           x: (handles.nw.x + handles.ne.x) / 2,
           y: (handles.nw.y + handles.ne.y) / 2,
@@ -926,7 +926,7 @@
       pointIndex = !event.shiftKey && selected && !endpoint
         ? pickLinearPoint(selected, start, 9 / zoom) : null;
       handle = !event.shiftKey && selected
-        ? pickHandle(selected, start, 9 / zoom, scene, zoom) : null;
+        ? pickHandle(selected, start, 9 / zoom, scene, zoom, editingGroupId) : null;
       if (groupHandle && group) {
         action = "group-transform";
         id = group.id;
@@ -1019,7 +1019,7 @@
       }
     } else if (g.action === "transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        const next = transformSelected(g.original, g.id, g.handle, point);
+        const next = transformSelected(g.original, g.id, g.handle, point, editingGroupId);
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;

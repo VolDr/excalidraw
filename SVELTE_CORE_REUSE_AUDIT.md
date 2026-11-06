@@ -14,6 +14,7 @@ still an unverified draft.
 | `native/groupEditing.ts` | `@excalidraw/element`: `getElementsInGroup`; original group-ID ancestry | Enter/exit nested group editing levels, select immediate child units and move individual boxes through original core drag/binding updates |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Complete outer-group selection, nested ancestry validation, wrapping and unwrapping without replacing original group-ID manipulation |
 | `native/importedBindings.ts` | `@excalidraw/element`: `bindBindingElement` through original `Scene` | Explicitly restores missing reverse arrow references in limited legacy inside-bound imports; validates every repaired link and forbids unrelated mutations |
+| `native/innerElementTransforms.ts` | `@excalidraw/element`: original `transformElements` using single-element resize/rotation; isolated core Scene | Core resize and rotation for individual validated inner boxes, preserving group ancestry, captions and arrow links |
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
@@ -175,6 +176,11 @@ also expose native style and standalone typography controls. Property
 mutations use original `newElementWith` and `redrawTextBoundingBox`, while
 linked arrows, grouped labels and partially edited child groups retain
 their conservative read-only restrictions.
+
+Single inner-group boxes now expose the original `getTransformHandles`
+geometry and can resize/rotate using `transformElements` in a separate
+Scene transaction. Bound arrows and captions update via core, and every
+group and reference is checked before results are accepted.
 
 Double-clicking into a whole group now enters its original
 `editingGroupId` hierarchy: immediate child groups remain atomic until

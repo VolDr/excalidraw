@@ -10,6 +10,7 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { canEditIndependently, editableSelection, safeGroupMembers } from "./groups";
+import { canTransformNativeInnerBox, transformNativeInnerBoxWithCore } from "./innerElementTransforms";
 import { editableNativeGroupSelection } from "./groupEditing";
 import {
   deleteNativeElementsWithCore,
@@ -48,7 +49,10 @@ const rotatePoint = (
 export function isBoxTransformable(
   element: ExcalidrawElement,
   scene?: SceneFile,
+  editingGroupId: string | null = null,
 ): boolean {
+  if (editingGroupId && scene &&
+    canTransformNativeInnerBox(scene, element.id, editingGroupId)) return true;
   return (
     (element.type === "rectangle" ||
       element.type === "ellipse" ||
@@ -99,8 +103,10 @@ export function coreHandleLocations(
   element: ExcalidrawElement,
   zoom: number,
   scene?: SceneFile,
+  editingGroupId: string | null = null,
 ): Record<Handle, Point> | null {
-  if (!Number.isFinite(zoom) || zoom <= 0 || !isBoxTransformable(element, scene)) {
+  if (!Number.isFinite(zoom) || zoom <= 0 ||
+      !isBoxTransformable(element, scene, editingGroupId)) {
     return null;
   }
   const handles = getTransformHandles(
@@ -132,11 +138,12 @@ export function pickHandle(
   tolerance = 9,
   scene?: SceneFile,
   zoom = 1,
+  editingGroupId: string | null = null,
 ): Handle | null {
-  if (!isBoxTransformable(element, scene)) {
+  if (!isBoxTransformable(element, scene, editingGroupId)) {
     return null;
   }
-  const locations = coreHandleLocations(element, zoom, scene) ?? handleLocations(element);
+  const locations = coreHandleLocations(element, zoom, scene, editingGroupId) ?? handleLocations(element);
   for (const key of [...corners, "rotate"] as Handle[]) {
     if (
       Math.hypot(point.x - locations[key].x, point.y - locations[key].y) <=
@@ -349,7 +356,11 @@ export function transformSelected(
   id: string,
   handle: Handle,
   point: Point,
+  editingGroupId: string | null = null,
 ): SceneFile {
+  if (editingGroupId) {
+    return transformNativeInnerBoxWithCore(scene, id, editingGroupId, handle, point);
+  }
   const current = scene.elements.find((element) => element.id === id);
   if (!current) {
     return scene;
