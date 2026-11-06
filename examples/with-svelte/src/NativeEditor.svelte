@@ -95,9 +95,7 @@
     handleLocations,
     coreHandleLocations,
     isBoxTransformable,
-    moveSelection,
     pickHandle,
-    transformSelected,
     type Handle,
   } from "./native/transforms";
   import {
@@ -132,7 +130,6 @@
     groupHandleLocations,
     pickGroupHandle,
     transformableGroup,
-    transformGroup,
   } from "./native/groupTransforms";
 
   type Props = {
@@ -1298,16 +1295,11 @@
       }
     } else if (g.action === "move" && g.id) {
       if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
-        // Original Excalidraw Scene owns all graph movement. The old
-        // safe-subset adapter is fallback only while feature parity matures.
-        const native = dragNativeGraphWithCore(
+        // Original Scene alone computes the drag and updates bindings.
+        // Rejected imports are no-ops, never custom geometry fallbacks.
+        const next = dragNativeGraphWithCore(
           g.original, g.ids, dx, dy, coreController,
         );
-        const next = native !== g.original
-          ? native
-          : moveSelection(
-              g.original, g.ids, dx, dy, editingGroupId, coreController,
-            );
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;
@@ -1316,14 +1308,10 @@
       }
     } else if (g.action === "transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        const core = transformNativeGraphWithCore(
+        const next = transformNativeGraphWithCore(
           g.original, [g.id], g.handle, point, coreController,
           event.shiftKey,
         );
-        const next = core !== g.original
-          ? core : transformSelected(
-              g.original, g.id, g.handle, point, editingGroupId,
-            );
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;
@@ -1344,13 +1332,9 @@
       }
     } else if (g.action === "group-transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        // The original transformElements handles arbitrary imported graphs.
-        // Legacy safe-group adapters are only a compatibility fallback.
-        const native = transformNativeGraphWithCore(
+        const next = transformNativeGraphWithCore(
           g.original, g.ids, g.handle, point, coreController,
         );
-        const next = native !== g.original
-          ? native : transformGroup(g.original, g.ids, g.handle, point);
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;
@@ -1626,22 +1610,12 @@
       event.preventDefault();
       const multiplier = event.shiftKey ? 10 : 1;
       const offset = nudges[event.key];
-      const native = dragNativeGraphWithCore(
+      const next = dragNativeGraphWithCore(
         scene, selectedIds,
         offset.x * multiplier,
         offset.y * multiplier,
         coreController,
       );
-      const next = native !== scene
-        ? native
-        : moveSelection(
-            scene,
-            selectedIds,
-            offset.x * multiplier,
-            offset.y * multiplier,
-            editingGroupId,
-            coreController,
-          );
       if (next !== scene && next.elements.some((el, i) => el !== scene.elements[i])) {
         commit(scene, next);
       }
