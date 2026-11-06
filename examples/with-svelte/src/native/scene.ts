@@ -47,11 +47,12 @@ export type NativeTool =
   | "text"
   | "freedraw"
   | "eraser"
+  | "frame"
   | "hand";
 
 export type NativeShape = Exclude<
   NativeTool,
-  "selection" | "hand" | "text" | "freedraw" | "eraser"
+  "selection" | "hand" | "text" | "freedraw" | "eraser" | "frame"
 >;
 export type Point = { x: number; y: number };
 
@@ -65,6 +66,7 @@ const SUPPORTED_TYPES = new Set<string>([
   "text",
   "freedraw",
   "image",
+  "frame",
 ]);
 
 export const blankScene = (): SceneFile => ({
@@ -370,7 +372,7 @@ export function hitTest(
     element,
     threshold: tolerance,
     elementsMap: map,
-    overrideShouldTestInside: true,
+    overrideShouldTestInside: element.type !== "frame",
   });
 }
 

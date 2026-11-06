@@ -14,7 +14,7 @@ export const nativeEraserHit = (
   tolerance: number,
 ): string[] => {
   const hit = pickElement(scene.elements, at, tolerance);
-  if (!hit) return [];
+  if (!hit || hit.type === "frame") return [];
   // A container-bound label is part of its figure, never a separate eraser
   // target. A grouped member is likewise erased as its whole safe group.
   const root = hit.type === "text" && hit.containerId

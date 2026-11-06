@@ -12,6 +12,7 @@ import {
 import { canEditIndependently, editableSelection, safeGroupMembers } from "./groups";
 import { canTransformNativeInnerBox, transformNativeInnerBoxWithCore } from "./innerElementTransforms";
 import { editableNativeGroupSelection } from "./groupEditing";
+import { unwrapNativeFrame } from "./frames";
 import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
@@ -311,6 +312,17 @@ export function deleteSelection(
   scene: SceneFile,
   ids: readonly string[],
 ): SceneFile {
+  const frames = scene.elements.filter((element) =>
+    ids.includes(element.id) && element.type === "frame" && !element.isDeleted,
+  );
+  if (frames.length) {
+    // Original frame unwrapping must precede deletion so children never
+    // retain a frameId to a deleted parent.
+    if (frames.length !== ids.length) return scene;
+    let next = scene;
+    for (const frame of frames) next = unwrapNativeFrame(next, frame.id);
+    return next;
+  }
   const selected = new Set(editableSelection(scene, ids));
   const wanted = new Set(ids);
   for (const element of scene.elements) {

@@ -45,7 +45,7 @@ export function nativeStyleTarget(
     return null;
   }
   const element = scene.elements.find((candidate) => candidate.id === id);
-  if (!element || !isNativeShape(element)) return null;
+  if (!element || !isNativeShape(element) || element.type === "frame") return null;
   if (editingGroupId) {
     if (
       editableNativeGroupSelection(scene, [id], editingGroupId).length !== 1 ||
