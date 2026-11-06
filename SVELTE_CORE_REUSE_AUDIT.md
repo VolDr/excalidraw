@@ -128,7 +128,10 @@ reordering also accepts whole verified nested and linked groups.
 Fixtures are present but unexecuted.
 
 Validated closed groups may now carry a box caption and reciprocal arrow
-links on the same box. The native adapter includes the caption as an internal
+links on the same box. `nativeReciprocalCaption` validates mixed
+box/text/arrow relationships without weakening the guarded single-label
+editor, and original core binding functions can now attach new arrows to
+already-captioned safe boxes. The native adapter includes the caption as an internal
 group member during grouping, duplication and deletion, while the original
 core still owns movement and binding mutations. The existing one-label-only
 editor guard remains unchanged for complex captions until the core editing

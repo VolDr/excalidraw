@@ -135,22 +135,19 @@ describe("Svelte groups with original Excalidraw nesting", () => {
     // Arrow binding reuses the native/core binding adapter; the box already
     // has a label, so create a reciprocal imported graph for this fixture.
     const caption = original.elements.find((element) => element.type === "text")!;
-    const linked = appendNativeArrow(original, arrow, { x: 145, y: 55 }, { x: 320, y: 55 });
-    const actualArrow = linked.elements.find((element) => element.type === "arrow");
+    const source = appendNativeArrow(original, arrow, { x: 145, y: 55 }, { x: 320, y: 55 });
+    const actualArrow = source.elements.find((element) => element.type === "arrow");
     if (actualArrow?.type !== "arrow") return;
-    const source = {
-      ...linked,
-      elements: linked.elements.map((element) =>
-        element.id === a.id
-          ? { ...element, boundElements: [
-              { id: caption.id, type: "text" as const },
-              { id: actualArrow.id, type: "arrow" as const },
-            ] }
-          : element,
-      ),
-    };
+    expect(actualArrow.startBinding?.elementId).toBe(a.id);
+    expect(actualArrow.endBinding?.elementId).toBe(b.id);
+    expect(source.elements[0].boundElements?.some((ref) =>
+      ref.type === "text" && ref.id === caption.id
+    )).toBe(true);
+    expect(source.elements[0].boundElements?.some((ref) =>
+      ref.type === "arrow" && ref.id === actualArrow.id
+    )).toBe(true);
     const ids = [a.id, b.id, actualArrow.id];
-    // In a complete composite graph, the internal text is never a root.
+    // The internal text never becomes a separately selectable root.
     const result = groupSelection(source, ids);
     expect(result.groupId).not.toBeNull();
     const label = result.scene.elements.find((element) => element.id === caption.id)!;

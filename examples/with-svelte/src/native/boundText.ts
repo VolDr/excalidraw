@@ -82,6 +82,55 @@ export function nativeLabelBox(
   return box;
 }
 
+/**
+ * Validate a single reciprocal text label, including when its container
+ * also has one or more bound arrows. This is a relationship safety gate,
+ * not a second text layout algorithm. Editing of mixed bound graphs is
+ * delegated separately to the original core.
+ */
+export function nativeReciprocalCaption(
+  scene: SceneFile,
+  label: ExcalidrawElement,
+): LabelBox | null {
+  if (
+    label.type !== "text" ||
+    !label.containerId ||
+    label.isDeleted ||
+    label.locked ||
+    !label.autoResize ||
+    label.boundElements?.length ||
+    label.frameId ||
+    new Set(label.groupIds).size !== label.groupIds.length
+  ) return null;
+  const box = scene.elements.find((item) => item.id === label.containerId);
+  if (
+    !box ||
+    !["rectangle", "ellipse", "diamond"].includes(box.type) ||
+    box.isDeleted ||
+    box.locked ||
+    box.frameId ||
+    box.width <= 20 ||
+    box.height <= 20 ||
+    box.groupIds.length !== label.groupIds.length ||
+    box.groupIds.some((id, i) => id !== label.groupIds[i]) ||
+    !box.boundElements ||
+    box.boundElements.filter((ref) => ref.type === "text").length !== 1 ||
+    !box.boundElements.some((ref) =>
+      ref.type === "text" && ref.id === label.id
+    ) ||
+    box.boundElements.some((ref) =>
+      ref.type !== "text" && ref.type !== "arrow"
+    ) ||
+    new Set(box.boundElements.map((ref) => ref.id)).size !== box.boundElements.length ||
+    scene.elements.some((other) =>
+      !other.isDeleted && other.id !== label.id &&
+      ((other.type === "text" && other.containerId === box.id) ||
+        other.boundElements?.some((ref) => ref.id === label.id))
+    )
+  ) return null;
+  return box as LabelBox;
+}
+
 /** Derive official placement and wrapping without changing the file. */
 export function nativeBoundLabelLayout(
   scene: SceneFile,

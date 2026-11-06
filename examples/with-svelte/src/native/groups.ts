@@ -14,7 +14,7 @@ import {
   validBinding,
 } from "./bindings";
 import { updateNativeElement } from "./coreAdapter";
-import { nativeEditableLabel, nativeLabelBox } from "./boundText";
+import { nativeEditableLabel, nativeLabelBox, nativeReciprocalCaption } from "./boundText";
 import { nativeImageSource } from "./images";
 import { isNativeShape } from "./scene";
 
@@ -109,37 +109,8 @@ const isClosedGraphCaption = (
   memberMap: ReadonlyMap<string, ExcalidrawElement>,
   label: ExcalidrawElement,
 ): boolean => {
-  if (nativeLabelBox(scene, label)) return true;
-  if (
-    label.type !== "text" ||
-    !label.containerId ||
-    label.isDeleted ||
-    label.locked ||
-    !label.autoResize ||
-    label.boundElements?.length ||
-    label.frameId
-  ) return false;
-  const box = memberMap.get(label.containerId);
-  if (
-    !box ||
-    !["rectangle", "ellipse", "diamond"].includes(box.type) ||
-    box.isDeleted ||
-    box.locked ||
-    box.frameId ||
-    box.width <= 20 ||
-    box.height <= 20 ||
-    box.groupIds.join("\u0000") !== label.groupIds.join("\u0000") ||
-    !box.boundElements?.some((ref) => ref.type === "arrow") ||
-    box.boundElements.filter((ref) => ref.type === "text").length !== 1 ||
-    !box.boundElements.some((ref) => ref.type === "text" && ref.id === label.id) ||
-    scene.elements.some((other) =>
-      !other.isDeleted &&
-      other.id !== label.id &&
-      other.type === "text" &&
-      other.containerId === box.id
-    )
-  ) return false;
-  return true;
+  const box = nativeReciprocalCaption(scene, label);
+  return !!box && memberMap.has(box.id);
 };
 
 /**
