@@ -26,6 +26,7 @@ still an unverified draft.
 | `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
 | `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text and validated reciprocal box captions use original font metrics, wrapping and container resize; imported/rotated/complex bindings remain guarded |
 | `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
+| `native/complexCaptions.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `updateBoundElements`, `normalizeText`, bound-text max sizes | Edits captions on closed box/text/arrow groups through original text reflow and arrow rerouting, while verifying target and group invariants |
 | `native/boundText.ts` | `@excalidraw/element`: `computeBoundTextPosition`, `computeContainerDimensionForBoundText`, `getBoundTextMaxWidth`, `getBoundTextMaxHeight`, `measureText`, `wrapText`, `normalizeText` | Reciprocal text placement and dimension constraints |
 
 The conservative, whole-group and reciprocal-single-label checks are
@@ -133,9 +134,11 @@ box/text/arrow relationships without weakening the guarded single-label
 editor, and original core binding functions can now attach new arrows to
 already-captioned safe boxes. The native adapter includes the caption as an internal
 group member during grouping, duplication and deletion, while the original
-core still owns movement and binding mutations. The existing one-label-only
-editor guard remains unchanged for complex captions until the core editing
-action is wired. No separate text layout code is introduced.
+core still owns movement and binding mutations. The one-label-only native editor remains guarded, but complete composite
+groups now have a separate double-click text-edit action that delegates
+caption measurement, box resize and arrow-point updates to the original
+`redrawTextBoundingBox` and `updateBoundElements`. Unsupported empty-text
+deletion and partial imported graphs remain no-ops. No separate text layout code is introduced.
 
 Complete simple two-point arrow/box binding graphs can now be grouped and
 dragged via Excalidraw's original `dragSelectedElements`. Svelte validates

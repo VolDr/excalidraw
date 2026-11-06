@@ -15,6 +15,7 @@
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import { applyNativeTypography, nativeTypographyTarget, type NativeTypographyChange } from "./native/textStyles";
   import { cropNativeImageCenter, resetNativeImageCrop } from "./native/imageCrop";
+  import { nativeCompositeCaptionTarget, updateNativeCompositeCaption } from "./native/complexCaptions";
   import {
     nativeBoundLabelLayout,
     nativeEditableLabel,
@@ -503,7 +504,9 @@
     textEditor = null;
     const value = editor.value.trimEnd();
     if (editor.boxId) {
-      const next = updateNativeBoxLabel(scene, editor.boxId, value);
+      const next = nativeCompositeCaptionTarget(scene, editor.boxId)
+        ? updateNativeCompositeCaption(scene, editor.boxId, value)
+        : updateNativeBoxLabel(scene, editor.boxId, value);
       if (next !== scene) {
         commit(scene, next);
       }
@@ -569,12 +572,16 @@
       hit.angle === 0
     ) {
       const label = nativeEditableLabel(scene, hit);
-      if (label !== undefined) {
-        const position = label ? nativeBoundLabelLayout(scene, label) : null;
+      const composite = nativeCompositeCaptionTarget(scene, hit.id);
+      if (label !== undefined || composite) {
+        const chosen = label ?? composite;
+        const position = chosen ? nativeBoundLabelLayout(scene, chosen) : null;
         const at = position
           ? { x: position.x, y: position.y }
-          : { x: hit.x + 12, y: hit.y + 12 };
-        void beginText(at, label ?? undefined, hit.id);
+          : chosen
+            ? { x: chosen.x, y: chosen.y }
+            : { x: hit.x + 12, y: hit.y + 12 };
+        void beginText(at, chosen ?? undefined, hit.id);
       }
     }
   }
