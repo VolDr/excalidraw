@@ -160,6 +160,42 @@ describe("Svelte groups with original Excalidraw nesting", () => {
     expect(deleted.elements.every((element) => element.isDeleted)).toBe(true);
   });
 
+  it("moves a component of two arrows sharing a reciprocal target", () => {
+    const a = createShape("rectangle", { x: 10, y: 10 }, { x: 120, y: 120 });
+    const b = createShape("ellipse", { x: 280, y: 10 }, { x: 390, y: 120 });
+    const c = createShape("diamond", { x: 500, y: 10 }, { x: 600, y: 130 });
+    const base = { ...blankScene(), elements: [a, b, c] };
+    const first = createShape("arrow", { x: 85, y: 55 }, { x: 310, y: 55 });
+    const second = createShape("arrow", { x: 85, y: 80 }, { x: 540, y: 80 });
+    const withFirst = appendNativeArrow(
+      base, first, { x: 85, y: 55 }, { x: 310, y: 55 },
+    );
+    const linked = appendNativeArrow(
+      withFirst, second, { x: 85, y: 80 }, { x: 540, y: 80 },
+    );
+    const arrows = linked.elements.filter((element) => element.type === "arrow");
+    expect(arrows).toHaveLength(2);
+    expect(linked.elements[0].boundElements?.filter((ref) => ref.type === "arrow"))
+      .toHaveLength(2);
+    const ids = [a.id, b.id, c.id, ...arrows.map((element) => element.id)];
+    const grouped = groupSelection(linked, ids);
+    expect(grouped.groupId).not.toBeNull();
+    expect(safeGroupMembers(grouped.scene, grouped.groupId!)).toHaveLength(5);
+    const moved = moveSelection(grouped.scene, ids, 18, 25);
+    expect(moved).not.toBe(grouped.scene);
+    for (const before of arrows) {
+      if (before.type !== "arrow") continue;
+      const after = moved.elements.find((item) => item.id === before.id);
+      expect(after?.type).toBe("arrow");
+      if (after?.type === "arrow") {
+        expect(after.startBinding?.elementId).toBe(a.id);
+        expect(after.endBinding?.elementId).toBe(before.endBinding?.elementId);
+      }
+    }
+    expect(moveSelection(grouped.scene, ids.slice(0, 4), 10, 0))
+      .toBe(grouped.scene);
+  });
+
   it("does not change partially selected, nested, bound or locked groups", () => {
     const a = createShape("rectangle", { x: 0, y: 0 }, { x: 30, y: 40 });
     const b = createShape("rectangle", { x: 50, y: 60 }, { x: 70, y: 90 });

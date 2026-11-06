@@ -375,7 +375,7 @@ describe("native flat group transforms", () => {
       .toBe(true);
   });
 
-  it("refuses partial, nested, damaged and unsupported imported groups", () => {
+  it("refuses partial, malformed nested and unsupported imported groups", () => {
     const { box, sibling, label, scene, ids } = example();
     const p = { x: 500, y: 500 };
     const malformed = {
@@ -384,11 +384,15 @@ describe("native flat group transforms", () => {
         element.id === label.id ? { ...element, groupIds: [] } : element,
       ),
     };
+    // Invalid ancestry: only the box gains an inner group ID, while
+    // its caption stays in the original outer group.
     const nested = {
       ...scene,
       elements: scene.elements.map((element) => ({
         ...element,
-        groupIds: ["outer", ...element.groupIds],
+        groupIds: element.id === box.id
+          ? ["foreign-inner", ...element.groupIds]
+          : [...element.groupIds],
       })),
     };
     for (const input of [malformed, nested]) {

@@ -151,6 +151,8 @@ rasters and reciprocal captions now expose resize/rotation handles. Their
 geometry is delegated to Excalidraw's original `resizeMultipleElements`
 and `transformElements`, followed by full ancestry and caption checks.
 Closed linked-arrow groups still cannot be resized or rotated safely.
+The safe-group guard also supports multiple connected simple arrows
+sharing the same target when all reciprocal links remain inside the group.
 
 Nested native groups can now be selected as complete outer units, duplicated, moved,
 deleted, wrapped in a higher-level group, and ungrouped one outer level at a
