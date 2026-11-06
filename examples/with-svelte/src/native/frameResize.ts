@@ -9,7 +9,12 @@ import type {
   NonDeleted,
 } from "@excalidraw/element/types";
 
-import { nativeElementsMap, withNativeCoreScene } from "./coreAdapter";
+import {
+  nativeElementsMap,
+  transformNativeGraphWithCore,
+  withNativeCoreScene,
+} from "./coreAdapter";
+import type { CoreEditorController } from "@excalidraw/element";
 import { reconcileNativeResizedFrameMembership } from "./frameMembership";
 
 import type { Point, SceneFile } from "./scene";
@@ -97,13 +102,18 @@ export const resizeNativeFrameWithCore = (
   id: string,
   handle: NativeFrameHandle,
   pointer: Point,
+  controller?: CoreEditorController,
 ): SceneFile => {
   const before = eligibleFrame(scene, id);
   if (!before || !cornerHandles.includes(handle) ||
       !Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return scene;
   let next: SceneFile;
   try {
-    next = withNativeCoreScene(scene, (core) => {
+    next = controller
+      ? transformNativeGraphWithCore(
+          scene, [id], handle, pointer, controller, false,
+        )
+      : withNativeCoreScene(scene, (core) => {
       const frame = core.getNonDeletedElement(id);
       if (!frame || frame.type !== "frame") return;
       const originals = new Map(
