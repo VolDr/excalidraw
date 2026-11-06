@@ -1,6 +1,7 @@
 import {
   bindBindingElement,
   CoreEditorController,
+  getCoreGraphDefects,
   isCoreGraphTransitionValid,
   getGlobalFixedPointForBindableElement,
   getCommonBounds,
@@ -2033,10 +2034,19 @@ export function deleteNativeElementsWithCore(
   const controller = persistentController ??
     new CoreEditorController(scene.elements);
   try {
-    return adoptCoreTransaction(
+    const next = adoptCoreTransaction(
       scene,
       controller.previewDeleteElements(scene.elements, ids),
     );
+    // Only the shared graph-invariant checker decides whether Excalidraw's
+    // deletion cleanup preserved imported references. Existing defects may
+    // disappear, but the operation must introduce no new dangling refs.
+    const before = getCoreGraphDefects(scene.elements);
+    const after = getCoreGraphDefects(next.elements);
+    return [...after].every((defect) => before.has(defect)) ? next : scene;
+  } catch {
+    // An imported graph with invalid extension data must not crash the UI.
+    return scene;
   } finally {
     if (!persistentController) controller.destroy();
   }
