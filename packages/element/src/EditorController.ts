@@ -1,4 +1,5 @@
 import { Scene } from "./Scene";
+import { getDefaultAppState } from "../../excalidraw/appState";
 import { dragSelectedElements } from "./dragElements";
 import { fixBindingsAfterDeletion } from "./binding";
 import { getCommonBounds } from "./bounds";
@@ -38,12 +39,6 @@ export type CoreEditorTransactionResult = {
   readonly changedIds: ReadonlySet<string>;
 };
 
-const initialSelection = (): CoreEditorSelectionState => ({
-  selectedElementIds: {},
-  selectedGroupIds: {},
-  editingGroupId: null,
-});
-
 const sameVersion = (a: CoreEditorVersion, b: CoreEditorVersion) =>
   a.id === b.id &&
   a.version === b.version &&
@@ -63,30 +58,30 @@ const sameVersion = (a: CoreEditorVersion, b: CoreEditorVersion) =>
  */
 export class CoreEditorController {
   private scene: Scene;
-  private selection: CoreEditorSelectionState;
-  private tool: CoreEditorToolState = {
-    activeTool: {
-      type: "selection",
-      customType: null,
-      locked: false,
-      fromSelection: false,
-      lastActiveTool: null,
-    },
-    currentItemArrowType: "round",
-  };
+  // One canonical Excalidraw AppState, not separate Svelte selection/tool/view stores.
+  private appState: AppState;
   private disposed = false;
   private readonly subscribers = new Set<() => void>();
 
   constructor(
     elements: readonly ExcalidrawElement[] = [],
-    state: Partial<CoreEditorSelectionState> = {},
+    state: Partial<AppState> = {},
   ) {
     this.scene = new Scene(structuredClone(elements), {
       skipValidation: true,
     });
-    this.selection = {
-      ...initialSelection(),
+    // Reuse React's actual default state. The controller stays headless:
+    // this module has no dependency on React components or browser globals.
+    const defaults = getDefaultAppState();
+    this.appState = {
+      ...defaults,
+      offsetTop: 0,
+      offsetLeft: 0,
+      width: 0,
+      height: 0,
       ...state,
+      activeTool: { ...defaults.activeTool, ...state.activeTool },
+      zoom: { ...defaults.zoom, ...state.zoom },
       selectedElementIds: { ...state.selectedElementIds },
       selectedGroupIds: { ...state.selectedGroupIds },
     };
@@ -111,31 +106,120 @@ export class CoreEditorController {
   getSelection(): CoreEditorSelectionState {
     this.assertOpen();
     return {
-      selectedElementIds: { ...this.selection.selectedElementIds },
-      selectedGroupIds: { ...this.selection.selectedGroupIds },
-      editingGroupId: this.selection.editingGroupId,
+      selectedElementIds: { ...this.appState.selectedElementIds },
+      selectedGroupIds: { ...this.appState.selectedGroupIds },
+      editingGroupId: this.appState.editingGroupId,
     };
   }
 
   getToolState(): CoreEditorToolState {
     this.assertOpen();
     return {
-      activeTool: { ...this.tool.activeTool },
-      currentItemArrowType: this.tool.currentItemArrowType,
+      activeTool: { ...this.appState.activeTool },
+      currentItemArrowType: this.appState.currentItemArrowType,
     };
+  }
+
+  /**
+   * Full typed AppState is owned by the core. Return a detached view of the
+   * mutable selection/tool/viewport fields used by framework hosts.
+   */
+  getAppState(): AppState {
+    this.assertOpen();
+    return {
+      ...this.appState,
+      selectedElementIds: { ...this.appState.selectedElementIds },
+      selectedGroupIds: { ...this.appState.selectedGroupIds },
+      activeTool: { ...this.appState.activeTool },
+      zoom: { ...this.appState.zoom },
+    };
+  }
+
+  /**
+   * Non-geometry editor state (styles, preferences, zoom, tool, etc.).
+   * Selection always goes through the original group normalization path.
+   */
+  setAppState(patch: Partial<AppState>): void {
+    this.assertOpen();
+    const {
+      selectedElementIds,
+      selectedGroupIds,
+      editingGroupId,
+      ...rest
+    } = patch;
+    if (
+      selectedElementIds !== undefined ||
+      selectedGroupIds !== undefined ||
+      editingGroupId !== undefined
+    ) {
+      const ids = Object.entries(
+        selectedElementIds ?? this.appState.selectedElementIds,
+      ).filter(([, selected]) => selected).map(([id]) => id);
+      this.setSelection(
+        ids,
+        editingGroupId === undefined
+          ? this.appState.editingGroupId : editingGroupId,
+        selectedGroupIds,
+      );
+    }
+    if (!Object.keys(rest).length) return;
+    const next = { ...this.appState, ...rest };
+    if (rest.activeTool) next.activeTool = { ...rest.activeTool };
+    if (rest.zoom) next.zoom = { ...rest.zoom };
+    this.appState = next;
+    this.notify();
+  }
+
+  /**
+   * Excalidraw scroll is expressed in scene units, whereas the Svelte canvas
+   * positions its viewport with pixel pan. No independent camera state.
+   */
+  getViewport(): { zoom: number; pan: { x: number; y: number } } {
+    this.assertOpen();
+    const zoom = this.appState.zoom.value;
+    return {
+      zoom,
+      pan: {
+        x: this.appState.scrollX * zoom,
+        y: this.appState.scrollY * zoom,
+      },
+    };
+  }
+
+  setViewport(zoom: number, pan: { x: number; y: number }): void {
+    this.assertOpen();
+    if (
+      !Number.isFinite(zoom) || zoom <= 0 ||
+      !Number.isFinite(pan.x) || !Number.isFinite(pan.y)
+    ) {
+      throw new Error("Invalid viewport");
+    }
+    const scrollX = pan.x / zoom;
+    const scrollY = pan.y / zoom;
+    if (
+      this.appState.zoom.value === zoom &&
+      this.appState.scrollX === scrollX &&
+      this.appState.scrollY === scrollY
+    ) return;
+    this.setAppState({
+      zoom: { value: zoom as AppState["zoom"]["value"] },
+      scrollX,
+      scrollY,
+    });
   }
 
   setActiveTool(
     activeTool: AppState["activeTool"],
     currentItemArrowType: AppState["currentItemArrowType"] =
-      this.tool.currentItemArrowType,
+      this.appState.currentItemArrowType,
   ): void {
     this.assertOpen();
     if (
-      JSON.stringify(this.tool.activeTool) === JSON.stringify(activeTool) &&
-      this.tool.currentItemArrowType === currentItemArrowType
+      JSON.stringify(this.appState.activeTool) === JSON.stringify(activeTool) &&
+      this.appState.currentItemArrowType === currentItemArrowType
     ) return;
-    this.tool = {
+    this.appState = {
+      ...this.appState,
       activeTool: { ...activeTool },
       currentItemArrowType,
     };
@@ -150,7 +234,7 @@ export class CoreEditorController {
    */
   getSelectionUnit(
     id: string,
-    editingGroupId: string | null = this.selection.editingGroupId,
+    editingGroupId: string | null = this.appState.editingGroupId,
   ): string[] {
     this.assertOpen();
     const hit = this.scene.getNonDeletedElement(id);
@@ -176,7 +260,7 @@ export class CoreEditorController {
 
   enterGroupForElement(
     id: string,
-    currentGroupId: string | null = this.selection.editingGroupId,
+    currentGroupId: string | null = this.appState.editingGroupId,
   ): string | null {
     this.assertOpen();
     const hit = this.scene.getNonDeletedElement(id);
@@ -197,7 +281,7 @@ export class CoreEditorController {
   }
 
   exitEditingGroup(
-    groupId: string | null = this.selection.editingGroupId,
+    groupId: string | null = this.appState.editingGroupId,
   ): { editingGroupId: string | null; selectedIds: string[] } {
     this.assertOpen();
     if (!groupId) {
@@ -220,7 +304,7 @@ export class CoreEditorController {
 
   setSelection(
     selectedElementIds: readonly string[],
-    editingGroupId: string | null = this.selection.editingGroupId,
+    editingGroupId: string | null = this.appState.editingGroupId,
     selectedGroupIds?: AppState["selectedGroupIds"],
   ): void {
     this.assertOpen();
@@ -244,7 +328,8 @@ export class CoreEditorController {
           editingGroupId,
         } as InteractiveCanvasAppState,
       );
-    this.selection = {
+    this.appState = {
+      ...this.appState,
       selectedElementIds: normalized,
       selectedGroupIds: { ...groups },
       editingGroupId,
@@ -293,7 +378,7 @@ export class CoreEditorController {
     } finally {
       staged.destroy();
     }
-    const editingGroupId = this.selection.editingGroupId;
+    const editingGroupId = this.appState.editingGroupId;
     const remains = editingGroupId
       ? getElementsInGroup(
           this.scene.getNonDeletedElementsMap(),
@@ -303,7 +388,7 @@ export class CoreEditorController {
     // A new document may have deleted/reorganized groups. Re-derive the
     // selected groups using Excalidraw's current Scene, not a stale copy.
     this.setSelection(
-      Object.keys(this.selection.selectedElementIds),
+      Object.keys(this.appState.selectedElementIds),
       remains ? editingGroupId : null,
     );
   }
@@ -401,9 +486,9 @@ export class CoreEditorController {
         // successfully computed elements from the isolated draft.
         this.scene.replaceAllElements([...after], { skipValidation: true });
         draft.destroy();
-        const activeIds = Object.keys(this.selection.selectedElementIds)
+        const activeIds = Object.keys(this.appState.selectedElementIds)
           .filter((id) => !!this.scene.getNonDeletedElement(id));
-        const editingGroupId = this.selection.editingGroupId;
+        const editingGroupId = this.appState.editingGroupId;
         const remains = editingGroupId
           ? getElementsInGroup(
               this.scene.getNonDeletedElementsMap(),
