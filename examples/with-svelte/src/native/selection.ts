@@ -11,6 +11,7 @@ import type {
 } from "@excalidraw/element/types";
 
 import { nativeEditableLabel } from "./boundText";
+import { duplicateNativeFrameWithCore } from "./frameDuplicate";
 import { nativeElementsMap } from "./coreAdapter";
 import {
   canEditIndependently,
@@ -88,6 +89,14 @@ export function duplicateSelection(
   ids: readonly string[],
   offset = 24,
 ): { scene: SceneFile; ids: string[] } {
+  if (
+    ids.length === 1 &&
+    scene.elements.some((element) =>
+      element.id === ids[0] && element.type === "frame" && !element.isDeleted
+    )
+  ) {
+    return duplicateNativeFrameWithCore(scene, ids[0], offset);
+  }
   const requested = new Set(editableSelection(scene, ids));
   const selected = new Set<string>();
   const copiedParents = new Set<string>();
