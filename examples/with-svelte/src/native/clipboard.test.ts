@@ -8,6 +8,7 @@ import {
   pasteNativeSelection,
 } from "./clipboard";
 import { groupSelection } from "./groups";
+import { createNativeFrameWithCore } from "./frames";
 import { SceneHistory } from "./history";
 import { addNativeImage } from "./images";
 import {
@@ -30,6 +31,44 @@ const labeledGroup = () => {
 };
 
 describe("Svelte native scene clipboard", () => {
+  it("copies, cuts and pastes a whole frame with its child elements", () => {
+    const a = createShape("rectangle", { x: 30, y: 30 }, { x: 100, y: 100 });
+    const b = createShape("ellipse", { x: 110, y: 30 }, { x: 165, y: 100 });
+    const source = { ...blankScene(), elements: [a, b] };
+    const wrapped = createNativeFrameWithCore(
+      source, { x: 15, y: 15 }, { x: 200, y: 140 },
+    );
+    if (!wrapped) throw Error("Frame creation failed");
+    const { scene, frame } = wrapped;
+    const encoded = copyNativeSelection(scene, [frame.id]);
+    expect(encoded).toBeTruthy();
+    const payload = JSON.parse(encoded!);
+    expect(payload.rootIds).toHaveLength(1);
+    expect(payload.elements).toHaveLength(3);
+    expect(payload.elements.filter((el: { frameId: string | null }) =>
+      el.frameId === payload.rootIds[0]
+    )).toHaveLength(2);
+
+    const pasted = pasteNativeSelection(scene, encoded!);
+    expect(pasted.ids).toHaveLength(1);
+    expect(pasted.scene.elements).toHaveLength(6);
+    expect(pasted.scene.elements.filter((el) =>
+      el.frameId === pasted.ids[0]
+    )).toHaveLength(2);
+    expect(scene.elements.every((el) => !el.isDeleted)).toBe(true);
+
+    const cut = cutNativeSelection(scene, [frame.id]);
+    expect(cut.text).toBeTruthy();
+    expect(cut.scene.elements.every((el) => el.isDeleted)).toBe(true);
+    expect(scene.elements.every((el) => !el.isDeleted)).toBe(true);
+    const restored = pasteNativeSelection(cut.scene, cut.text!);
+    expect(restored.ids).toHaveLength(1);
+    expect(restored.scene.elements.filter((el) =>
+      el.frameId === restored.ids[0] && !el.isDeleted
+    )).toHaveLength(2);
+  });
+
+
   it("copies and pastes the entire group including its reciprocal label", () => {
     const { scene, ids, box, ellipse } = labeledGroup();
     const before = structuredClone(scene);

@@ -19,6 +19,7 @@ still an unverified draft.
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
+| `native/clipboard.ts` | Original whole-frame `duplicateElements` via frameDuplicate, `fixBindingsAfterDeletion` via coreAdapter | Clipboard extraction by new IDs instead of array position, whole-frame cut and paste, preserving children and original frame graph |
 | `native/frameDuplicate.ts` | `@excalidraw/element`: `duplicateElements`, `syncMovedIndices` | Whole-frame copy with child remapping, original nested group identity and reciprocal links; conservative imported graph validation |
 | `native/frameDrop.ts` | `@excalidraw/element`: `isCursorInFrame`, `isElementInFrame`, `addElementsToFrame`, `removeElementsFromFrame` | On pointer-up, safely adopts or releases a single unbound root on crossing frame boundaries; preserves history and original ordering |
 | `native/frameMove.ts` | `@excalidraw/element`: original `dragSelectedElements` via core Scene | Validates complete frame drags, including all child translations and unchanged external references; rejects incomplete imported group ancestry |
@@ -228,6 +229,12 @@ Frame drawing, wrapping selection and unwrapping now use original
 `addElementsToFrame` and `removeAllElementsFromFrame`. Moving a frame
 delegates to original `dragSelectedElements`, which moves its children.
 Frame naming is also editable through original `newElementWith`.
+Ctrl+C/Ctrl+X/Ctrl+V on one selected native frame also preserve the
+frame and its children. Clipboard extraction now uses newly created IDs,
+because the original core inserts frame copies adjacent to originals.
+Cut uses the original reciprocal-binding deletion lifecycle to remove the
+whole copied frame subtree as a single undoable transaction.
+
 Ctrl+D on a selected native frame now calls the original
 `duplicateElements` instead of copying the frame alone. Children,
 bound captions, nested group IDs, inside-frame arrow target mappings and

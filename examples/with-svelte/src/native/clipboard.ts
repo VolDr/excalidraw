@@ -1,6 +1,7 @@
 import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
 
 import { editableSelection } from "./groups";
+import { deleteNativeElementsWithCore } from "./coreAdapter";
 import { nativeImageSource } from "./images";
 import { blankScene, parseScene } from "./scene";
 import { duplicateSelection } from "./selection";
@@ -33,7 +34,13 @@ export function copyNativeSelection(
   if (cloned.ids.length !== allowed.length) {
     return null;
   }
-  const elements = cloned.scene.elements.slice(scene.elements.length);
+  // Original duplicateElements places frame copies beside their source
+  // objects rather than at the end of the array. Identify generated IDs,
+  // not array positions, to retain every descendant and reciprocal label.
+  const existingIds = new Set(scene.elements.map((element) => element.id));
+  const elements = cloned.scene.elements.filter((element) =>
+    !existingIds.has(element.id)
+  );
   // Paste rejects payloads above this count. Enforce the same limit before
   // cut can delete the original selection, including its internal labels.
   if (elements.length > MAX_CLIPBOARD_ELEMENTS) {
@@ -72,10 +79,25 @@ export function cutNativeSelection(
   if (!text) {
     return { scene, text: null };
   }
-  const next = deleteSelection(scene, ids);
+  const frame = ids.length === 1
+    ? scene.elements.find((element) =>
+        element.id === ids[0] && element.type === "frame" && !element.isDeleted
+      )
+    : null;
+  const removedIds = frame
+    ? [
+        frame.id,
+        ...scene.elements.filter((element) =>
+          !element.isDeleted && element.frameId === frame.id
+        ).map((element) => element.id),
+      ]
+    : [...ids];
+  const next = frame
+    ? deleteNativeElementsWithCore(scene, new Set(removedIds))
+    : deleteSelection(scene, ids);
   if (
     next === scene ||
-    ids.some(
+    removedIds.some(
       (id) =>
         !next.elements.some(
           (element) => element.id === id && element.isDeleted,
@@ -142,7 +164,10 @@ export function pasteNativeSelection(
       }
     }
     const duplicated = duplicateSelection(source, payload.rootIds, offset);
-    const pasted = duplicated.scene.elements.slice(source.elements.length);
+    const sourceIds = new Set(source.elements.map((element) => element.id));
+    const pasted = duplicated.scene.elements.filter((element) =>
+      !sourceIds.has(element.id)
+    );
     if (
       duplicated.ids.length !== payload.rootIds.length ||
       pasted.length !== source.elements.length
