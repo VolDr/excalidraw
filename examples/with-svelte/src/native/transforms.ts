@@ -13,6 +13,7 @@ import { canEditIndependently, editableSelection, safeGroupMembers } from "./gro
 import { canTransformNativeInnerBox, transformNativeInnerBoxWithCore } from "./innerElementTransforms";
 import { editableNativeGroupSelection } from "./groupEditing";
 import { unwrapNativeFrame } from "./frames";
+import { moveNativeFrameWithCore } from "./frameMove";
 import {
   deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
@@ -262,6 +263,14 @@ export function moveSelection(
   );
   if (!selected.size || selected.size !== new Set(ids).size) {
     return scene;
+  }
+  if (selected.size === 1) {
+    const id = [...selected][0];
+    if (scene.elements.some((element) =>
+      element.id === id && element.type === "frame"
+    )) {
+      return moveNativeFrameWithCore(scene, id, dx, dy);
+    }
   }
   // Core owns group movement, bound labels and reciprocal arrow updates.
   // Native policy has already narrowed this to valid editable roots/groups.

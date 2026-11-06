@@ -19,6 +19,7 @@ still an unverified draft.
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
+| `native/frameMove.ts` | `@excalidraw/element`: original `dragSelectedElements` via core Scene | Validates complete frame drags, including all child translations and unchanged external references; rejects incomplete imported group ancestry |
 | `native/frameResize.ts` | `@excalidraw/element`: `getTransformHandles`, `transformElements`, `getElementsInResizingFrame` | Frame corner resize through original core; accepts only geometry edits that keep the same frame child set |
 | `native/frames.ts` | `@excalidraw/element`: `newFrameElement`, `getElementsInNewFrame`, `addElementsToFrame`, `getCommonBounds`, `removeAllElementsFromFrame` | Frame creation, automatic membership, wrapping selection, drag with original core, unwrapping without deleting children |
 | `native/laser.ts` | `@excalidraw/laser-pointer`: original `LaserPointer` stroke smoothing and outline generation | Adds transient non-document laser pointer gestures; native canvas paints returned core polygon, no scene mutation or undo |
@@ -225,6 +226,12 @@ Frame drawing, wrapping selection and unwrapping now use original
 `addElementsToFrame` and `removeAllElementsFromFrame`. Moving a frame
 delegates to original `dragSelectedElements`, which moves its children.
 Frame naming is also editable through original `newElementWith`.
+Frame movement now passes through an additional source-level guard: the
+original `dragSelectedElements` moves the frame and children, while Svelte
+verifies that child membership, ancestry, captions, arrow target IDs and
+external elements remain unchanged. Malformed partial framed groups fail
+closed.
+
 Native frames can now resize via original core corner handles, subject
 to the strict condition that the original Excalidraw
 `getElementsInResizingFrame` computes exactly the same children after the
