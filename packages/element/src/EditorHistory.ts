@@ -162,13 +162,16 @@ export class CoreEditorHistory<
     return this.future.length > 0;
   }
 
-  commit(previous: TDoc, next: TDoc) {
+  commit(previous: TDoc, next?: TDoc) {
     if (previous === next) {
       return;
     }
     this.past.push({
       snapshot: structuredClone(previous),
-      delta: calculateCoreDelta(previous, next),
+      // Preserve the legacy one-argument snapshot API for existing editor
+      // integrations. A two-argument transaction uses original ElementsDelta;
+      // one-argument callers safely use the full snapshot undo path.
+      delta: next ? calculateCoreDelta(previous, next) : null,
     });
     if (this.past.length > MAX_UNDO) {
       this.past.shift();
