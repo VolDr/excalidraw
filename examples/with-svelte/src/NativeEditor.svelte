@@ -1046,10 +1046,10 @@
         : null;
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
-        ? (pickNativeComplexElbowEndpoint(scene, selected.id, start, 9 / zoom) ??
-           pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
+        ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
            pickNativeOrbitEndpoint(scene, selected, start, 9 / zoom) ??
-           pickElbowEndpoint(selected, start, 9 / zoom)) : null;
+           pickElbowEndpoint(selected, start, 9 / zoom) ??
+           pickNativeComplexElbowEndpoint(scene, selected.id, start, 9 / zoom)) : null;
       pointIndex = !event.shiftKey && selected && !endpoint
         ? pickLinearPoint(selected, start, 9 / zoom) : null;
       const elbowSegment = !event.shiftKey && selected && !endpoint
@@ -1195,14 +1195,14 @@
       if (Math.hypot(dx, dy) > 0.2) {
         const element = g.original.elements.find((item) => item.id === g.id);
         const next = g.endpoint && element &&
-          nativeComplexElbowEndpoints(g.original, element.id)
-          ? reconnectNativeComplexElbowEndpoint(g.original, g.id, g.endpoint, point)
-          : g.endpoint && element && isNativeLinkedArrow(g.original, element)
+          isNativeLinkedArrow(g.original, element)
           ? reconnectNativeEndpoint(g.original, g.id, g.endpoint, point)
           : g.endpoint && element && isNativeOrbitLinkedArrow(g.original, element)
             ? reconnectNativeOrbitEndpoint(g.original, g.id, g.endpoint, point)
           : g.endpoint && element && canEditElbowEndpoints(element)
             ? reconnectNativeOrbitEndpoint(g.original, g.id, g.endpoint, point)
+          : g.endpoint && element && nativeComplexElbowEndpoints(g.original, element.id)
+            ? reconnectNativeComplexElbowEndpoint(g.original, g.id, g.endpoint, point)
             : g.pointIndex !== null
               ? updateLinearPoint(g.original, g.id, g.pointIndex, point)
               : g.original;
