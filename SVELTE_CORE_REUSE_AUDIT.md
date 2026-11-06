@@ -18,6 +18,7 @@ still an unverified draft.
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
+| `native/frames.ts` | `@excalidraw/element`: `newFrameElement`, `getElementsInNewFrame`, `addElementsToFrame`, `getCommonBounds`, `removeAllElementsFromFrame` | Frame creation, automatic membership, wrapping selection, drag with original core, unwrapping without deleting children |
 | `native/eraser.ts` | `@excalidraw/element`: original element hit-testing and `fixBindingsAfterDeletion` through core Scene | Adds gesture-based eraser with one history transaction and whole-group/caption-safe deletion |
 | `native/complexElbow.ts` | `@excalidraw/element`: `LinearElementEditor.getSegmentMidPoint`, `moveFixedSegment`, `deleteFixedSegment` | Core-owned complex elbow segment dragging/locking and Alt+click release, validating orthogonal routing and reciprocal imported links |
 | `native/lines.ts` | `@excalidraw/element`: `LinearElementEditor`, `newElementWith` (via adapter) | Safe open linear vertices (2–128 points) use official point geometry, movement and midpoint insertion/deletion; unbound elbow endpoints expose separate route-aware handles using original core algorithms |
@@ -210,6 +211,13 @@ Svelte now has a gesture eraser. The editor collects native hit-tested
 logical units, delegates actual deletion and binding cleanup to the original
 core, and commits a whole stroke as one undo step. Invalid imported
 relationships remain unchanged, rather than silently losing half their links.
+
+Frame drawing, wrapping selection and unwrapping now use original
+`newFrameElement`, `getElementsInNewFrame`,
+`addElementsToFrame` and `removeAllElementsFromFrame`. Moving a frame
+delegates to original `dragSelectedElements`, which moves its children.
+Full frame resize and advanced frame editing remain guarded. The Svelte
+canvas draws a lightweight frame outline, not its own membership engine.
 
 ## Still custom: do not mistake these for parity
 

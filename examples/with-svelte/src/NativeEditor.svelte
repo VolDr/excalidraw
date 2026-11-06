@@ -10,6 +10,12 @@
   import { SceneHistory } from "./native/history";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import {
+    createNativeFrameWithCore,
+    nativeFrameFromDrag,
+    wrapNativeSelectionInFrame,
+    unwrapNativeFrame,
+  } from "./native/frames";
+  import {
     nativeComplexElbowMidpoints,
     pickNativeComplexElbowSegment,
     updateNativeComplexElbowSegment,
@@ -432,6 +438,23 @@
     if (next !== scene) commit(scene, next);
   }
 
+  function wrapSelectedInFrame() {
+    if (gesture || textEditor || editingGroupId) return;
+    const wrapped = wrapNativeSelectionInFrame(scene, selectedIds);
+    if (!wrapped) return;
+    commit(scene, wrapped.scene);
+    selectedIds = [wrapped.frame.id];
+  }
+
+  function removeSelectedFrame() {
+    if (gesture || textEditor || !selectedId) return;
+    const next = unwrapNativeFrame(scene, selectedId);
+    if (next !== scene) {
+      commit(scene, next);
+      selectedIds = [];
+    }
+  }
+
   function groupSelected() {
     if (gesture || textEditor || editingGroupId) {
       return;
@@ -658,6 +681,16 @@
     const elementsMap = nativeElementsMap(scene);
 
     const draw = (element: ExcalidrawElement) => {
+      if (element.isDeleted) return;
+      if (element.type === "frame") {
+        ctx.save();
+        ctx.strokeStyle = theme === "dark" ? "#9ba5c0" : "#8091b4";
+        ctx.lineWidth = 2 / zoom;
+        ctx.setLineDash([7 / zoom, 4 / zoom]);
+        ctx.strokeRect(element.x, element.y, element.width, element.height);
+        ctx.restore();
+        return;
+      }
       const label = nativeBoundLabelLayout(scene, element);
       if (label) {
         paintCoreTextElement(ctx, label, theme);
@@ -1018,6 +1051,8 @@
           action = "select";
         }
       }
+    } else if (action === "draw" && tool === "frame") {
+      selectedIds = [];
     } else if (action === "draw" || action === "free") {
       selectedIds = [];
       draft = action === "free"
@@ -1149,6 +1184,8 @@
         seed: g.draft.seed,
         versionNonce: g.draft.versionNonce,
       };
+    } else if (g.action === "draw" && tool === "frame") {
+      preview = nativeFrameFromDrag(g.start, point);
     } else if (g.action === "draw" && g.draft) {
       const shape = createShape(tool as NativeShape, g.start, point);
       preview = {
@@ -1187,6 +1224,15 @@
           elements: [...g.original.elements, preview],
         });
         selectedIds = [preview.id];
+        tool = "selection";
+      }
+    } else if (g.action === "draw" && tool === "frame" && preview) {
+      const created = createNativeFrameWithCore(
+        g.original, g.start, getPoint(event),
+      );
+      if (created) {
+        commit(g.original, created.scene);
+        selectedIds = [created.frame.id];
         tool = "selection";
       }
     } else if (g.action === "draw" && preview) {
@@ -1337,6 +1383,7 @@
     if (key === "t") tool = "text";
     if (key === "p") tool = "freedraw";
     if (key === "x" && !editingGroupId) tool = "eraser";
+    if (key === "f" && !editingGroupId) tool = "frame";
   }
 
   onMount(() => {
@@ -1383,6 +1430,7 @@
       ["arrow", "Стрелка"],
       ["freedraw", "Карандаш"],
       ["eraser", "Ластик"],
+      ["frame", "Рамка"],
       ["text", "Текст"],
       ["hand", "Рука"],
     ] as item}
@@ -1405,6 +1453,18 @@
       aria-label="Выбрать изображение"
     />
     <button onclick={() => imageInput.click()}>Изображение</button>
+    <button
+      disabled={!selectedIds.length || !!editingGroupId}
+      onclick={wrapSelectedInFrame}
+      title="Поместить выделение в оригинальный Excalidraw Frame"
+    >В рамку</button>
+    {#if selectedId && scene.elements.some((element) =>
+      element.id === selectedId && element.type === "frame" && !element.isDeleted)}
+      <button
+        onclick={removeSelectedFrame}
+        title="Удалить рамку и сохранить ее содержимое"
+      >Убрать рамку</button>
+    {/if}
     {#if recoverableLinks}
       <button
         onclick={repairImportedBindings}
