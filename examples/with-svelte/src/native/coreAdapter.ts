@@ -95,17 +95,24 @@ const adoptCoreTransaction = (
   const elements = source.elements.map((original, index) => {
     const updated = nextElements[index];
     const initial = tx.baseline[index];
-    if (
-      updated.version === initial.version &&
-      updated.versionNonce === initial.versionNonce
-    ) return original;
+    // Core operations may replace entire arrays or mutate imported data
+    // without incrementing a version. The shared controller checks their
+    // complete data snapshots, not only version counters.
+    if (!tx.changedIds.has(original.id)) return original;
 
     changed = true;
-    return {
+    const delta = updated.version - initial.version;
+    const candidate = {
       ...updated,
       index: original.index,
-      version: original.version + (updated.version - initial.version),
+      version: original.version + Math.max(0, delta),
     };
+    // Revisions drive Excalidraw's shape cache. If a core operation changed
+    // data without bumping the version, delegate the bump to newElementWith
+    // rather than exporting stale revisions into the Svelte document.
+    return delta <= 0
+      ? newElementWith(candidate, {}, true)
+      : candidate;
   });
   return changed ? { ...source, elements } : source;
 };

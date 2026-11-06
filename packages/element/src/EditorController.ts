@@ -258,12 +258,21 @@ export class CoreEditorController {
 
   replaceElements(elements: readonly ExcalidrawElement[]): void {
     this.assertOpen();
-    const next = new Scene(structuredClone(elements), {
+    // Keep the same original Scene instance across Svelte document updates.
+    // Its maps, subscriptions and selection cache belong to the editor
+    // lifetime, not to individual pointer frames. Stage the next document
+    // first so malformed imports cannot damage the live Scene.
+    const staged = new Scene(structuredClone(elements), {
       skipValidation: true,
     });
-    const current = this.scene;
-    this.scene = next;
-    current.destroy();
+    try {
+      this.scene.replaceAllElements(
+        [...staged.getElementsIncludingDeleted()],
+        { skipValidation: true },
+      );
+    } finally {
+      staged.destroy();
+    }
     this.setSelection(
       Object.keys(this.selection.selectedElementIds),
       this.selection.editingGroupId,
