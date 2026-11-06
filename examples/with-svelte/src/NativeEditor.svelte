@@ -6,7 +6,7 @@
 
   import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { CoreEditorSession, type CoreEditorSelectionState, type CoreEditorToolState } from "@excalidraw/element";
-  import { nativeElementsMap } from "./native/coreAdapter";
+  import { nativeElementsMap, dragNativeGraphWithCore } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import { elementsInNativeLasso, type NativeLassoMode } from "./native/lasso";
@@ -1284,7 +1284,14 @@
       }
     } else if (g.action === "move" && g.id) {
       if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
-        const next = moveSelection(g.original, g.ids, dx, dy, editingGroupId, coreController);
+        const guarded = moveSelection(
+          g.original, g.ids, dx, dy, editingGroupId, coreController,
+        );
+        const next = guarded !== g.original
+          ? guarded
+          : dragNativeGraphWithCore(
+              g.original, g.ids, dx, dy, coreController,
+            );
         if (next !== g.original) {
           g.changed = true;
           g.latest = next;
@@ -1593,7 +1600,7 @@
       event.preventDefault();
       const multiplier = event.shiftKey ? 10 : 1;
       const offset = nudges[event.key];
-      const next = moveSelection(
+      const guarded = moveSelection(
         scene,
         selectedIds,
         offset.x * multiplier,
@@ -1601,6 +1608,14 @@
         editingGroupId,
         coreController,
       );
+      const next = guarded !== scene
+        ? guarded
+        : dragNativeGraphWithCore(
+            scene, selectedIds,
+            offset.x * multiplier,
+            offset.y * multiplier,
+            coreController,
+          );
       if (next !== scene && next.elements.some((el, i) => el !== scene.elements[i])) {
         commit(scene, next);
       }

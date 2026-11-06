@@ -1,6 +1,7 @@
 import {
   bindBindingElement,
   CoreEditorController,
+  isCoreGraphTransitionValid,
   fixBindingsAfterDeletion,
   getGlobalFixedPointForBindableElement,
   getBoundTextMaxHeight,
@@ -161,6 +162,41 @@ export function dragNativeSelectionWithCore(
     return adoptCoreTransaction(scene, result);
   } finally {
     if (!persistentController) controller.destroy();
+  }
+}
+
+/**
+ * The fallback for imported or nontrivial graphs is not a second geometry
+ * implementation. Run the original dragSelectedElements on the complete
+ * core selection and accept it if Excalidraw's graph remains consistent.
+ * No hard-coded list of eligible arrow types, binding modes or group depths.
+ */
+export function dragNativeGraphWithCore(
+  scene: SceneFile,
+  ids: readonly string[],
+  dx: number,
+  dy: number,
+  persistentController: CoreEditorController,
+): SceneFile {
+  if (
+    !ids.length ||
+    !Number.isFinite(dx) || !Number.isFinite(dy) ||
+    (!dx && !dy) ||
+    new Set(ids).size !== ids.length ||
+    ids.some((id) => !scene.elements.some((el) =>
+      el.id === id && !el.isDeleted && !el.locked
+    ))
+  ) return scene;
+  try {
+    const result = dragNativeSelectionWithCore(
+      scene, new Set(ids), dx, dy, persistentController,
+    );
+    return result !== scene &&
+      isCoreGraphTransitionValid(scene.elements, result.elements)
+      ? result : scene;
+  } catch {
+    // Broken third-party imports must not crash the Svelte host.
+    return scene;
   }
 }
 

@@ -108,7 +108,7 @@ export const isCoreGraphTransitionValid = (
         !same(old.groupIds, updated.groupIds) ||
         !same(old.customData, updated.customData)) return false;
     if (same(old, updated)) continue;
-    if (!finite(updated)) return false;
+    if (old.locked || !finite(updated)) return false;
     if (
       old.type === "arrow" && updated.type === "arrow" &&
       old.elbowed && updated.elbowed &&
