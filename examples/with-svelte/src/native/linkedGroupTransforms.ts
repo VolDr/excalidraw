@@ -47,7 +47,7 @@ const closedGroup = (
   requireZeroAngle: boolean,
 ): ClosedGroup | null => {
   const unique = new Set(ids);
-  if (ids.length < 3 || unique.size !== ids.length) return null;
+  if (ids.length < 2 || unique.size !== ids.length) return null;
   const roots = scene.elements.filter((element) => unique.has(element.id));
   const groupId = roots[0]?.groupIds.at(-1);
   if (
@@ -129,8 +129,12 @@ const acceptClosedGroup = (
     if (old.type === "arrow") {
       if (
         el.type !== "arrow" ||
-        !sameJSON(el.startBinding, old.startBinding) ||
-        !sameJSON(el.endBinding, old.endBinding) ||
+        el.startBinding?.elementId !== old.startBinding?.elementId ||
+        el.endBinding?.elementId !== old.endBinding?.elementId ||
+        el.startBinding?.mode !== old.startBinding?.mode ||
+        el.endBinding?.mode !== old.endBinding?.mode ||
+        !validBinding(el.startBinding) ||
+        !validBinding(el.endBinding) ||
         !sameJSON(el.customData, old.customData) ||
         el.points.length !== old.points.length ||
         el.points.some((p) => p.length !== 2 || p.some((n) => !Number.isFinite(n)))

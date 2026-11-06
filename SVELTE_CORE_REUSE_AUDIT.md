@@ -157,7 +157,8 @@ and `transformElements`, followed by full ancestry and caption checks.
 Complete **simple** arrow/box binding groups can now be resized and rotated by
 the original multi-element transform algorithms, with postcondition checks on
 group ancestry, reciprocal links, captions and untouched external elements.
-Malformed imports, linked elbows and partially selected graphs still fail
+Also includes groups with a single-ended simple bound arrow. Malformed
+imports, linked elbows and partially selected graphs still fail
 closed.
 The safe-group guard also supports multiple connected simple arrows
 sharing the same target when all reciprocal links remain inside the group.

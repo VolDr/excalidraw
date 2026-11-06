@@ -115,7 +115,9 @@ export const repairNativeImportedBindings = (scene: SceneFile): SceneFile => {
   const affected = new Set(
     missing.flatMap((entry) => [entry.arrowId, entry.boxId]),
   );
-  const repaired = withNativeCoreScene(scene, (core) => {
+  let repaired: SceneFile;
+  try {
+    repaired = withNativeCoreScene(scene, (core) => {
     for (const { arrowId, boxId, end } of missing) {
       const arrow = core.getNonDeletedElement(arrowId);
       const target = core.getNonDeletedElement(boxId);
@@ -131,10 +133,14 @@ export const repairNativeImportedBindings = (scene: SceneFile): SceneFile => {
         { value: 1 } as AppState["zoom"],
       );
     }
-  });
+    });
+  } catch {
+    // Invalid imported data must not propagate exceptions into the editor.
+    // The original source SceneFile was never mutated.
+    return scene;
+  }
   if (repaired === scene) return scene;
 
-  const oldById = new Map(scene.elements.map((element) => [element.id, element]));
   for (let i = 0; i < repaired.elements.length; i++) {
     const after = repaired.elements[i];
     const before = scene.elements[i];
