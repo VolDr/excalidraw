@@ -46,11 +46,12 @@ export type NativeTool =
   | "arrow"
   | "text"
   | "freedraw"
+  | "eraser"
   | "hand";
 
 export type NativeShape = Exclude<
   NativeTool,
-  "selection" | "hand" | "text" | "freedraw"
+  "selection" | "hand" | "text" | "freedraw" | "eraser"
 >;
 export type Point = { x: number; y: number };
 

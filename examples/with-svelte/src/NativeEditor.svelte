@@ -8,6 +8,7 @@
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { SceneHistory } from "./native/history";
+  import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import {
     nativeComplexElbowMidpoints,
     pickNativeComplexElbowSegment,
@@ -217,7 +218,7 @@
 
   type Gesture = {
     pointerId: number;
-    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment";
+    action: "draw" | "move" | "pan" | "free" | "transform" | "group-transform" | "select" | "endpoint" | "elbow-segment" | "erase";
     start: Point;
     original: SceneFile;
     latest: SceneFile;
@@ -866,6 +867,20 @@
     redraw();
   });
 
+  function eraseAt(point: Point) {
+    const g = gesture;
+    if (!g || g.action !== "erase" || editingGroupId) return;
+    const hits = nativeEraserHit(g.original, point, 8 / zoom);
+    if (!hits.length || hits.every((id) => g.ids.includes(id))) return;
+    const ids = [...new Set([...g.ids, ...hits])];
+    const next = eraseNativeHits(g.original, ids);
+    if (next === g.original) return;
+    g.ids = ids;
+    g.changed = true;
+    g.latest = next;
+    onChange(next);
+  }
+
   function pointerDown(event: PointerEvent) {
     if (gesture || textEditor || (event.button !== 0 && event.button !== 1)) {
       return;
@@ -932,9 +947,11 @@
         ? "pan"
         : tool === "selection"
           ? "move"
-          : tool === "freedraw"
-            ? "free"
-            : "draw";
+          : tool === "eraser"
+            ? "erase"
+            : tool === "freedraw"
+              ? "free"
+              : "draw";
     let id: string | null = null;
     let ids: string[] = [];
     let handle: Handle | null = null;
@@ -1026,6 +1043,10 @@
       points: [start],
       pressures: [event.pressure || 0.5],
     };
+    if (action === "erase") {
+      selectedIds = [];
+      eraseAt(start);
+    }
   }
 
   function pointerMove(event: PointerEvent) {
@@ -1048,7 +1069,9 @@
     const point = getPoint(event);
     const dx = point.x - g.start.x;
     const dy = point.y - g.start.y;
-    if (g.action === "move" && g.id) {
+    if (g.action === "erase") {
+      eraseAt(point);
+    } else if (g.action === "move" && g.id) {
       if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
         const next = moveSelection(g.original, g.ids, dx, dy, editingGroupId);
         if (next !== g.original) {
@@ -1146,7 +1169,7 @@
       viewport.releasePointerCapture(event.pointerId);
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment" || g.action === "erase") &&
       g.changed
     ) {
       // The move was previewed in-place; record the *original* scene once.
@@ -1187,7 +1210,7 @@
       return;
     }
     if (
-      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment") &&
+      (g.action === "move" || g.action === "transform" || g.action === "group-transform" || g.action === "endpoint" || g.action === "elbow-segment" || g.action === "erase") &&
       g.changed
     ) {
       onChange(g.original);
@@ -1313,6 +1336,7 @@
     if (key === "a") tool = "arrow";
     if (key === "t") tool = "text";
     if (key === "p") tool = "freedraw";
+    if (key === "x" && !editingGroupId) tool = "eraser";
   }
 
   onMount(() => {
@@ -1358,6 +1382,7 @@
       ["line", "Линия"],
       ["arrow", "Стрелка"],
       ["freedraw", "Карандаш"],
+      ["eraser", "Ластик"],
       ["text", "Текст"],
       ["hand", "Рука"],
     ] as item}
