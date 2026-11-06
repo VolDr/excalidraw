@@ -49,8 +49,11 @@ export class CoreEditorSession<
   replaceDocument(next: TDoc): void {
     this.assertOpen();
     if (next === this.currentDocument) return;
+    const previousElements = this.currentDocument.elements;
     this.currentDocument = next;
-    this.controller.replaceElements(next.elements);
+    if (next.elements !== previousElements) {
+      this.controller.replaceElements(next.elements);
+    }
   }
 
   /**

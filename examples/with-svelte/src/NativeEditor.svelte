@@ -1,14 +1,13 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import rough from "roughjs/bin/rough";
 
   import { applyDarkModeFilter, DEFAULT_FONT_FAMILY, FONT_FAMILY, getFontFamilyString } from "@excalidraw/common";
 
   import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
-  import { CoreEditorController, type CoreEditorSelectionState, type CoreEditorToolState } from "@excalidraw/element";
+  import { CoreEditorSession, type CoreEditorSelectionState, type CoreEditorToolState } from "@excalidraw/element";
   import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
-  import { SceneHistory } from "./native/history";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import { elementsInNativeLasso, type NativeLassoMode } from "./native/lasso";
   import { NativeLaserStroke } from "./native/laser";
@@ -158,8 +157,8 @@
   // The original Excalidraw Scene and selection state now outlive pointer
   // events. Svelte observes the controller instead of maintaining a second
   // independent selection/group-editing state.
-  const coreController = new CoreEditorController(scene.elements);
-  let coreElements = scene.elements;
+  const editorSession = new CoreEditorSession<SceneFile>(scene);
+  const coreController = editorSession.controller;
   let selectionState = $state<CoreEditorSelectionState>(coreController.getSelection());
   let toolState = $state<CoreEditorToolState>(coreController.getToolState());
   let tool = $derived(
@@ -193,9 +192,7 @@
     coreController.setSelection(selectedIds, id);
   }
   function syncCoreScene(next: SceneFile) {
-    if (next.elements === coreElements) return;
-    coreController.replaceElements(next.elements);
-    coreElements = next.elements;
+    editorSession.replaceDocument(next);
   }
 
   // Changes from the React fallback or the parent document loader must
@@ -248,7 +245,6 @@
     textAlign: ExcalidrawTextElement["textAlign"];
   } | null>(null);
 
-  const history = new SceneHistory();
   const imageCache = new NativeImageCache();
 
   // Imported and newly inserted files are decoded lazily and cached by fileId.
@@ -325,7 +321,8 @@
   // Replace the undo stack after an explicit file import or editor reset.
   $effect(() => {
     documentEpoch;
-    history.clear();
+    // Track only file imports, not every parent scene/gesture update.
+    editorSession.reset(untrack(() => scene));
     lastPastedText = null;
     pasteNumber = 0;
     setSelectedIds([]);
@@ -343,8 +340,8 @@
   });
 
   function refreshHistory() {
-    undoAvailable = history.canUndo;
-    redoAvailable = history.canRedo;
+    undoAvailable = editorSession.canUndo;
+    redoAvailable = editorSession.canRedo;
   }
 
   function commit(previous: SceneFile, next: SceneFile) {
@@ -352,8 +349,7 @@
       return;
     }
     const indexed = indexInsertedNativeElements(previous, next);
-    history.commit(previous, indexed);
-    syncCoreScene(indexed);
+    editorSession.commit(previous, indexed);
     onChange(indexed);
     refreshHistory();
   }
@@ -565,9 +561,8 @@
   }
 
   function undo() {
-    if (history.canUndo) {
-      const previous = history.undo(scene);
-      syncCoreScene(previous);
+    if (editorSession.canUndo) {
+      const previous = editorSession.undo(scene);
       onChange(previous);
       refreshHistory();
       setSelectedIds([]);
@@ -575,9 +570,8 @@
   }
 
   function redo() {
-    if (history.canRedo) {
-      const next = history.redo(scene);
-      syncCoreScene(next);
+    if (editorSession.canRedo) {
+      const next = editorSession.redo(scene);
       onChange(next);
       refreshHistory();
       setSelectedIds([]);
@@ -1419,7 +1413,7 @@
       if (next !== g.latest) {
         onChange(next);
       }
-      history.commit(g.original, next);
+      editorSession.commit(g.original, next);
       refreshHistory();
     } else if (g.action === "laser") {
       if (laserStroke) {
@@ -1667,7 +1661,7 @@
       laserClearTimer = null;
       laserStroke = null;
       unsubscribeCore();
-      coreController.destroy();
+      editorSession.destroy();
     };
   });
 </script>
