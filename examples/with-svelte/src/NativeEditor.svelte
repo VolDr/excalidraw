@@ -1592,10 +1592,7 @@
     }
     if (cmd && event.key.toLowerCase() === "a") {
       event.preventDefault();
-      setSelectedIds(editableSelection(
-        scene,
-        scene.elements.map((element) => element.id),
-      ));
+      coreController.selectAll();
       return;
     }
     if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length) {

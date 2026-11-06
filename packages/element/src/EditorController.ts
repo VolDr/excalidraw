@@ -252,6 +252,25 @@ export class CoreEditorController {
     this.notify();
   }
 
+  /**
+   * The original Select All action targets every non-deleted unlocked root,
+   * including imported elbows, frames and foreign graph components. Bound
+   * captions are selected through their owners; group-state derivation runs
+   * through the original Scene selection helpers in setSelection().
+   */
+  selectAll(): void {
+    this.assertOpen();
+    this.setSelection(
+      this.scene.getNonDeletedElements()
+        .filter((element) =>
+          !element.locked &&
+          !(element.type === "text" && !!element.containerId)
+        )
+        .map((element) => element.id),
+      null,
+    );
+  }
+
   readElements(): readonly ExcalidrawElement[] {
     this.assertOpen();
     return structuredClone(this.scene.getElementsIncludingDeleted());
