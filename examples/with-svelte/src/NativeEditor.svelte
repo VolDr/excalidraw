@@ -1298,13 +1298,15 @@
       }
     } else if (g.action === "move" && g.id) {
       if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
-        const guarded = moveSelection(
-          g.original, g.ids, dx, dy, editingGroupId, coreController,
+        // Original Excalidraw Scene owns all graph movement. The old
+        // safe-subset adapter is fallback only while feature parity matures.
+        const native = dragNativeGraphWithCore(
+          g.original, g.ids, dx, dy, coreController,
         );
-        const next = guarded !== g.original
-          ? guarded
-          : dragNativeGraphWithCore(
-              g.original, g.ids, dx, dy, coreController,
+        const next = native !== g.original
+          ? native
+          : moveSelection(
+              g.original, g.ids, dx, dy, editingGroupId, coreController,
             );
         if (next !== g.original) {
           g.changed = true;
@@ -1627,20 +1629,20 @@
       event.preventDefault();
       const multiplier = event.shiftKey ? 10 : 1;
       const offset = nudges[event.key];
-      const guarded = moveSelection(
-        scene,
-        selectedIds,
+      const native = dragNativeGraphWithCore(
+        scene, selectedIds,
         offset.x * multiplier,
         offset.y * multiplier,
-        editingGroupId,
         coreController,
       );
-      const next = guarded !== scene
-        ? guarded
-        : dragNativeGraphWithCore(
-            scene, selectedIds,
+      const next = native !== scene
+        ? native
+        : moveSelection(
+            scene,
+            selectedIds,
             offset.x * multiplier,
             offset.y * multiplier,
+            editingGroupId,
             coreController,
           );
       if (next !== scene && next.elements.some((el, i) => el !== scene.elements[i])) {
