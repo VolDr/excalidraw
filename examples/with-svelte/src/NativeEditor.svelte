@@ -20,6 +20,11 @@
     pickNativeComplexElbowSegment,
     updateNativeComplexElbowSegment,
   } from "./native/complexElbow";
+  import {
+    nativeComplexElbowEndpoints,
+    pickNativeComplexElbowEndpoint,
+    reconnectNativeComplexElbowEndpoint,
+  } from "./native/complexElbowEndpoints";
   import { missingNativeImportedBindings, repairNativeImportedBindings } from "./native/importedBindings";
   import {
     nativeEnterEditingGroup,
@@ -794,8 +799,10 @@
         const linked = nativeLinkedEndpoints(scene, element);
         const orbit = nativeOrbitEndpoints(scene, element);
         const elbow = elbowEndpointLocations(element);
-        const points = linked ?? orbit
-          ? [(linked ?? orbit)!.start, (linked ?? orbit)!.end]
+        const complexElbow = nativeComplexElbowEndpoints(scene, element.id);
+        const connected = linked ?? orbit ?? complexElbow;
+        const points = connected
+          ? [connected.start, connected.end]
           : elbow
             ? [elbow.start, elbow.end]
             : linearPointLocations(element);
@@ -1002,7 +1009,8 @@
         : null;
       const selected = scene.elements.find((element) => element.id === selectedId);
       endpoint = !event.shiftKey && selected
-        ? (pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
+        ? (pickNativeComplexElbowEndpoint(scene, selected.id, start, 9 / zoom) ??
+           pickNativeLinkedEndpoint(scene, selected, start, 9 / zoom) ??
            pickNativeOrbitEndpoint(scene, selected, start, 9 / zoom) ??
            pickElbowEndpoint(selected, start, 9 / zoom)) : null;
       pointIndex = !event.shiftKey && selected && !endpoint
@@ -1150,7 +1158,9 @@
       if (Math.hypot(dx, dy) > 0.2) {
         const element = g.original.elements.find((item) => item.id === g.id);
         const next = g.endpoint && element &&
-          isNativeLinkedArrow(g.original, element)
+          nativeComplexElbowEndpoints(g.original, element.id)
+          ? reconnectNativeComplexElbowEndpoint(g.original, g.id, g.endpoint, point)
+          : g.endpoint && element && isNativeLinkedArrow(g.original, element)
           ? reconnectNativeEndpoint(g.original, g.id, g.endpoint, point)
           : g.endpoint && element && isNativeOrbitLinkedArrow(g.original, element)
             ? reconnectNativeOrbitEndpoint(g.original, g.id, g.endpoint, point)
@@ -1765,7 +1775,9 @@
     {#if selectedId && scene.elements.some((element) => element.id === selectedId && canEditLinearPoints(element))}
       <span class="zoom">Alt+клик: добавить точку на маркере сегмента / удалить внутренний узел</span>
     {:else if selectedId && scene.elements.some((element) => element.id === selectedId &&
-      (canEditElbowEndpoints(element) || isNativeOrbitLinkedArrow(scene, element)))}
+      (canEditElbowEndpoints(element) ||
+       isNativeOrbitLinkedArrow(scene, element) ||
+       !!nativeComplexElbowEndpoints(scene, element.id)))}
       <span class="zoom">Угловая стрелка: перетащите конец на фигуру для orbit-привязки</span>
     {/if}
     <button onclick={() => fitView("all")} title="Показать все объекты (Shift+1)">По содержимому</button>
