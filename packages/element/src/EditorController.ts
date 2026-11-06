@@ -1,5 +1,6 @@
 import { Scene } from "./Scene";
 import { dragSelectedElements } from "./dragElements";
+import { fixBindingsAfterDeletion } from "./binding";
 import { getCommonBounds } from "./bounds";
 import { transformElements } from "./resizeElements";
 import type { MaybeTransformHandleType } from "./transformHandles";
@@ -441,6 +442,30 @@ export class CoreEditorController {
         pointer.x, pointer.y,
         center.x, center.y,
       );
+    });
+  }
+
+  /**
+   * Excalidraw's original reciprocal-binding deletion lifecycle, evaluated
+   * against the private transaction Scene. The host does not separately
+   * soft-delete after repairing links; both changes have one undo boundary.
+   */
+  previewDeleteElements(
+    originalElements: readonly ExcalidrawElement[],
+    ids: ReadonlySet<string>,
+  ): CoreEditorTransactionResult {
+    return this.previewTransaction(originalElements, (scene) => {
+      if (!ids.size) return;
+      const elements = scene.getElementsIncludingDeleted();
+      const targets = elements.filter((el) => ids.has(el.id) && !el.isDeleted);
+      if (targets.length !== ids.size) return;
+
+      fixBindingsAfterDeletion(elements, targets);
+      for (const element of targets) {
+        scene.mutateElement(element, { isDeleted: true });
+      }
+      // Scene caches must no longer expose the soft-deleted elements.
+      scene.replaceAllElements([...elements], { skipValidation: true });
     });
   }
 

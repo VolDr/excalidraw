@@ -1060,7 +1060,7 @@
     const hits = nativeEraserHit(g.original, point, 8 / zoom);
     if (!hits.length || hits.every((id) => g.ids.includes(id))) return;
     const ids = [...new Set([...g.ids, ...hits])];
-    const next = eraseNativeHits(g.original, ids);
+    const next = eraseNativeHits(g.original, ids, coreController);
     if (next === g.original) return;
     g.ids = ids;
     g.changed = true;
@@ -1598,7 +1598,7 @@
     }
     if ((event.key === "Delete" || event.key === "Backspace") && selectedIds.length) {
       event.preventDefault();
-      const next = deleteSelection(scene, selectedIds);
+      const next = deleteSelection(scene, selectedIds, coreController);
       if (next.elements.some((el, i) => el.isDeleted !== scene.elements[i].isDeleted)) {
         commit(scene, next);
       }

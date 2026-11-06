@@ -2,7 +2,6 @@ import {
   bindBindingElement,
   CoreEditorController,
   isCoreGraphTransitionValid,
-  fixBindingsAfterDeletion,
   getGlobalFixedPointForBindableElement,
   getCommonBounds,
   getBoundTextMaxHeight,
@@ -2026,29 +2025,19 @@ export function rotateNativeGroupWithCore(
 export function deleteNativeElementsWithCore(
   scene: SceneFile,
   ids: ReadonlySet<string>,
+  persistentController?: CoreEditorController,
 ): SceneFile {
-  if (!ids.size) {
-    return scene;
-  }
-  const originals = scene.elements.filter(
+  if (!ids.size || scene.elements.filter(
     (element) => ids.has(element.id) && !element.isDeleted,
-  );
-  if (!originals.length || originals.length !== ids.size) {
-    return scene;
-  }
-  const unbound = withNativeCoreScene(scene, (core) => {
-    const elements = core.getElementsIncludingDeleted();
-    fixBindingsAfterDeletion(
-      elements,
-      elements.filter((element) => ids.has(element.id)),
+  ).length !== ids.size) return scene;
+  const controller = persistentController ??
+    new CoreEditorController(scene.elements);
+  try {
+    return adoptCoreTransaction(
+      scene,
+      controller.previewDeleteElements(scene.elements, ids),
     );
-  });
-  return {
-    ...unbound,
-    elements: unbound.elements.map((element) =>
-      ids.has(element.id)
-        ? updateNativeElement(element, { isDeleted: true })
-        : element,
-    ),
-  };
+  } finally {
+    if (!persistentController) controller.destroy();
+  }
 }

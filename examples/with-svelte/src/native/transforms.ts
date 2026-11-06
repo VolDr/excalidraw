@@ -324,6 +324,7 @@ export function moveSelection(
 export function deleteSelection(
   scene: SceneFile,
   ids: readonly string[],
+  controller?: CoreEditorController,
 ): SceneFile {
   const frames = scene.elements.filter((element) =>
     ids.includes(element.id) && element.type === "frame" && !element.isDeleted,
@@ -373,7 +374,7 @@ export function deleteSelection(
       }
     }
   }
-  return deleteNativeElementsWithCore(scene, selected);
+  return deleteNativeElementsWithCore(scene, selected, controller);
 }
 
 export function transformSelected(
