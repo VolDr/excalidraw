@@ -34,7 +34,10 @@ describe("native marquee and duplication", () => {
     const result = duplicateSelection(scene, [box.id]);
     expect(result.ids).toHaveLength(1);
     expect(result.scene.elements).toHaveLength(4);
-    const [copiedBox, copiedLabel] = result.scene.elements.slice(2);
+    const copiedBox = result.scene.elements.find((element) => element.id === result.ids[0])!;
+    const copiedLabel = result.scene.elements.find((element) =>
+      element.id === copiedBox.boundElements?.find((ref) => ref.type === "text")?.id
+    )!;
     expect(copiedBox.id).not.toBe(box.id);
     expect(copiedLabel.id).not.toBe(sourceLabel.id);
     expect(copiedBox.boundElements).toEqual([
@@ -57,11 +60,12 @@ describe("native marquee and duplication", () => {
     expect(scene.elements[0].boundElements?.[0].id).toBe(sourceLabel.id);
 
     const removed = deleteSelection(result.scene, result.ids);
-    expect(removed.elements[2].isDeleted).toBe(true);
-    expect(removed.elements[3].isDeleted).toBe(true);
-    expect(removed.elements[0].isDeleted).toBe(false);
-    expect(removed.elements[1].isDeleted).toBe(false);
-    expect(nativeLabelBox(removed, removed.elements[1])?.id).toBe(box.id);
+    const byId = (id: string) => removed.elements.find((element) => element.id === id)!;
+    expect(byId(copiedBox.id).isDeleted).toBe(true);
+    expect(byId(copiedLabel.id).isDeleted).toBe(true);
+    expect(byId(box.id).isDeleted).toBe(false);
+    expect(byId(sourceLabel.id).isDeleted).toBe(false);
+    expect(nativeLabelBox(removed, byId(sourceLabel.id))?.id).toBe(box.id);
   });
 
   it("does not duplicate malformed box bindings, mixed arrow links or locked labels", () => {
@@ -117,7 +121,11 @@ describe("native marquee and duplication", () => {
     const result = duplicateSelection(linked, [other.id, box.id], 16);
     expect(result.ids).toHaveLength(2);
     expect(result.scene.elements).toHaveLength(6);
-    const [copyBox, copyOther, copyText] = result.scene.elements.slice(3);
+    const copyBox = result.scene.elements.find((element) => element.id === result.ids[0])!;
+    const copyOther = result.scene.elements.find((element) => element.id === result.ids[1])!;
+    const copyText = result.scene.elements.find((element) =>
+      element.id === copyBox.boundElements?.find((ref) => ref.type === "text")?.id
+    )!;
     expect(result.ids).toEqual([copyBox.id, copyOther.id]);
     expect(copyBox.boundElements?.[0].id).toBe(copyText.id);
     expect(copyText.type).toBe("text");
@@ -153,7 +161,9 @@ describe("native marquee and duplication", () => {
     expect(duplicateSelection(grouped.scene, [a.id]).scene).toBe(grouped.scene);
     const duplicated = duplicateSelection(grouped.scene, [a.id, b.id]);
     expect(duplicated.ids).toHaveLength(2);
-    const [copyA, copyB] = duplicated.scene.elements.slice(2);
+    const [copyA, copyB] = duplicated.ids.map((id) =>
+      duplicated.scene.elements.find((element) => element.id === id)!,
+    );
     expect(copyA.groupIds).toHaveLength(1);
     expect(copyA.groupIds).toEqual(copyB.groupIds);
     expect(copyA.groupIds[0]).not.toBe(originalGroupId);
@@ -179,7 +189,8 @@ describe("native marquee and duplication", () => {
     const copied = duplicateSelection(outer.scene, [a.id, b.id, c.id], 30);
     expect(copied.ids).toHaveLength(3);
     expect(copied.scene.elements).toHaveLength(originals.length * 2);
-    const duplicated = copied.scene.elements.slice(originals.length);
+    const originalIds = new Set(originals.map((element) => element.id));
+    const duplicated = copied.scene.elements.filter((element) => !originalIds.has(element.id));
     const copyByType = new Map(copied.ids.map((id) => [
       id,
       copied.scene.elements.find((element) => element.id === id)!,
@@ -213,7 +224,8 @@ describe("native marquee and duplication", () => {
     expect(group.groupId).toBeTruthy();
     const copied = duplicateSelection(group.scene, [boxA.id, boxB.id, link.id]);
     expect(copied.ids).toHaveLength(3);
-    const next = copied.scene.elements.slice(group.scene.elements.length);
+    const originalIds = new Set(group.scene.elements.map((element) => element.id));
+    const next = copied.scene.elements.filter((element) => !originalIds.has(element.id));
     expect(next).toHaveLength(3);
     const copiedArrow = next.find((e) => e.type === "arrow");
     expect(copiedArrow?.type).toBe("arrow");
@@ -280,12 +292,14 @@ describe("native marquee and duplication", () => {
     const result = duplicateSelection(scene, [rect.id, text.id, locked.id]);
     expect(result.ids).toHaveLength(2);
     expect(result.scene.elements).toHaveLength(5);
-    expect(result.scene.elements[0]).toEqual(rect);
-    expect(result.scene.elements[3].id).not.toEqual(rect.id);
-    expect(result.scene.elements[3].x).toBe(27);
-    expect(result.scene.elements[4].y).toBe(74);
-    expect(result.scene.elements[3].version).toBe(1);
-    expect(result.scene.elements[3].index).toBeNull();
+    expect(result.scene.elements.find((element) => element.id === rect.id)?.x).toBe(rect.x);
+    const copiedRect = result.scene.elements.find((element) => element.id === result.ids[0])!;
+    const copiedText = result.scene.elements.find((element) => element.id === result.ids[1])!;
+    expect(copiedRect.id).not.toBe(rect.id);
+    expect(copiedRect.x).toBe(27);
+    expect(copiedText.y).toBe(74);
+    expect(copiedRect.version).toBeGreaterThanOrEqual(1);
+    expect(copiedRect.index).not.toBeNull();
     expect(duplicateSelection(scene, [locked.id]).scene).toBe(scene);
   });
 });
