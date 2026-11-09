@@ -82,12 +82,27 @@ No build, tests or CI were executed in this milestone; parity is not verified.
   immutable document data, undo/redo, and insertion indices. **Not executed**
   in this environment. This is not evidence of React/Svelte feature parity.
 
+## Original duplicateElements consolidation
+
+- The native independent/group duplicate path no longer calls
+  `duplicateElement` repeatedly or runs a separate reciprocal-link repair
+  pass. It delegates to `CoreEditorSession.previewDuplicateDocument`, which
+  invokes the original `duplicateElements` on isolated copies.
+- Core now owns duplicate IDs, group-ID remapping, bound text, arrow links,
+  offsets, fractional-index repair, and source document immutability.
+  The Svelte layer retains conservative selection/graph eligibility checks.
+- Existing native frame duplication still has its dedicated guard and uses
+  original `duplicateElements`, pending cross-editor frame parity tests.
+- Additional nested-group duplication and undo/redo regression fixtures are
+  authored but **not executed**. In particular, clipboard and imported-graph
+  parity remain unverified.
+
 ## Reused directly in `examples/with-svelte`
 
 | Native adapter | Existing Excalidraw implementation | Current usage |
 | --- | --- | --- |
 | `native/scene.ts` | `@excalidraw/element`: `newElement`, `newLinearElement`, `newArrowElement`, `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | All native shape constructors, text metrics, precise pointer hit tests |
-| `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
+| `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`; `CoreEditorSession.previewDuplicateDocument` wraps original `duplicateElements` | Type-aware marquee geometry and conservative duplicate-selection eligibility; Excalidraw core owns IDs, nested groups, seeds and reciprocal binding repair |
 | `native/groupEditing.ts` | `@excalidraw/element`: `getElementsInGroup`; original group-ID ancestry | Enter/exit nested group editing levels, select immediate child units and move individual boxes through original core drag/binding updates |
 | `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`; `CoreEditorSession.previewGroupMembershipDocument` | Safe selection and nested ancestry eligibility only; the original core now mutates group IDs and versions |
 | `native/importedOrbitRepair.ts` | `@excalidraw/element`: original `bindBindingElement` and core orthogonal rerouting | Explicitly restores missing reverse orbit refs of validated imported elbow arrows; no automatic repair or arbitrary normalization |
