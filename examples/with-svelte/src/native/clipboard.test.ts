@@ -77,7 +77,12 @@ describe("Svelte native scene clipboard", () => {
     const first = pasteNativeSelection(scene, payload!);
     expect(first.ids).toHaveLength(2);
     expect(first.scene.elements).toHaveLength(6);
-    const [copiedBox, copiedEllipse, copiedLabel] = first.scene.elements.slice(3);
+    const [copiedBox, copiedEllipse] = first.ids.map((id) =>
+      first.scene.elements.find((element) => element.id === id)!,
+    );
+    const copiedLabel = first.scene.elements.find((element) =>
+      element.id === copiedBox.boundElements?.find((ref) => ref.type === "text")?.id
+    )!;
     expect(copiedBox.id).not.toBe(box.id);
     expect(copiedEllipse.id).not.toBe(ellipse.id);
     expect(copiedBox.groupIds).toEqual(copiedLabel.groupIds);
@@ -98,7 +103,8 @@ describe("Svelte native scene clipboard", () => {
     const second = pasteNativeSelection(first.scene, payload!, 48);
     expect(second.scene.elements).toHaveLength(9);
     expect(new Set(second.scene.elements.map((e) => e.id)).size).toBe(9);
-    expect(second.scene.elements[6].x).toBeCloseTo(box.x + 48);
+    expect(second.scene.elements.find((element) => element.id === second.ids[0])?.x)
+      .toBeCloseTo(box.x + 48);
     const history = new SceneHistory();
     history.commit(scene);
     expect(history.undo(first.scene)).toEqual(scene);
@@ -121,9 +127,15 @@ describe("Svelte native scene clipboard", () => {
     expect(pasted.scene.elements).toHaveLength(6);
     expect(pasted.scene.elements.slice(3).every((element) => !element.isDeleted))
       .toBe(true);
-    expect(pasted.scene.elements[3].boundElements?.[0].id).toBe(
-      pasted.scene.elements[5].id,
-    );
+    const pastedBox = pasted.scene.elements.find((element) =>
+      element.id === pasted.ids[0]
+    )!;
+    const pastedLabel = pasted.scene.elements.find((element) =>
+      element.id === pastedBox.boundElements?.find((ref) => ref.type === "text")?.id
+    )!;
+    expect(pastedLabel.type).toBe("text");
+    expect(pastedLabel.type === "text" && pastedLabel.containerId)
+      .toBe(pastedBox.id);
     const history = new SceneHistory();
     history.commit(scene);
     expect(history.undo(cut.scene)).toEqual(scene);
@@ -208,7 +220,9 @@ describe("Svelte native scene clipboard", () => {
     expect(pasted.scene.elements).toHaveLength(4);
     expect(Object.keys(pasted.scene.files)).toHaveLength(2);
     const original = created.element;
-    const copied = pasted.scene.elements[2];
+    const copied = pasted.scene.elements.find((element) =>
+      element.id === pasted.ids[0]
+    )!;
     expect(copied.type).toBe("image");
     if (copied.type !== "image") {
       return;
