@@ -8,7 +8,7 @@ import { alignElements, type Alignment } from "./align";
 import { distributeElements, type Distribution } from "./distribute";
 import { moveAllLeft, moveAllRight, moveOneLeft, moveOneRight } from "./zindex";
 import type { MaybeTransformHandleType } from "./transformHandles";
-import { getElementsInGroup, getSelectedElementsByGroup, selectGroupsFromGivenElements } from "./groups";
+import { addToGroup, getElementsInGroup, getSelectedElementsByGroup, removeFromSelectedGroups, selectGroupsFromGivenElements } from "./groups";
 
 import type {
   ExcalidrawElement,
@@ -666,6 +666,38 @@ export class CoreEditorController {
           elements, scene.getElementsMapIncludingDeleted(),
           action.distribution, state, scene,
         );
+      }
+    });
+  }
+
+  /**
+   * Update group ancestry using the original Excalidraw helpers and Scene
+   * revisions. Eligibility and reciprocal-link validation are checked by
+   * the calling document command; this method performs no Svelte edits.
+   */
+  previewGroupMembership(
+    originalElements: readonly ExcalidrawElement[],
+    memberIds: ReadonlySet<string>,
+    operation: { kind: "add" | "remove"; groupIds: readonly string[] },
+  ): CoreEditorTransactionResult {
+    if (
+      !memberIds.size || !operation.groupIds.length ||
+      operation.groupIds.some((id) => !id || typeof id !== "string")
+    ) {
+      throw new Error("Invalid group mutation");
+    }
+    return this.previewTransaction(originalElements, (scene) => {
+      const members = [...memberIds].map((id) => scene.getNonDeletedElement(id));
+      if (members.some((element) => !element || element.locked)) return;
+      const selectedGroups = Object.fromEntries(
+        operation.groupIds.map((id) => [id, true]),
+      );
+      for (const element of members as NonDeleted<ExcalidrawElement>[]) {
+        const nextGroupIds = operation.kind === "add"
+          ? addToGroup(element.groupIds, operation.groupIds[0], null)
+          : removeFromSelectedGroups(element.groupIds, selectedGroups);
+        if (nextGroupIds.join("|") === element.groupIds.join("|")) continue;
+        scene.mutateElement(element, { groupIds: nextGroupIds });
       }
     });
   }
