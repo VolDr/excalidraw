@@ -151,7 +151,9 @@ export class CoreEditorSession<
     try {
       const [left, top, right, bottom] = getCommonBounds(
         selected,
-        new Map(original.elements.map((element) => [element.id, element])),
+        new Map<string, ExcalidrawElement>(
+          original.elements.map((element) => [element.id, element]),
+        ),
       );
       if (
         ![left, top, right, bottom].every(Number.isFinite) ||
