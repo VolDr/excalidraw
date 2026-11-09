@@ -2,6 +2,9 @@ import { CoreEditorController, type CoreEditorTransactionResult } from "./Editor
 import { getCommonBounds } from "./bounds";
 import { getCoreGraphDefects, isCoreGraphTransitionValid } from "./EditorGraph";
 import { newElementWith } from "./mutateElement";
+import { validateFractionalIndices } from "./fractionalIndex";
+import type { Alignment } from "./align";
+import type { Distribution } from "./distribute";
 import type { ExcalidrawElement } from "./types";
 import type { AppState } from "../../excalidraw/types";
 import {
@@ -20,32 +23,73 @@ import {
 export const applyCoreDocumentTransaction = <TDoc extends CoreEditorDocumentLike>(
   source: TDoc,
   tx: CoreEditorTransactionResult,
+  options: { allowReorder?: boolean } = {},
 ): TDoc => {
   if (
     tx.elements.length !== source.elements.length ||
-    tx.baseline.length !== source.elements.length ||
-    tx.elements.some((element, index) =>
-      element.id !== source.elements[index].id ||
-      tx.baseline[index].id !== element.id
-    )
+    tx.baseline.length !== source.elements.length
   ) {
-    throw new Error("Document transaction changed element identities or order");
+    throw new Error("Document transaction changed element count");
   }
-  let changed = false;
-  const elements = source.elements.map((original, index) => {
-    if (!tx.changedIds.has(original.id)) return original;
+  const sources = new Map(source.elements.map((element) => [element.id, element]));
+  const baselines = new Map(tx.baseline.map((entry) => [entry.id, entry]));
+  if (
+    sources.size !== source.elements.length ||
+    baselines.size !== tx.baseline.length ||
+    tx.elements.some((element) => !sources.has(element.id) || !baselines.has(element.id)) ||
+    new Set(tx.elements.map((element) => element.id)).size !== sources.size
+  ) {
+    throw new Error("Document transaction changed element identities");
+  }
+  const reordered = tx.elements.some(
+    (element, index) => element.id !== source.elements[index].id,
+  );
+  if (reordered && !options.allowReorder) {
+    throw new Error("Reorder requires an explicit core document command");
+  }
+
+  let changed = reordered;
+  const elements = tx.elements.map((updated) => {
+    const original = sources.get(updated.id)!;
+    const baseline = baselines.get(updated.id)!;
+    if (!tx.changedIds.has(updated.id)) return original;
     changed = true;
-    const updated = tx.elements[index];
-    const baseline = tx.baseline[index];
     const revisionDelta = updated.version - baseline.version;
     const next = {
       ...updated,
-      index: original.index,
+      index: options.allowReorder ? updated.index : original.index,
       version: original.version + Math.max(0, revisionDelta),
     } as ExcalidrawElement;
     return revisionDelta <= 0 ? newElementWith(next, {}, true) : next;
   });
   return changed ? ({ ...source, elements } as TDoc) : source;
+};
+
+const hasValidDocumentOrder = (
+  elements: readonly ExcalidrawElement[],
+): boolean => {
+  try {
+    validateFractionalIndices(elements, {
+      includeBoundTextValidation: false,
+      shouldThrow: true,
+      ignoreLogs: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Reordering may edit only the array order, index and Excalidraw revision. */
+const sameElementAsideFromOrder = (
+  before: ExcalidrawElement,
+  after: ExcalidrawElement,
+): boolean => {
+  const strip = (element: ExcalidrawElement) => {
+    const { index, version, versionNonce, updated, ...stable } = element;
+    return stable;
+  };
+  return JSON.stringify(strip(before)) === JSON.stringify(strip(after));
 };
 
 /**
@@ -167,6 +211,81 @@ export class CoreEditorSession<
       const next = applyCoreDocumentTransaction(original, tx);
       return next !== original &&
         isCoreGraphTransitionValid(original.elements, next.elements)
+        ? next : original;
+    } catch {
+      return original;
+    }
+  }
+
+  /** Original Excalidraw alignment and distribution, including groups. */
+  previewLayoutDocument(
+    original: TDoc,
+    selectedIds: readonly string[],
+    action: { kind: "align"; alignment: Alignment } |
+      { kind: "distribute"; distribution: Distribution },
+  ): TDoc {
+    this.assertOpen();
+    const minimum = action.kind === "align" ? 2 : 3;
+    if (
+      selectedIds.length < minimum ||
+      new Set(selectedIds).size !== selectedIds.length ||
+      selectedIds.some((id) => !original.elements.some((element) =>
+        element.id === id && !element.isDeleted && !element.locked
+      ))
+    ) return original;
+    try {
+      const tx = this.controller.previewLayoutSelection(
+        original.elements, selectedIds, action,
+      );
+      const next = applyCoreDocumentTransaction(original, tx);
+      return next !== original &&
+        isCoreGraphTransitionValid(original.elements, next.elements)
+        ? next : original;
+    } catch {
+      return original;
+    }
+  }
+
+  /**
+   * Original Excalidraw layer movement with its fractional-index repair.
+   * Unlike geometry transactions, reordering is allowed to return a new
+   * element array order, while retaining exact IDs, group ancestry, bindings
+   * and all non-index content from the imported document.
+   */
+  previewReorderDocument(
+    original: TDoc,
+    selectedIds: readonly string[],
+    direction: "back" | "forward" | "bottom" | "top",
+  ): TDoc {
+    this.assertOpen();
+    if (
+      !selectedIds.length ||
+      new Set(selectedIds).size !== selectedIds.length ||
+      !hasValidDocumentOrder(original.elements) ||
+      selectedIds.some((id) => !original.elements.some((element) =>
+        element.id === id && !element.isDeleted && !element.locked
+      ))
+    ) return original;
+    try {
+      const tx = this.controller.previewReorderSelection(
+        original.elements, selectedIds, direction,
+      );
+      const next = applyCoreDocumentTransaction(original, tx, {
+        allowReorder: true,
+      });
+      if (next === original ||
+          !hasValidDocumentOrder(next.elements)) return original;
+      const after = new Map(next.elements.map((element) => [element.id, element]));
+      if (
+        after.size !== original.elements.length ||
+        original.elements.some((element) => {
+          const updated = after.get(element.id);
+          return !updated || !sameElementAsideFromOrder(element, updated);
+        })
+      ) return original;
+      const priorDefects = getCoreGraphDefects(original.elements);
+      const nextDefects = getCoreGraphDefects(next.elements);
+      return [...nextDefects].every((defect) => priorDefects.has(defect))
         ? next : original;
     } catch {
       return original;
