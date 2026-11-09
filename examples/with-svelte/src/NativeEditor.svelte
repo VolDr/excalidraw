@@ -44,7 +44,6 @@
     missingNativeImportedOrbitBindings,
     repairNativeImportedOrbitBindings,
   } from "./native/importedOrbitRepair";
-  import { indexInsertedNativeElements } from "./native/ordering";
   import { canMoveNativeLayer, type NativeLayerMove } from "./native/zOrder";
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
   import { canLayoutNativeSelection, nativeLayoutUnitCount, type NativeLayoutAction } from "./native/layout";
@@ -366,9 +365,8 @@
     if (previous === next) {
       return;
     }
-    const indexed = indexInsertedNativeElements(previous, next);
-    editorSession.commit(previous, indexed);
-    onChange(indexed);
+    const committed = editorSession.commit(previous, next);
+    onChange(committed);
     refreshHistory();
   }
 
