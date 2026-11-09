@@ -150,7 +150,12 @@ describe("atomic Svelte bound-text groups", () => {
     const grouped = groupSelection(scene, [box.id, other.id]).scene;
     expect(duplicateSelection(grouped, [box.id]).scene).toBe(grouped);
     const result = duplicateSelection(grouped, [box.id, other.id]);
-    const [copyBox, copyOther, copyLabel] = result.scene.elements.slice(3);
+    const [copyBox, copyOther] = result.ids.map((id) =>
+      result.scene.elements.find((element) => element.id === id)!,
+    );
+    const copyLabel = result.scene.elements.find((element) =>
+      element.id === copyBox.boundElements?.find((ref) => ref.type === "text")?.id
+    )!;
     expect(result.scene.elements).toHaveLength(6);
     expect(result.ids).toEqual([copyBox.id, copyOther.id]);
     expect(copyBox.id).not.toBe(box.id);
