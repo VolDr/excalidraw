@@ -45,9 +45,9 @@
     repairNativeImportedOrbitBindings,
   } from "./native/importedOrbitRepair";
   import { indexInsertedNativeElements } from "./native/ordering";
-  import { canMoveNativeLayer, moveNativeLayerWithCore, type NativeLayerMove } from "./native/zOrder";
+  import { canMoveNativeLayer, type NativeLayerMove } from "./native/zOrder";
   import { fitNativeViewportWithCore, type NativeViewportFit } from "./native/viewport";
-  import { canLayoutNativeSelection, nativeLayoutUnitCount, layoutNativeSelectionWithCore, type NativeLayoutAction } from "./native/layout";
+  import { canLayoutNativeSelection, nativeLayoutUnitCount, type NativeLayoutAction } from "./native/layout";
   import { applyNativeStyle, nativeStyleTarget, type NativeStyleChange } from "./native/styles";
   import { applyNativeTypography, nativeTypographyTarget, type NativeTypographyChange } from "./native/textStyles";
   import { cropNativeImageCenter, resetNativeImageCrop } from "./native/imageCrop";
@@ -432,7 +432,7 @@
     if (!layoutAvailable || gesture || textEditor) {
       return;
     }
-    const next = layoutNativeSelectionWithCore(scene, selectedIds, action);
+    const next = editorSession.previewLayoutDocument(scene, selectedIds, action);
     if (next !== scene) {
       commit(scene, next);
     }
@@ -442,7 +442,7 @@
     if (!layerAvailable || gesture || textEditor) {
       return;
     }
-    const next = moveNativeLayerWithCore(scene, selectedIds, direction);
+    const next = editorSession.previewReorderDocument(scene, selectedIds, direction);
     if (next !== scene) {
       commit(scene, next);
     }
