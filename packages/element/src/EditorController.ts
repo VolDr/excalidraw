@@ -4,6 +4,9 @@ import { dragSelectedElements } from "./dragElements";
 import { fixBindingsAfterDeletion } from "./binding";
 import { getCommonBounds } from "./bounds";
 import { transformElements } from "./resizeElements";
+import { alignElements, type Alignment } from "./align";
+import { distributeElements, type Distribution } from "./distribute";
+import { moveAllLeft, moveAllRight, moveOneLeft, moveOneRight } from "./zindex";
 import type { MaybeTransformHandleType } from "./transformHandles";
 import { getElementsInGroup, selectGroupsFromGivenElements } from "./groups";
 
@@ -563,6 +566,103 @@ export class CoreEditorController {
         pointer.x, pointer.y,
         center.x, center.y,
       );
+    });
+  }
+
+  /**
+   * Pure preview of the original editor's z-order commands. No Svelte
+   * geometry/index algorithm is involved. The complete reordered array is
+   * published by the transaction Scene; consumers validate indices and
+   * imported bindings before adopting it as a document.
+   */
+  previewReorderSelection(
+    originalElements: readonly ExcalidrawElement[],
+    selectedIds: readonly string[],
+    direction: "back" | "forward" | "bottom" | "top",
+  ): CoreEditorTransactionResult {
+    if (!selectedIds.length || new Set(selectedIds).size !== selectedIds.length) {
+      throw new Error("Invalid z-order selection");
+    }
+    return this.previewTransaction(originalElements, (scene) => {
+      const selectedElementIds = Object.fromEntries(
+        selectedIds.map((id) => [id, true]),
+      ) as AppState["selectedElementIds"];
+      const selected = scene.getSelectedElements({ selectedElementIds });
+      if (selected.length !== selectedIds.length ||
+          selected.some((element) => element.locked)) return;
+      const state: AppState = {
+        ...this.appState,
+        selectedElementIds,
+        selectedGroupIds: selectGroupsFromGivenElements(
+          selected, {
+            ...this.appState,
+            selectedElementIds,
+            selectedGroupIds: {},
+            editingGroupId: null,
+          },
+        ),
+        editingGroupId: null,
+      };
+      const original = scene.getElementsIncludingDeleted();
+      const ordered = direction === "back"
+        ? moveOneLeft(original, state, scene)
+        : direction === "forward"
+          ? moveOneRight(original, state, scene)
+          : direction === "bottom"
+            ? moveAllLeft(original, state)
+            : moveAllRight(original, state);
+      if (ordered.length !== original.length ||
+          ordered.every((item, index) => item.id === original[index].id)) return;
+      // Z-index functions return a new ordered array. Keep the preview Scene
+      // authoritative instead of exporting an independent Svelte-side array.
+      scene.replaceAllElements([...ordered], { skipValidation: true });
+    });
+  }
+
+  /**
+   * Original group-aware alignment/distribution inside the same transaction
+   * boundary used for drag and transform. Selection groups are derived from
+   * Excalidraw itself instead of duplicated Svelte state.
+   */
+  previewLayoutSelection(
+    originalElements: readonly ExcalidrawElement[],
+    selectedIds: readonly string[],
+    action: { kind: "align"; alignment: Alignment } |
+      { kind: "distribute"; distribution: Distribution },
+  ): CoreEditorTransactionResult {
+    if (selectedIds.length < (action.kind === "align" ? 2 : 3) ||
+        new Set(selectedIds).size !== selectedIds.length) {
+      throw new Error("Invalid layout selection");
+    }
+    return this.previewTransaction(originalElements, (scene) => {
+      const selected = selectedIds.map((id) => scene.getNonDeletedElement(id));
+      if (selected.some((element) => !element || element.locked)) return;
+      const selectedElementIds = Object.fromEntries(
+        selectedIds.map((id) => [id, true]),
+      ) as AppState["selectedElementIds"];
+      const state: AppState = {
+        ...this.appState,
+        selectedElementIds,
+        selectedGroupIds: selectGroupsFromGivenElements(
+          selected as NonDeleted<ExcalidrawElement>[],
+          {
+            ...this.appState,
+            selectedElementIds,
+            selectedGroupIds: {},
+            editingGroupId: null,
+          },
+        ),
+        editingGroupId: null,
+      };
+      const elements = selected as NonDeleted<ExcalidrawElement>[];
+      if (action.kind === "align") {
+        alignElements(elements, action.alignment, scene, state);
+      } else {
+        distributeElements(
+          elements, scene.getElementsMapIncludingDeleted(),
+          action.distribution, state, scene,
+        );
+      }
     });
   }
 
