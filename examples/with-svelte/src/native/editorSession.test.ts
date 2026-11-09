@@ -1,7 +1,8 @@
-import { CoreEditorSession, deleteCoreDocumentElements } from "@excalidraw/element";
+import { CoreEditorSession, changeCoreDocumentGroups, deleteCoreDocumentElements, validateFractionalIndices } from "@excalidraw/element";
 import { describe, expect, it } from "vitest";
 
 import { blankScene, createShape } from "./scene";
+import { indexInsertedNativeElements } from "./ordering";
 
 describe("framework-independent editor session commands", () => {
   it("previews core dragging from the original pointer-down scene without mutating it", () => {
@@ -68,4 +69,95 @@ describe("framework-independent editor session commands", () => {
       session.destroy();
     }
   });
+  it("moves layers using core fractional-index repair and retains unrelated objects", () => {
+    const empty = blankScene();
+    const elements = [
+      createShape("rectangle", { x: 0, y: 0 }, { x: 50, y: 50 }),
+      createShape("ellipse", { x: 80, y: 0 }, { x: 130, y: 50 }),
+      createShape("diamond", { x: 150, y: 0 }, { x: 200, y: 50 }),
+    ];
+    const source = indexInsertedNativeElements(empty, { ...empty, elements });
+    const session = new CoreEditorSession(source);
+    try {
+      const next = session.previewReorderDocument(source, [elements[0].id], "forward");
+      expect(next.elements.map((element) => element.id)).toEqual([
+        elements[1].id, elements[0].id, elements[2].id,
+      ]);
+      validateFractionalIndices(next.elements, {
+        includeBoundTextValidation: false, shouldThrow: true, ignoreLogs: true,
+      });
+      expect(next.elements[2]).toBe(source.elements[2]);
+      expect(source.elements[0].id).toBe(elements[0].id);
+      expect(session.previewReorderDocument(source, [elements[0].id, elements[0].id], "top")).toBe(source);
+      session.commit(source, next);
+      expect(session.undo().elements.map((element) => element.id)).toEqual(
+        source.elements.map((element) => element.id),
+      );
+      expect(session.redo().elements.map((element) => element.id)).toEqual(
+        next.elements.map((element) => element.id),
+      );
+    } finally {
+      session.destroy();
+    }
+  });
+
+  it("aligns via original core and keeps a consistent document transaction", () => {
+    const left = createShape("rectangle", { x: 10, y: 20 }, { x: 60, y: 70 });
+    const right = createShape("ellipse", { x: 100, y: 90 }, { x: 150, y: 140 });
+    const source = { ...blankScene(), elements: [left, right] };
+    const session = new CoreEditorSession(source);
+    try {
+      const aligned = session.previewLayoutDocument(source, [left.id, right.id], {
+        kind: "align", alignment: { axis: "x", position: "start" },
+      });
+      expect(aligned.elements[0].x).toBe(10);
+      expect(aligned.elements[1].x).toBe(10);
+      expect(session.previewLayoutDocument(source, [left.id], {
+        kind: "align", alignment: { axis: "x", position: "center" },
+      })).toBe(source);
+      expect(source.elements[1].x).toBe(100);
+    } finally {
+      session.destroy();
+    }
+  });
+
+  it("groups and ungroups nested members in one core operation without geometry rewrites", () => {
+    const first = createShape("rectangle", { x: 10, y: 10 }, { x: 60, y: 60 });
+    const second = createShape("ellipse", { x: 80, y: 10 }, { x: 130, y: 60 });
+    const unrelated = createShape("diamond", { x: 160, y: 10 }, { x: 210, y: 60 });
+    const source = {
+      ...blankScene(),
+      elements: [
+        { ...first, groupIds: ["inner"] },
+        { ...second, groupIds: ["inner"] },
+        unrelated,
+      ],
+      files: { marker: { id: "keep" } },
+    };
+    const session = new CoreEditorSession(source);
+    try {
+      const ids = new Set([first.id, second.id, unrelated.id]);
+      const grouped = session.previewGroupMembershipDocument(source, ids, {
+        kind: "add", groupIds: ["outer"],
+      });
+      expect(grouped).not.toBe(source);
+      expect(grouped.elements[0].groupIds).toEqual(["inner", "outer"]);
+      expect(grouped.elements[1].groupIds).toEqual(["inner", "outer"]);
+      expect(grouped.elements[2].groupIds).toEqual(["outer"]);
+      expect(grouped.elements.map((element) => element.x)).toEqual(source.elements.map((element) => element.x));
+      expect(grouped.files).toBe(source.files);
+      expect(source.elements[0].groupIds).toEqual(["inner"]);
+      expect(changeCoreDocumentGroups(grouped, ids, {
+        kind: "remove", groupIds: ["outer"],
+      }).elements.map((element) => element.groupIds)).toEqual([
+        ["inner"], ["inner"], [],
+      ]);
+      expect(session.previewGroupMembershipDocument(grouped, ids, {
+        kind: "add", groupIds: ["outer"],
+      })).toBe(grouped);
+    } finally {
+      session.destroy();
+    }
+  });
+
 });
