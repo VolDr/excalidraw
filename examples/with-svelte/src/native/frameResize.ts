@@ -3,7 +3,6 @@ import { CoreEditorSession, getTransformHandles } from "@excalidraw/element";
 import type { ExcalidrawFrameElement } from "@excalidraw/element/types";
 
 import { nativeElementsMap } from "./coreAdapter";
-import type { CoreEditorSession } from "@excalidraw/element";
 import { reconcileNativeResizedFrameMembership } from "./frameMembership";
 
 import type { Point, SceneFile } from "./scene";
