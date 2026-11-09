@@ -1,9 +1,27 @@
 import { describe, expect, it } from "vitest";
+import { CoreEditorSession } from "@excalidraw/element";
 import { blankScene, createShape } from "./scene";
 import { indexInsertedNativeElements } from "./ordering";
-import { canLayoutNativeSelection, layoutNativeSelectionWithCore, nativeLayoutUnitCount } from "./layout";
+import { canLayoutNativeSelection, nativeLayoutUnitCount, type NativeLayoutAction } from "./layout";
 import { groupSelection } from "./groups";
 import { updateNativeBoxLabel } from "./boundText";
+
+const previewLayout = (
+  scene: ReturnType<typeof blankScene>,
+  ids: readonly string[],
+  action: NativeLayoutAction,
+) => {
+  if (!canLayoutNativeSelection(scene, ids) ||
+      (action.kind === "distribute" && nativeLayoutUnitCount(scene, ids) < 3)) {
+    return scene;
+  }
+  const session = new CoreEditorSession(scene);
+  try {
+    return session.previewLayoutDocument(scene, ids, action);
+  } finally {
+    session.destroy();
+  }
+};
 
 const sample = () => {
   const start = blankScene();
@@ -19,7 +37,7 @@ describe("native align/distribute delegates to Excalidraw", () => {
   it("aligns independent boxes using the original scene mutations", () => {
     const source = sample();
     const ids = source.elements.map((e) => e.id);
-    const result = layoutNativeSelectionWithCore(source, ids, {
+    const result = previewLayout(source, ids, {
       kind: "align", alignment: { axis: "x", position: "start" },
     });
     expect(result).not.toBe(source);
@@ -31,7 +49,7 @@ describe("native align/distribute delegates to Excalidraw", () => {
   it("distributes independent objects without changing IDs or source", () => {
     const source = sample();
     const ids = source.elements.map((e) => e.id);
-    const result = layoutNativeSelectionWithCore(source, ids, {
+    const result = previewLayout(source, ids, {
       kind: "distribute", distribution: { axis: "x", space: "between" },
     });
     expect(result.elements.map((e) => e.id)).toEqual(ids);
@@ -47,7 +65,7 @@ describe("native align/distribute delegates to Excalidraw", () => {
     expect(group.groupId).not.toBeNull();
     expect(nativeLayoutUnitCount(group.scene, ids.slice(0, 2))).toBe(0);
     expect(nativeLayoutUnitCount(group.scene, ids)).toBe(2);
-    const aligned = layoutNativeSelectionWithCore(group.scene, ids, {
+    const aligned = previewLayout(group.scene, ids, {
       kind: "align", alignment: { axis: "x", position: "start" },
     });
     expect(aligned).not.toBe(group.scene);
@@ -56,10 +74,10 @@ describe("native align/distribute delegates to Excalidraw", () => {
     expect(aligned.elements[2].x).toBe(group.scene.elements[0].x);
     expect(aligned.elements[0].groupIds).toEqual([group.groupId]);
     expect(aligned.elements[1].groupIds).toEqual([group.groupId]);
-    expect(layoutNativeSelectionWithCore(group.scene, ids.slice(0, 2), {
+    expect(previewLayout(group.scene, ids.slice(0, 2), {
       kind: "align", alignment: { axis: "y", position: "center" },
     })).toBe(group.scene);
-    expect(layoutNativeSelectionWithCore(group.scene, ids, {
+    expect(previewLayout(group.scene, ids, {
       kind: "distribute", distribution: { axis: "x", space: "between" },
     })).toBe(group.scene);
   });
@@ -73,7 +91,7 @@ describe("native align/distribute delegates to Excalidraw", () => {
     const ids = extended.elements.map((e) => e.id);
     const grouped = groupSelection(extended, ids.slice(0, 2));
     expect(nativeLayoutUnitCount(grouped.scene, ids)).toBe(3);
-    const distributed = layoutNativeSelectionWithCore(grouped.scene, ids, {
+    const distributed = previewLayout(grouped.scene, ids, {
       kind: "distribute", distribution: { axis: "x", space: "between" },
     });
     expect(distributed.elements[2].x).not.toBe(grouped.scene.elements[2].x);
@@ -88,7 +106,7 @@ describe("native align/distribute delegates to Excalidraw", () => {
     const indexed = indexInsertedNativeElements(source, labeled);
     const ids = [source.elements[0].id, source.elements[1].id];
     expect(canLayoutNativeSelection(indexed, ids)).toBe(true);
-    const next = layoutNativeSelectionWithCore(indexed, ids, {
+    const next = previewLayout(indexed, ids, {
       kind: "align", alignment: { axis: "x", position: "start" },
     });
     const text = next.elements.find((element) => element.type === "text");
@@ -109,7 +127,7 @@ describe("native align/distribute delegates to Excalidraw", () => {
     const inner = groupSelection(four, ids.slice(0, 2));
     const nested = groupSelection(inner.scene, ids.slice(0, 3));
     expect(nativeLayoutUnitCount(nested.scene, ids)).toBe(2);
-    const next = layoutNativeSelectionWithCore(nested.scene, ids, {
+    const next = previewLayout(nested.scene, ids, {
       kind: "align", alignment: { axis: "y", position: "start" },
     });
     expect(next).not.toBe(nested.scene);
@@ -124,7 +142,7 @@ describe("native align/distribute delegates to Excalidraw", () => {
   it("does not edit groups, single elements or partially valid sets", () => {
     const source = sample();
     expect(canLayoutNativeSelection(source, [source.elements[0].id])).toBe(false);
-    expect(layoutNativeSelectionWithCore(source, [source.elements[0].id], {
+    expect(previewLayout(source, [source.elements[0].id], {
       kind: "align", alignment: { axis: "y", position: "center" },
     })).toBe(source);
     const locked = {
