@@ -6,7 +6,7 @@
 
   import type { ExcalidrawElement, ExcalidrawFrameElement, ExcalidrawTextElement, FontFamilyValues } from "@excalidraw/element/types";
   import { CoreEditorSession } from "@excalidraw/element";
-  import { nativeElementsMap, dragNativeGraphWithCore, transformNativeGraphWithCore } from "./native/coreAdapter";
+  import { nativeElementsMap } from "./native/coreAdapter";
   import { isCoreDrawableElement, paintCoreDrawableElement, paintCoreImageElement, paintCoreTextElement } from "./native/renderCore";
   import { nativeEraserHit, eraseNativeHits } from "./native/eraser";
   import { elementsInNativeLasso, type NativeLassoMode } from "./native/lasso";
@@ -1318,8 +1318,8 @@
       if (Math.hypot(dx, dy) > 0.2 && g.ids.length) {
         // Original Scene alone computes the drag and updates bindings.
         // Rejected imports are no-ops, never custom geometry fallbacks.
-        const next = dragNativeGraphWithCore(
-          g.original, g.ids, dx, dy, coreController,
+        const next = editorSession.previewDragDocument(
+          g.original, g.ids, dx, dy,
         );
         if (next !== g.original) {
           g.changed = true;
@@ -1329,9 +1329,8 @@
       }
     } else if (g.action === "transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        const next = transformNativeGraphWithCore(
-          g.original, [g.id], g.handle, point, coreController,
-          event.shiftKey,
+        const next = editorSession.previewTransformDocument(
+          g.original, [g.id], g.handle, point, event.shiftKey,
         );
         if (next !== g.original) {
           g.changed = true;
@@ -1353,8 +1352,8 @@
       }
     } else if (g.action === "group-transform" && g.id && g.handle) {
       if (Math.hypot(dx, dy) > 0.2) {
-        const next = transformNativeGraphWithCore(
-          g.original, g.ids, g.handle, point, coreController,
+        const next = editorSession.previewTransformDocument(
+          g.original, g.ids, g.handle, point,
         );
         if (next !== g.original) {
           g.changed = true;
@@ -1631,11 +1630,10 @@
       event.preventDefault();
       const multiplier = event.shiftKey ? 10 : 1;
       const offset = nudges[event.key];
-      const next = dragNativeGraphWithCore(
+      const next = editorSession.previewDragDocument(
         scene, selectedIds,
         offset.x * multiplier,
         offset.y * multiplier,
-        coreController,
       );
       if (next !== scene && next.elements.some((el, i) => el !== scene.elements[i])) {
         commit(scene, next);
