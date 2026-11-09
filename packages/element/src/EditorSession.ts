@@ -2,10 +2,11 @@ import { CoreEditorController, type CoreEditorTransactionResult } from "./Editor
 import { getCommonBounds } from "./bounds";
 import { getCoreGraphDefects, isCoreGraphTransitionValid } from "./EditorGraph";
 import { newElementWith } from "./mutateElement";
-import { syncInvalidIndicesImmutable, validateFractionalIndices } from "./fractionalIndex";
+import { syncInvalidIndicesImmutable, syncMovedIndices, validateFractionalIndices } from "./fractionalIndex";
 import type { Alignment } from "./align";
 import type { Distribution } from "./distribute";
 import type { ExcalidrawElement } from "./types";
+import { duplicateElements } from "./duplicate";
 import type { AppState } from "../../excalidraw/types";
 import {
   CoreEditorHistory,
@@ -396,6 +397,115 @@ export class CoreEditorSession<
         ? next : original;
     } catch {
       return original;
+    }
+  }
+
+  /**
+   * Duplicate whole validated selections using the original Excalidraw
+   * duplicateElements lifecycle, including nested groups, bound text,
+   * reciprocal arrows and file references. The host still decides which
+   * imported selections are editable; no Svelte ID/geometry copy loop.
+   */
+  previewDuplicateDocument(
+    original: TDoc,
+    selectedIds: readonly string[],
+    offset = 24,
+  ): { document: TDoc; ids: string[] } {
+    this.assertOpen();
+    const unchanged = { document: original, ids: [] as string[] };
+    if (
+      !selectedIds.length ||
+      new Set(selectedIds).size !== selectedIds.length ||
+      !Number.isFinite(offset) || Math.abs(offset) > 1e5
+    ) return unchanged;
+
+    try {
+      // Duplicate from isolated copies; core can mutate original elements
+      // while repairing reciprocal bindings and fractional indices.
+      const copies = structuredClone(original.elements);
+      const byId = new Map(copies.map((element) => [element.id, element]));
+      if (
+        byId.size !== copies.length ||
+        selectedIds.some((id) =>
+          !byId.has(id) ||
+          byId.get(id)!.isDeleted ||
+          byId.get(id)!.locked
+        )
+      ) return unchanged;
+
+      const selection = new Map(selectedIds.map((id) => [id, byId.get(id)!]));
+      const duplicated = duplicateElements({
+        type: "in-place",
+        elements: copies,
+        idsOfElementsToDuplicate: selection,
+        appState: { editingGroupId: null, selectedGroupIds: {} },
+        randomizeSeed: true,
+        overrides: ({ origElement }) => ({
+          x: origElement.x + offset,
+          y: origElement.y + offset,
+        }),
+      });
+      const newItems = duplicated.duplicatedElements;
+      const newIds = new Set(newItems.map((element) => element.id));
+      const mappedSelection = selectedIds.map((id) =>
+        duplicated.origIdToDuplicateId.get(id),
+      );
+      if (
+        !newItems.length ||
+        newIds.size !== newItems.length ||
+        newItems.some((element) =>
+          byId.has(element.id) ||
+          ![element.x, element.y, element.width, element.height]
+            .every(Number.isFinite)
+        ) ||
+        mappedSelection.some((id) => !id || !newIds.has(id)) ||
+        duplicated.elementsWithDuplicates.length !==
+          original.elements.length + newItems.length
+      ) return unchanged;
+
+      const moved = syncMovedIndices(
+        duplicated.elementsWithDuplicates,
+        new Map(newItems.map((element) => [element.id, element])),
+      );
+      const originalById = new Map(original.elements.map((element) => [
+        element.id, element,
+      ]));
+      const elements = moved.map((element) => {
+        const previous = originalById.get(element.id);
+        return previous && JSON.stringify(previous) === JSON.stringify(element)
+          ? previous : element;
+      });
+      const proposed = indexCoreInsertedElements(
+        original,
+        { ...original, elements } as TDoc,
+      );
+      const allIds = new Set(proposed.elements.map((element) => element.id));
+      if (
+        allIds.size !== proposed.elements.length ||
+        proposed.elements.some((element) =>
+          !originalById.has(element.id) && !newIds.has(element.id)
+        )
+      ) return unchanged;
+
+      const resultingById = new Map(proposed.elements.map((element) => [
+        element.id, element,
+      ]));
+      if (original.elements.some((element) => {
+        const after = resultingById.get(element.id);
+        return !after || !sameElementAsideFromOrder(element, after);
+      })) return unchanged;
+
+      const beforeDefects = getCoreGraphDefects(original.elements);
+      const afterDefects = getCoreGraphDefects(proposed.elements);
+      if ([...afterDefects].some((defect) => !beforeDefects.has(defect))) {
+        return unchanged;
+      }
+      return {
+        document: proposed,
+        ids: mappedSelection as string[],
+      };
+    } catch {
+      return unchanged;
     }
   }
 
