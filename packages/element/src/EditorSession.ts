@@ -267,3 +267,20 @@ export class CoreEditorSession<
     }
   }
 }
+
+/**
+ * Stateless entry point for document consumers (clipboard, command tests)
+ * without a persistent editor host. Uses the exact same Scene, binding and
+ * graph-validation lifecycle as CoreEditorSession.
+ */
+export const deleteCoreDocumentElements = <TDoc extends CoreEditorDocumentLike>(
+  document: TDoc,
+  ids: ReadonlySet<string>,
+): TDoc => {
+  const session = new CoreEditorSession(document);
+  try {
+    return session.previewDeleteDocument(document, ids);
+  } finally {
+    session.destroy();
+  }
+};
