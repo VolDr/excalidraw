@@ -463,10 +463,18 @@ export class CoreEditorSession<
           original.elements.length + newItems.length
       ) return unchanged;
 
-      const moved = syncMovedIndices(
-        duplicated.elementsWithDuplicates,
-        new Map(newItems.map((element) => [element.id, element])),
-      );
+      // Existing imported files may have missing fractional indices.
+      // Prefer the core moved-index algorithm, then let the same core
+      // insertion reconciler repair any still-invalid positions.
+      let moved: readonly ExcalidrawElement[];
+      try {
+        moved = syncMovedIndices(
+          duplicated.elementsWithDuplicates,
+          new Map(newItems.map((element) => [element.id, element])),
+        );
+      } catch {
+        moved = duplicated.elementsWithDuplicates;
+      }
       const originalById = new Map(original.elements.map((element) => [
         element.id, element,
       ]));
