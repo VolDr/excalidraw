@@ -293,6 +293,73 @@ export class CoreEditorSession<
   }
 
   /**
+   * Original addToGroup/removeFromSelectedGroups mutate only group ancestry.
+   * Caller supplies a closed set of members (including reciprocal captions).
+   * The command refuses all other graph, geometry or document mutations.
+   */
+  previewGroupMembershipDocument(
+    original: TDoc,
+    memberIds: ReadonlySet<string>,
+    operation: { kind: "add" | "remove"; groupIds: readonly string[] },
+  ): TDoc {
+    this.assertOpen();
+    const groups = new Set(operation.groupIds);
+    if (
+      !memberIds.size || !groups.size ||
+      groups.size !== operation.groupIds.length ||
+      (operation.kind === "add" && groups.size !== 1) ||
+      operation.groupIds.some((id) => typeof id !== "string" || !id) ||
+      memberIds.size !== original.elements.filter((element) =>
+        memberIds.has(element.id) && !element.isDeleted && !element.locked
+      ).length
+    ) return original;
+    if (
+      operation.kind === "add" &&
+      original.elements.some((element) =>
+        element.groupIds.some((id) => groups.has(id))
+      )
+    ) return original;
+
+    try {
+      const tx = this.controller.previewGroupMembership(
+        original.elements, memberIds, operation,
+      );
+      const next = applyCoreDocumentTransaction(original, tx);
+      if (next === original) return original;
+      const byId = new Map(next.elements.map((element) => [element.id, element]));
+      const stable = (element: ExcalidrawElement) => {
+        const {
+          groupIds, index, version, versionNonce, updated, ...unchanged
+        } = element;
+        return unchanged;
+      };
+      for (const previous of original.elements) {
+        const updated = byId.get(previous.id);
+        if (
+          !updated ||
+          !sameElementAsideFromOrder(previous, updated) &&
+            JSON.stringify(stable(previous)) !== JSON.stringify(stable(updated)) ||
+          previous.index !== updated.index
+        ) return original;
+        const expectedGroups = memberIds.has(previous.id)
+          ? operation.kind === "add"
+            ? [...previous.groupIds, operation.groupIds[0]]
+            : previous.groupIds.filter((groupId) => !groups.has(groupId))
+          : previous.groupIds;
+        if (
+          JSON.stringify(updated.groupIds) !== JSON.stringify(expectedGroups)
+        ) return original;
+      }
+      const priorDefects = getCoreGraphDefects(original.elements);
+      const nextDefects = getCoreGraphDefects(next.elements);
+      return [...nextDefects].every((defect) => priorDefects.has(defect))
+        ? next : original;
+    } catch {
+      return original;
+    }
+  }
+
+  /**
    * Core deletion updates reciprocal links in the same transaction.
    * Imported graphs may have existing defects, but deletion cannot add new
    * dangling references.
@@ -399,6 +466,23 @@ export const deleteCoreDocumentElements = <TDoc extends CoreEditorDocumentLike>(
   const session = new CoreEditorSession(document);
   try {
     return session.previewDeleteDocument(document, ids);
+  } finally {
+    session.destroy();
+  }
+};
+
+/**
+ * Stateless entry point for group commands used in headless consumers and
+ * fixtures. Svelte's persistent editor calls the session method directly.
+ */
+export const changeCoreDocumentGroups = <TDoc extends CoreEditorDocumentLike>(
+  document: TDoc,
+  ids: ReadonlySet<string>,
+  operation: { kind: "add" | "remove"; groupIds: readonly string[] },
+): TDoc => {
+  const session = new CoreEditorSession(document);
+  try {
+    return session.previewGroupMembershipDocument(document, ids, operation);
   } finally {
     session.destroy();
   }
