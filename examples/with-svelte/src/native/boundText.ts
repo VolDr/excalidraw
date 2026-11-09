@@ -11,11 +11,12 @@ import {
 } from "@excalidraw/element";
 
 import type {
-  ElementsMap,
   ExcalidrawElement,
   ExcalidrawTextElement,
   ExcalidrawTextElementWithContainer,
 } from "@excalidraw/element/types";
+
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 
 import type { SceneFile } from "./scene";
 
@@ -41,7 +42,7 @@ export function nativeLabelBox(
     !label.autoResize ||
     label.boundElements?.length ||
     label.frameId ||
-    label.groupIds.length
+    label.groupIds.some((id, index) => label.groupIds.indexOf(id) !== index)
   ) {
     return null;
   }
@@ -54,16 +55,80 @@ export function nativeLabelBox(
     box.isDeleted ||
     box.locked ||
     box.frameId ||
-    box.groupIds.length ||
+    box.groupIds.length !== label.groupIds.length ||
+    box.groupIds.some((id, index) => id !== label.groupIds[index]) ||
     box.width <= 20 ||
     box.height <= 20 ||
     box.boundElements?.length !== 1 ||
     box.boundElements[0].type !== "text" ||
-    box.boundElements[0].id !== label.id
+    box.boundElements[0].id !== label.id ||
+    scene.elements.some(
+      (item) =>
+        item.type === "text" &&
+        !item.isDeleted &&
+        item.containerId === box.id &&
+        item.id !== label.id,
+    ) ||
+    scene.elements.some(
+      (item) =>
+        item.type === "arrow" &&
+        !item.isDeleted &&
+        (item.startBinding?.elementId === box.id ||
+          item.endBinding?.elementId === box.id),
+    )
   ) {
     return null;
   }
   return box;
+}
+
+/**
+ * Validate a single reciprocal text label, including when its container
+ * also has one or more bound arrows. This is a relationship safety gate,
+ * not a second text layout algorithm. Editing of mixed bound graphs is
+ * delegated separately to the original core.
+ */
+export function nativeReciprocalCaption(
+  scene: SceneFile,
+  label: ExcalidrawElement,
+): LabelBox | null {
+  if (
+    label.type !== "text" ||
+    !label.containerId ||
+    label.isDeleted ||
+    label.locked ||
+    !label.autoResize ||
+    label.boundElements?.length ||
+    label.frameId ||
+    new Set(label.groupIds).size !== label.groupIds.length
+  ) return null;
+  const box = scene.elements.find((item) => item.id === label.containerId);
+  if (
+    !box ||
+    !["rectangle", "ellipse", "diamond"].includes(box.type) ||
+    box.isDeleted ||
+    box.locked ||
+    box.frameId ||
+    box.width <= 20 ||
+    box.height <= 20 ||
+    box.groupIds.length !== label.groupIds.length ||
+    box.groupIds.some((id, i) => id !== label.groupIds[i]) ||
+    !box.boundElements ||
+    box.boundElements.filter((ref) => ref.type === "text").length !== 1 ||
+    !box.boundElements.some((ref) =>
+      ref.type === "text" && ref.id === label.id
+    ) ||
+    box.boundElements.some((ref) =>
+      ref.type !== "text" && ref.type !== "arrow"
+    ) ||
+    new Set(box.boundElements.map((ref) => ref.id)).size !== box.boundElements.length ||
+    scene.elements.some((other) =>
+      !other.isDeleted && other.id !== label.id && other.id !== box.id &&
+      ((other.type === "text" && other.containerId === box.id) ||
+        other.boundElements?.some((ref) => ref.id === label.id))
+    )
+  ) return null;
+  return box as LabelBox;
 }
 
 /** Derive official placement and wrapping without changing the file. */
@@ -96,9 +161,7 @@ export function nativeBoundLabelLayout(
     height: metrics.height,
     angle: box.angle,
   };
-  const map = new Map(
-    scene.elements.map((item) => [item.id, item]),
-  ) as ElementsMap;
+  const map = nativeElementsMap(scene);
   const position = computeBoundTextPosition(
     box,
     resized as ExcalidrawTextElementWithContainer,
@@ -111,9 +174,20 @@ export function nativeBoundLabelLayout(
  * Move/rotate/rewrap the label together with its container. Both elements
  * remain valid Excalidraw elements in serialized scene and undo history.
  */
-export function syncNativeBoundLabels(scene: SceneFile): SceneFile {
+export function syncNativeBoundLabels(
+  scene: SceneFile,
+  changedContainers?: ReadonlySet<string>,
+): SceneFile {
   let changed = false;
   const elements = scene.elements.map((element) => {
+    if (
+      changedContainers &&
+      (element.type !== "text" ||
+        !element.containerId ||
+        !changedContainers.has(element.containerId))
+    ) {
+      return element;
+    }
     const layout = nativeBoundLabelLayout(scene, element);
     if (
       !layout ||
@@ -127,12 +201,17 @@ export function syncNativeBoundLabels(scene: SceneFile): SceneFile {
       return element;
     }
     changed = true;
-    return {
-      ...layout,
-      version: element.version + 1,
-      versionNonce: Math.floor(Math.random() * 2 ** 31),
-      updated: Date.now(),
-    };
+    if (element.type !== "text") {
+      return element;
+    }
+    return updateNativeElement(element, {
+      x: layout.x,
+      y: layout.y,
+      text: layout.text,
+      width: layout.width,
+      height: layout.height,
+      angle: layout.angle,
+    });
   });
   return changed ? { ...scene, elements } : scene;
 }
@@ -152,13 +231,17 @@ export function nativeEditableLabel(
     box.isDeleted ||
     box.locked ||
     box.frameId ||
-    box.groupIds.length ||
+    box.groupIds.some((id, index) => box.groupIds.indexOf(id) !== index) ||
     box.width <= 20 ||
     box.height <= 20
   ) {
     return undefined;
   }
   if (!box.boundElements?.length) {
+    // Do not create a new internal member in an existing group.
+    if (box.groupIds.length) {
+      return undefined;
+    }
     // A malformed imported label may still point at this box even when
     // the reverse reference is missing. Do not create a second label.
     return scene.elements.some(
@@ -217,13 +300,6 @@ export function updateNativeBoxLabel(
     return scene;
   }
 
-  const touch = <T extends ExcalidrawElement>(element: T): T => ({
-    ...element,
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  });
-
   if (!originalText) {
     if (!existing) {
       return scene;
@@ -232,13 +308,10 @@ export function updateNativeBoxLabel(
       ...scene,
       elements: scene.elements.map((element) => {
         if (element.id === boxId) {
-          return {
-            ...touch(element),
-            boundElements: null,
-          };
+          return updateNativeElement(element, { boundElements: null });
         }
         if (element.id === existing.id) {
-          return { ...touch(element), isDeleted: true };
+          return updateNativeElement(element, { isDeleted: true });
         }
         return element;
       }),
@@ -307,12 +380,11 @@ export function updateNativeBoxLabel(
       ) {
         return element;
       }
-      return {
-        ...touch(element),
+      return updateNativeElement(element, {
         width,
         height,
         boundElements: [{ id: label.id, type: "text" as const }],
-      };
+      });
     }
     if (element.id === label.id) {
       return nextLabel;
@@ -327,7 +399,17 @@ export function updateNativeBoxLabel(
   if (!positioned) {
     return scene;
   }
-  const updatedLabel = existing ? touch(positioned) : positioned;
+  const updatedLabel = existing
+    ? updateNativeElement(existing, {
+        text: positioned.text,
+        originalText: positioned.originalText,
+        x: positioned.x,
+        y: positioned.y,
+        width: positioned.width,
+        height: positioned.height,
+        angle: positioned.angle,
+      })
+    : positioned;
   return {
     ...candidate,
     elements: elements.map((element) =>

@@ -1,3 +1,8 @@
+import { intersectElementWithLineSegment, LinearElementEditor } from "@excalidraw/element";
+import { lineSegment, pointFrom } from "@excalidraw/math";
+
+import type { GlobalPoint } from "@excalidraw/math";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +14,9 @@ import {
   syncNativeBindings,
 } from "./bindings";
 import { blankScene, createShape, parseScene, serializeScene } from "./scene";
+import { nativeElementsMap, reconnectNativeArrowWithCore } from "./coreAdapter";
+import { canEditEndpoints } from "./lines";
+import { SceneHistory } from "./history";
 import {
   deleteSelection,
   moveSelection,
@@ -30,11 +38,75 @@ const makeScene = () => {
 };
 
 describe("native reciprocal arrow binding", () => {
+  it("attaches to official rotated ellipse/diamond outlines rather than a custom approximation", () => {
+    for (const type of ["ellipse", "diamond"] as const) {
+      const base = createShape(type, { x: 50, y: 50 }, { x: 230, y: 170 });
+      const box = {
+        ...base,
+        angle: (Math.PI / 5) as typeof base.angle,
+      };
+      const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const toward = { x: 510, y: center.y + 85 };
+      const start = pointFrom<GlobalPoint>(center.x, center.y);
+      const dx = toward.x - center.x;
+      const dy = toward.y - center.y;
+      const norm = Math.hypot(dx, dy);
+      const reach = Math.max(box.width, box.height, norm) * 4;
+      const boundary = intersectElementWithLineSegment(
+        box,
+        nativeElementsMap({ elements: [box] }),
+        lineSegment(
+          start,
+          pointFrom<GlobalPoint>(
+            center.x + (dx / norm) * reach,
+            center.y + (dy / norm) * reach,
+          ),
+        ),
+      );
+      expect(boundary.length).toBeGreaterThan(0);
+
+      const arrow = createShape("arrow", center, toward);
+      const scene = appendNativeArrow(
+        { ...blankScene(), elements: [box] },
+        arrow,
+        center,
+        toward,
+      );
+      const linked = scene.elements[1];
+      expect(isNativeLinkedArrow(scene, linked)).toBe(true);
+      const anchor = nativeLinkedEndpoints(scene, linked)!.start;
+      const nearest = boundary
+        .filter((point) => (point[0] - center.x) * dx + (point[1] - center.y) * dy >= 0)
+        .sort(
+          (a, b) =>
+            Math.hypot(a[0] - center.x, a[1] - center.y) -
+            Math.hypot(b[0] - center.x, b[1] - center.y),
+        )[0];
+      if (!nearest) {
+        throw new Error("Expected the official outline to intersect the ray");
+      }
+      expect(anchor.x).toBeCloseTo(nearest[0], 1);
+      expect(anchor.y).toBeCloseTo(nearest[1], 1);
+      expect(syncNativeBindings(scene)).toBe(scene);
+    }
+  });
+
   it("refuses to duplicate linked targets without duplicating their arrows", () => {
     const { left, scene } = makeScene();
     const duplicate = duplicateSelection(scene, [left.id]);
     expect(duplicate.scene).toBe(scene);
     expect(duplicate.ids).toEqual([]);
+  });
+
+  it("does not partially duplicate a selection containing a linked target", () => {
+    const { left, scene } = makeScene();
+    const safe = createShape("diamond", { x: 360, y: 25 }, { x: 460, y: 125 });
+    const withSafe = { ...scene, elements: [...scene.elements, safe] };
+    const duplicate = duplicateSelection(withSafe, [left.id, safe.id]);
+    expect(duplicate.scene).toBe(withSafe);
+    expect(duplicate.ids).toEqual([]);
+    expect(withSafe.elements).toHaveLength(4);
+    expect(duplicateSelection(withSafe, [safe.id]).ids).toHaveLength(1);
   });
 
   it("deletes linked shapes and arrows without dangling reciprocal bindings", () => {
@@ -65,12 +137,12 @@ describe("native reciprocal arrow binding", () => {
     }
     expect(linked.startBinding).toEqual({
       elementId: left.id,
-      fixedPoint: [1, 0.5],
+      fixedPoint: [1, 0.5001],
       mode: "inside",
     });
     expect(linked.endBinding).toEqual({
       elementId: right.id,
-      fixedPoint: [0, 0.5],
+      fixedPoint: [0, 0.5001],
       mode: "inside",
     });
     expect(scene.elements[0].boundElements).toEqual([
@@ -83,27 +155,31 @@ describe("native reciprocal arrow binding", () => {
     expect(isSafeBoundBox(scene, scene.elements[0])).toBe(true);
     const restored = parseScene(serializeScene(scene));
     expect(restored).toEqual(scene);
-    expect(nativeLinkedEndpoints(restored, restored.elements[2])).toEqual({
-      start: { x: 110, y: 60 },
-      end: { x: 200, y: 60 },
-    });
+    const anchor = nativeLinkedEndpoints(restored, restored.elements[2]);
+    expect(anchor?.start.x).toBeCloseTo(110);
+    expect(anchor?.start.y).toBeCloseTo(60, 1);
+    expect(anchor?.end.x).toBeCloseTo(200);
+    expect(anchor?.end.y).toBeCloseTo(60, 1);
+    expect(syncNativeBindings(restored)).toBe(restored);
   });
 
   it("keeps endpoints attached on move, resize and rotation, in one scene transaction", () => {
     const { left, scene } = makeScene();
     const moved = moveSelection(scene, [left.id], 30, 15);
     expect(moved.elements[0].x).toBe(40);
-    expect(nativeLinkedEndpoints(moved, moved.elements[2])).toEqual({
-      start: { x: 140, y: 75 },
-      end: { x: 200, y: 60 },
-    });
+    const movedAnchors = nativeLinkedEndpoints(moved, moved.elements[2]);
+    expect(movedAnchors?.start.x).toBeCloseTo(140);
+    expect(movedAnchors?.start.y).toBeCloseTo(75, 1);
+    expect(movedAnchors?.end.x).toBeCloseTo(200);
+    expect(movedAnchors?.end.y).toBeCloseTo(60, 1);
     expect(scene.elements[0].x).toBe(10);
     const resized = transformSelected(moved, left.id, "se", { x: 180, y: 160 });
     const box = resized.elements[0];
     const points = nativeLinkedEndpoints(resized, resized.elements[2]);
     expect(points?.start.x).toBeCloseTo(box.x + box.width);
-    expect(points?.start.y).toBeCloseTo(box.y + box.height / 2);
-    expect(points?.end).toEqual({ x: 200, y: 60 });
+    expect(points?.start.y).toBeCloseTo(box.y + box.height / 2, 1);
+    expect(points?.end?.x).toBeCloseTo(200);
+    expect(points?.end?.y).toBeCloseTo(60, 1);
     const center = {
       x: box.x + box.width / 2,
       y: box.y + box.height / 2,
@@ -116,8 +192,8 @@ describe("native reciprocal arrow binding", () => {
       rotated,
       rotated.elements[2],
     )!.start;
-    expect(rotatedPoint.x).toBeCloseTo(center.x);
-    expect(rotatedPoint.y).toBeCloseTo(center.y + box.width / 2);
+    expect(rotatedPoint.x).toBeCloseTo(center.x, 1);
+    expect(rotatedPoint.y).toBeCloseTo(center.y + box.width / 2, 1);
   });
 
   it("unhooks old target and reattaches to new target without stale reverse references", () => {
@@ -146,6 +222,161 @@ describe("native reciprocal arrow binding", () => {
     expect(isNativeLinkedArrow(reconnected, linked)).toBe(true);
     expect(reconnected.elements[1].boundElements?.[0].id).toBe(arrow.id);
     expect(reconnected.elements[0].boundElements?.[0].id).toBe(arrow.id);
+  });
+
+  it("uses original bind/unbind lifecycle to reconnect to a third shape", () => {
+    const { left, right, arrow, scene } = makeScene();
+    const third = createShape("diamond", { x: 400, y: 20 }, { x: 530, y: 160 });
+    const source = { ...scene, elements: [...scene.elements, third] };
+    const snapshot = structuredClone(source);
+    const changed = reconnectNativeEndpoint(source, arrow.id, "end", {
+      x: third.x + third.width / 2,
+      y: third.y + third.height / 2,
+    });
+    const result = changed.elements[2];
+    expect(result.type).toBe("arrow");
+    if (result.type !== "arrow") {
+      throw new Error("Expected original arrow");
+    }
+    expect(result.startBinding?.elementId).toBe(left.id);
+    expect(result.endBinding?.elementId).toBe(third.id);
+    expect(result.endBinding?.mode).toBe("inside");
+    expect(changed.elements[0].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    expect(changed.elements[1].boundElements).toBeNull();
+    expect(changed.elements[3].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    expect(isNativeLinkedArrow(changed, result)).toBe(true);
+    expect(syncNativeBindings(changed)).toBe(changed);
+    expect(source).toEqual(snapshot);
+    const history = new SceneHistory();
+    history.commit(source);
+    expect(history.undo(changed)).toEqual(source);
+    expect(history.redo(source)).toEqual(changed);
+    expect(parseScene(serializeScene(changed))).toEqual(changed);
+    expect(source.elements[1].boundElements?.[0].id).toBe(arrow.id);
+    expect(source.elements[2].id).toBe(result.id);
+  });
+
+  it("can remove the last bound end without leaving an orphan relationship", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const arrow = createShape("arrow", { x: 110, y: 65 }, { x: 270, y: 65 });
+    const scene = appendNativeArrow(
+      { ...blankScene(), elements: [box] },
+      arrow,
+      { x: 110, y: 65 },
+      { x: 270, y: 65 },
+    );
+    expect(isNativeLinkedArrow(scene, scene.elements[1])).toBe(true);
+    const disconnected = reconnectNativeEndpoint(scene, arrow.id, "start", {
+      x: 160, y: 175,
+    });
+    const result = disconnected.elements[1];
+    expect(result.type).toBe("arrow");
+    if (result.type !== "arrow") {
+      throw new Error("Expected fully detached native arrow");
+    }
+    expect(result.startBinding).toBeNull();
+    expect(result.endBinding).toBeNull();
+    expect(disconnected.elements[0].boundElements).toBeNull();
+    expect(canEditEndpoints(result)).toBe(true);
+    expect(disconnected.elements[0].id).toBe(box.id);
+    expect(disconnected.elements[0].x).toBe(box.x);
+    expect(scene.elements[0].boundElements?.[0].id).toBe(arrow.id);
+    const [start, end] = [
+      LinearElementEditor.getPointAtIndexGlobalCoordinates(
+        result,
+        0,
+        nativeElementsMap(disconnected),
+      ),
+      LinearElementEditor.getPointAtIndexGlobalCoordinates(
+        result,
+        -1,
+        nativeElementsMap(disconnected),
+      ),
+    ];
+    expect(start[0]).toBeCloseTo(160);
+    expect(start[1]).toBeCloseTo(175);
+    expect(end[0]).toBeCloseTo(270);
+    expect(end[1]).toBeCloseTo(65);
+  });
+
+  it("does not issue a Scene mutation when dragging an already free endpoint nowhere", () => {
+    const box = createShape("rectangle", { x: 10, y: 20 }, { x: 110, y: 120 });
+    const arrow = createShape("arrow", { x: 110, y: 65 }, { x: 270, y: 65 });
+    const scene = appendNativeArrow(
+      { ...blankScene(), elements: [box] },
+      arrow,
+      { x: 110, y: 65 },
+      { x: 270, y: 65 },
+    );
+    expect(reconnectNativeEndpoint(scene, arrow.id, "end", { x: 270, y: 65 }))
+      .toBe(scene);
+    expect(reconnectNativeArrowWithCore(scene, arrow.id, "start", {
+      x: Number.NaN,
+      y: 10,
+    }, box.id)).toBe(scene);
+  });
+
+  it("refuses malformed imported orphan, duplicate or nonfinite connections", () => {
+    const { left, arrow, scene } = makeScene();
+    const orphan = {
+      ...scene,
+      elements: scene.elements.map((item) =>
+        item.id === left.id ? { ...item, boundElements: null } : item,
+      ),
+    };
+    expect(isSafeBoundBox(orphan, orphan.elements[0])).toBe(false);
+    expect(reconnectNativeEndpoint(orphan, arrow.id, "end", {
+      x: 410, y: 180,
+    })).toBe(orphan);
+
+    const duplicate = {
+      ...scene,
+      elements: scene.elements.map((item) =>
+        item.id === left.id
+          ? {
+              ...item,
+              boundElements: [
+                ...(item.boundElements ?? []),
+                { id: arrow.id, type: "arrow" as const },
+              ],
+            }
+          : item,
+      ),
+    };
+    expect(isSafeBoundBox(duplicate, duplicate.elements[0])).toBe(false);
+    expect(reconnectNativeEndpoint(duplicate, arrow.id, "end", {
+      x: 410, y: 180,
+    })).toBe(duplicate);
+    expect(reconnectNativeEndpoint(scene, arrow.id, "end", {
+      x: Number.NaN, y: 40,
+    })).toBe(scene);
+  });
+
+  it("rebinds the same target through core without duplicate reverse links", () => {
+    const { left, right, arrow, scene } = makeScene();
+    const retargeted = reconnectNativeEndpoint(scene, arrow.id, "start", {
+      x: left.x + left.width / 2,
+      y: left.y + left.height / 2,
+    });
+    expect(retargeted.elements[0].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    expect(retargeted.elements[1].boundElements).toEqual([
+      { id: arrow.id, type: "arrow" },
+    ]);
+    const changedArrow = retargeted.elements[2];
+    expect(isNativeLinkedArrow(retargeted, changedArrow)).toBe(true);
+    expect(changedArrow.type).toBe("arrow");
+    if (changedArrow.type === "arrow") {
+      expect(changedArrow.startBinding?.elementId).toBe(left.id);
+      expect(changedArrow.endBinding?.elementId).toBe(right.id);
+      expect(changedArrow.startBinding?.mode).toBe("inside");
+    }
+    expect(syncNativeBindings(retargeted)).toBe(retargeted);
   });
 
   it("leaves imported complex/orbit arrow bindings untouched", () => {

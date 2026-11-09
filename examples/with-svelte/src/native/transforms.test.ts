@@ -1,3 +1,5 @@
+import { getNextSingleWidthAndHeightFromPointer } from "@excalidraw/element";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -52,6 +54,28 @@ describe("native transforms", () => {
     expect(clamped.width).toBe(8);
     expect(clamped.height).toBe(8);
     expect(handleLocations(clamped).se).toEqual(before.se);
+  });
+
+  it("uses the official pointer projection for corner resize dimensions", () => {
+    const shape = createShape("rectangle", { x: 20, y: 30 }, { x: 180, y: 100 });
+    for (const [corner, target] of [
+      ["se", { x: 240, y: 130 }],
+      ["ne", { x: 250, y: 10 }],
+      ["sw", { x: -10, y: 140 }],
+      ["nw", { x: -20, y: 0 }],
+    ] as const) {
+      const official = getNextSingleWidthAndHeightFromPointer(
+        shape,
+        shape,
+        corner,
+        target.x,
+        target.y,
+      );
+      const native = resizeElement(shape, corner, target);
+      expect(native.width).toBeCloseTo(Math.max(8, official.nextWidth));
+      expect(native.height).toBeCloseTo(Math.max(8, official.nextHeight));
+      expect(native.id).toBe(shape.id);
+    }
   });
 
   it("keeps the world-space anchor fixed for a rotated resize", () => {

@@ -1,7 +1,11 @@
 import {
   getTextAnchorRatios,
+  hitElementItself,
   measureText,
+  newArrowElement,
+  newElement,
   newFreeDrawElement,
+  newLinearElement,
   newTextElement,
   normalizeText,
   wrapText,
@@ -13,8 +17,9 @@ import type {
   ExcalidrawElement,
   ExcalidrawTextElement,
 } from "@excalidraw/element/types";
-import type { LocalPoint } from "@excalidraw/math";
+import type { GlobalPoint, LocalPoint } from "@excalidraw/math";
 
+import { nativeElementsMap, updateNativeElement } from "./coreAdapter";
 import { nativeImageSource } from "./images";
 import { nativeLabelBox } from "./boundText";
 
@@ -34,18 +39,23 @@ export interface SceneFile {
 
 export type NativeTool =
   | "selection"
+  | "lasso"
+  | "laser"
   | "rectangle"
   | "ellipse"
   | "diamond"
   | "line"
   | "arrow"
+  | "elbow"
   | "text"
   | "freedraw"
+  | "eraser"
+  | "frame"
   | "hand";
 
 export type NativeShape = Exclude<
   NativeTool,
-  "selection" | "hand" | "text" | "freedraw"
+  "selection" | "lasso" | "laser" | "hand" | "text" | "freedraw" | "eraser" | "frame" | "elbow"
 >;
 export type Point = { x: number; y: number };
 
@@ -59,6 +69,7 @@ const SUPPORTED_TYPES = new Set<string>([
   "text",
   "freedraw",
   "image",
+  "frame",
 ]);
 
 export const blankScene = (): SceneFile => ({
@@ -73,6 +84,54 @@ export const blankScene = (): SceneFile => ({
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/**
+ * Imported Excalidraw elements may contain unknown extension fields, but
+ * drawing and editing still require valid common geometry and group IDs.
+ * Reject malformed files at the boundary rather than crashing in hit-tests.
+ */
+const validImportedElement = (value: unknown): boolean => {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (
+    typeof value.id !== "string" ||
+    typeof value.type !== "string" ||
+    !["x", "y", "width", "height", "angle"].every((key) => {
+      const number = value[key];
+      return typeof number === "number" && Number.isFinite(number);
+    }) ||
+    !Array.isArray(value.groupIds) ||
+    !value.groupIds.every((id: unknown) => typeof id === "string") ||
+    (value.boundElements != null &&
+      (!Array.isArray(value.boundElements) ||
+        !value.boundElements.every(
+          (ref: unknown) =>
+            isRecord(ref) &&
+            typeof ref.id === "string" &&
+            typeof ref.type === "string",
+        )))
+  ) {
+    return false;
+  }
+  if (
+    value.type === "line" ||
+    value.type === "arrow" ||
+    value.type === "freedraw"
+  ) {
+    return (
+      Array.isArray(value.points) &&
+      value.points.every(
+        (p: unknown) =>
+          Array.isArray(p) &&
+          p.length === 2 &&
+          Number.isFinite(p[0]) &&
+          Number.isFinite(p[1]),
+      )
+    );
+  }
+  return true;
+};
+
 export function parseScene(input: string): SceneFile {
   const data: unknown = JSON.parse(input);
   if (
@@ -85,18 +144,16 @@ export function parseScene(input: string): SceneFile {
     throw new Error("Это не файл .excalidraw.");
   }
   if (
-    !data.elements.every(
-      (element: unknown) =>
-        isRecord(element) &&
-        typeof element.id === "string" &&
-        typeof element.type === "string" &&
-        Number.isFinite(element.x) &&
-        Number.isFinite(element.y),
-    )
+    !data.elements.every(validImportedElement) ||
+    new Set(
+      data.elements.map((element: { id: string }) => element.id),
+    ).size !== data.elements.length
   ) {
     throw new Error("Файл содержит некорректные элементы.");
   }
   return {
+    // Preserve top-level extension fields from imported Excalidraw scenes.
+    ...data,
     type: "excalidraw",
     version: typeof data.version === "number" ? data.version : 2,
     source: typeof data.source === "string" ? data.source : SOURCE,
@@ -117,8 +174,10 @@ export const unsupportedCount = (scene: SceneFile): number =>
         (element.type === "image" && !nativeImageSource(scene, element))),
   ).length;
 
-const versionNonce = () => Math.floor(Math.random() * 2 ** 31);
-
+/**
+ * Excalidraw's original constructors own the element schema, metadata,
+ * defaults and seeds. Svelte only supplies pointer geometry and chosen style.
+ */
 export function createShape(
   tool: NativeShape,
   start: Point,
@@ -128,55 +187,39 @@ export function createShape(
   const y = Math.min(start.y, end.y);
   const width = Math.abs(end.x - start.x);
   const height = Math.abs(end.y - start.y);
-  const now = Date.now();
-  const base = {
-    id: crypto.randomUUID(),
-    type: tool,
+  const style = {
     x,
     y,
     width,
     height,
-    angle: 0,
     strokeColor: "#1e1e1e",
     backgroundColor: "transparent",
-    fillStyle: "hachure",
+    fillStyle: "hachure" as const,
     strokeWidth: 2,
-    strokeStyle: "solid",
+    strokeStyle: "solid" as const,
     roughness: 1,
-    opacity: 100,
-    groupIds: [],
-    frameId: null,
-    index: null,
-    roundness: null,
-    seed: versionNonce(),
-    version: 1,
-    versionNonce: versionNonce(),
-    isDeleted: false,
-    boundElements: null,
-    updated: now,
-    created: now,
-    link: null,
-    locked: false,
   };
-
   if (tool === "line" || tool === "arrow") {
-    // A line's points are relative to the bounding box, including when
-    // dragging from bottom-right towards top-left.
     const points = [
-      [start.x - x, start.y - y],
-      [end.x - x, end.y - y],
+      pointFrom<LocalPoint>(start.x - x, start.y - y),
+      pointFrom<LocalPoint>(end.x - x, end.y - y),
     ];
-    return {
-      ...base,
-      points,
-      startBinding: null,
-      endBinding: null,
-      startArrowhead: null,
-      endArrowhead: tool === "arrow" ? "arrow" : null,
-      ...(tool === "arrow" ? { elbowed: false } : { polygon: false }),
-    } as unknown as ExcalidrawElement;
+    return tool === "arrow"
+      ? newArrowElement({
+          ...style,
+          type: "arrow",
+          points,
+          endArrowhead: "arrow",
+          elbowed: false,
+        })
+      : newLinearElement({
+          ...style,
+          type: "line",
+          points,
+          polygon: false,
+        });
   }
-  return base as unknown as ExcalidrawElement;
+  return newElement({ ...style, type: tool });
 }
 
 /** Create canonical Excalidraw text with the element package's own metrics. */
@@ -214,18 +257,14 @@ export function replaceText(
       const metrics = measureText(text, font, element.lineHeight);
       const nextWidth = element.autoResize ? metrics.width : element.width;
       const { x: ax, y: ay } = getTextAnchorRatios(element);
-      return {
-        ...element,
+      return updateNativeElement(element, {
         text,
         originalText,
         x: element.x + (element.width - nextWidth) * ax,
         y: element.y + (element.height - metrics.height) * ay,
         width: nextWidth,
         height: metrics.height,
-        version: element.version + 1,
-        versionNonce: versionNonce(),
-        updated: Date.now(),
-      };
+      });
     }),
   };
 }
@@ -265,14 +304,10 @@ export function moveElement(
   if (!dx && !dy) {
     return element;
   }
-  return {
-    ...element,
+  return updateNativeElement(element, {
     x: element.x + dx,
     y: element.y + dy,
-    version: element.version + 1,
-    versionNonce: versionNonce(),
-    updated: Date.now(),
-  };
+  });
 }
 
 export function moveById(
@@ -297,13 +332,7 @@ export function deleteById(scene: SceneFile, id: string): SceneFile {
     ...scene,
     elements: scene.elements.map((element) =>
       element.id === id && !element.locked
-        ? {
-            ...element,
-            isDeleted: true,
-            version: element.version + 1,
-            versionNonce: versionNonce(),
-            updated: Date.now(),
-          }
+        ? updateNativeElement(element, { isDeleted: true })
         : element,
     ),
   };
@@ -326,87 +355,28 @@ export function elementBounds(element: ExcalidrawElement) {
   };
 }
 
-function segmentDistance(point: Point, a: Point, b: Point): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const l2 = dx * dx + dy * dy;
-  const t = l2
-    ? Math.max(
-        0,
-        Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / l2),
-      )
-    : 0;
-  return Math.hypot(point.x - a.x - t * dx, point.y - a.y - t * dy);
-}
-
 /**
- * Hit-test in the rotated element coordinate space; don't select an entire
- * arrow's bounding rectangle. Defer bound/complex geometry to the full editor.
+ * Delegate precise shape, linear-path and rotation hit-testing to the
+ * Excalidraw core. The native editor intentionally allows picking inside
+ * transparent boxes, so use the explicit inside-test override.
  */
 export function hitTest(
   element: ExcalidrawElement,
   point: Point,
   tolerance = 7,
+  elementsMap?: ElementsMap,
 ): boolean {
   if (!isNativeShape(element) || element.locked) {
     return false;
   }
-  const { x, y, width, height } = elementBounds(element);
-  const cx = x + width / 2;
-  const cy = y + height / 2;
-  const angle = -element.angle;
-  const dx = point.x - cx;
-  const dy = point.y - cy;
-  const local = {
-    x: cx + dx * Math.cos(angle) - dy * Math.sin(angle),
-    y: cy + dx * Math.sin(angle) + dy * Math.cos(angle),
-  };
-  if (
-    element.type === "line" ||
-    element.type === "arrow" ||
-    element.type === "freedraw"
-  ) {
-    const points = element.points.map((p) => ({
-      x: element.x + p[0],
-      y: element.y + p[1],
-    }));
-    if (points.length === 1) {
-      return (
-        Math.hypot(local.x - points[0].x, local.y - points[0].y) <= tolerance
-      );
-    }
-    return points
-      .slice(1)
-      .some(
-        (p, i) =>
-          segmentDistance(local, points[i], p) <=
-          tolerance + element.strokeWidth / 2,
-      );
-  }
-  if (element.type === "ellipse") {
-    const rx = width / 2 + tolerance;
-    const ry = height / 2 + tolerance;
-    return (
-      rx > 0 &&
-      ry > 0 &&
-      ((local.x - cx) / rx) ** 2 + ((local.y - cy) / ry) ** 2 <= 1
-    );
-  }
-  if (element.type === "diamond") {
-    const rx = width / 2 + tolerance;
-    const ry = height / 2 + tolerance;
-    return (
-      rx > 0 &&
-      ry > 0 &&
-      Math.abs((local.x - cx) / rx) + Math.abs((local.y - cy) / ry) <= 1
-    );
-  }
-  return (
-    local.x >= x - tolerance &&
-    local.x <= x + width + tolerance &&
-    local.y >= y - tolerance &&
-    local.y <= y + height + tolerance
-  );
+  const map = elementsMap ?? new Map([[element.id, element]]) as ElementsMap;
+  return hitElementItself({
+    point: pointFrom<GlobalPoint>(point.x, point.y),
+    element,
+    threshold: tolerance,
+    elementsMap: map,
+    overrideShouldTestInside: element.type !== "frame",
+  });
 }
 
 export function pickElement(
@@ -414,9 +384,10 @@ export function pickElement(
   point: Point,
   tolerance = 7,
 ): ExcalidrawElement | null {
+  const elementsMap = nativeElementsMap({ elements });
   for (let i = elements.length - 1; i >= 0; i--) {
     const element = elements[i];
-    if (hitTest(element, point, tolerance)) {
+    if (hitTest(element, point, tolerance, elementsMap)) {
       return element;
     }
   }

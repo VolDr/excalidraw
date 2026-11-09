@@ -1,12 +1,30 @@
+import { getNextSingleWidthAndHeightFromPointer, getTransformHandles } from "@excalidraw/element";
+import { pointFrom, pointRotateRads } from "@excalidraw/math";
+
+import { deleteCoreDocumentElements } from "@excalidraw/element";
+import type { CoreEditorController, CoreEditorSession } from "@excalidraw/element";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
-  detachDeletedNativeBindings,
   isNativeLinkedArrow,
+  isNativeOrbitLinkedArrow,
   isSafeBoundBox,
   syncNativeBindings,
 } from "./bindings";
-import { canEditIndependently, editableSelection } from "./groups";
+import { canEditIndependently, editableSelection, safeGroupMembers } from "./groups";
+import { canTransformNativeInnerBox, transformNativeInnerBoxWithCore } from "./innerElementTransforms";
+import { editableNativeGroupSelection } from "./groupEditing";
+import { unwrapNativeFrame } from "./frames";
+import { moveNativeFrameWithCore, moveNativeFrameChildWithCore } from "./frameMove";
+import {
+  dragNativeSelectionWithCore,
+  resizeNativeBoxWithCore,
+  resizeNativeImageWithCore,
+  rotateNativeBoxWithCore,
+  rotateNativeImageWithCore,
+  updateNativeElement,
+  nativeElementsMap,
+} from "./coreAdapter";
 import { nativeLabelBox, syncNativeBoundLabels } from "./boundText";
 import { nativeImageSource } from "./images";
 
@@ -18,21 +36,26 @@ export type Handle = Corner | "rotate";
 const MIN_SIZE = 8;
 const corners: Corner[] = ["nw", "ne", "sw", "se"];
 
-const rotatePoint = (point: Point, center: Point, angle: number): Point => {
-  const dx = point.x - center.x;
-  const dy = point.y - center.y;
-  const cos = Math.cos(angle);
-  const sin = Math.sin(angle);
-  return {
-    x: center.x + dx * cos - dy * sin,
-    y: center.y + dx * sin + dy * cos,
-  };
+const rotatePoint = (
+  point: Point,
+  center: Point,
+  angle: ExcalidrawElement["angle"],
+): Point => {
+  const [x, y] = pointRotateRads(
+    pointFrom(point.x, point.y),
+    pointFrom(center.x, center.y),
+    angle,
+  );
+  return { x, y };
 };
 
 export function isBoxTransformable(
   element: ExcalidrawElement,
   scene?: SceneFile,
+  editingGroupId: string | null = null,
 ): boolean {
+  if (editingGroupId && scene &&
+    canTransformNativeInnerBox(scene, element.id, editingGroupId)) return true;
   return (
     (element.type === "rectangle" ||
       element.type === "ellipse" ||
@@ -46,6 +69,10 @@ export function isBoxTransformable(
     !element.locked &&
     !element.frameId &&
     element.groupIds.length === 0 &&
+    !(scene && element.boundElements?.some((ref) => {
+      const arrow = scene.elements.find((item) => item.id === ref.id);
+      return !!arrow && isNativeOrbitLinkedArrow(scene, arrow);
+    })) &&
     (!element.boundElements?.length ||
       (!!scene && isSafeBoundBox(scene, element)))
   );
@@ -68,16 +95,114 @@ export function handleLocations(
   };
 }
 
+/**
+ * Excalidraw owns the location and zoom-dependent size of the native
+ * transform handles. The Svelte layer only converts the core's rectangle
+ * records into centers for painting and pointer hit-testing.
+ *
+ * Retain legacy handleLocations solely for guarded cropped-image anchors.
+ */
+export function coreHandleLocations(
+  element: ExcalidrawElement,
+  zoom: number,
+  scene?: SceneFile,
+  editingGroupId: string | null = null,
+): Record<Handle, Point> | null {
+  if (!Number.isFinite(zoom) || zoom <= 0 ||
+      !isBoxTransformable(element, scene, editingGroupId)) {
+    return null;
+  }
+  const handles = getTransformHandles(
+    element,
+    { value: zoom } as Parameters<typeof getTransformHandles>[1],
+    nativeElementsMap(scene ?? { elements: [element] }),
+    "mouse",
+  );
+  const center = (
+    box: readonly [number, number, number, number] | undefined,
+  ): Point | null => box
+    ? { x: box[0] + box[2] / 2, y: box[1] + box[3] / 2 }
+    : null;
+
+  const nw = center(handles.nw);
+  const ne = center(handles.ne);
+  const sw = center(handles.sw);
+  const se = center(handles.se);
+  const rotate = center(handles.rotation);
+
+  return nw && ne && sw && se && rotate
+    ? { nw, ne, sw, se, rotate }
+    : null;
+}
+
+/**
+ * Transform handles from the original Excalidraw renderer for every eligible
+ * element type. No Svelte-only whitelist of rectangles/arrow modes/groups.
+ * Missing handles (e.g. rotation on frames or some arrows) stay missing.
+ */
+export const coreAvailableHandles = (
+  element: ExcalidrawElement,
+  scene: SceneFile,
+  zoom: number,
+): Partial<Record<Handle, Point>> => {
+  if (
+    !Number.isFinite(zoom) || zoom <= 0 ||
+    element.isDeleted || element.locked ||
+    element.type === "frame" || element.type === "magicframe" ||
+    ![element.x, element.y, element.width, element.height, element.angle]
+      .every(Number.isFinite)
+  ) return {};
+  try {
+    const raw = getTransformHandles(
+      element,
+      { value: zoom } as Parameters<typeof getTransformHandles>[1],
+      nativeElementsMap(scene),
+      "mouse",
+    );
+    const points: Partial<Record<Handle, Point>> = {};
+    for (const key of [...corners, "rotate"] as Handle[]) {
+      const rect = raw[key === "rotate" ? "rotation" : key];
+      if (!rect || !rect.every(Number.isFinite)) continue;
+      points[key] = {
+        x: rect[0] + rect[2] / 2,
+        y: rect[1] + rect[3] / 2,
+      };
+    }
+    return points;
+  } catch {
+    return {};
+  }
+};
+
+export const pickCoreAvailableHandle = (
+  element: ExcalidrawElement,
+  scene: SceneFile,
+  at: Point,
+  zoom: number,
+  tolerance = 9,
+): Handle | null => {
+  const handles = coreAvailableHandles(element, scene, zoom);
+  for (const key of [...corners, "rotate"] as Handle[]) {
+    const point = handles[key];
+    if (point && Math.hypot(point.x - at.x, point.y - at.y) <= tolerance) {
+      return key;
+    }
+  }
+  return null;
+};
+
 export function pickHandle(
   element: ExcalidrawElement,
   point: Point,
   tolerance = 9,
   scene?: SceneFile,
+  zoom = 1,
+  editingGroupId: string | null = null,
 ): Handle | null {
-  if (!isBoxTransformable(element, scene)) {
+  if (!isBoxTransformable(element, scene, editingGroupId)) {
     return null;
   }
-  const locations = handleLocations(element);
+  const locations = coreHandleLocations(element, zoom, scene, editingGroupId) ?? handleLocations(element);
   for (const key of [...corners, "rotate"] as Handle[]) {
     if (
       Math.hypot(point.x - locations[key].x, point.y - locations[key].y) <=
@@ -111,14 +236,21 @@ export function resizeElement(
     se: "nw",
   };
   const fixed = loc[opposite[corner]];
-  const dx = target.x - fixed.x;
-  const dy = target.y - fixed.y;
+  // Excalidraw owns local-axis pointer projection for rotated and
+  // unrotated shapes; Svelte keeps only its current no-flip/min-size UI
+  // policy and the world-space opposite-corner anchor.
+  const { nextWidth: projectedWidth, nextHeight: projectedHeight } =
+    getNextSingleWidthAndHeightFromPointer(
+      element,
+      element,
+      corner,
+      target.x,
+      target.y,
+    );
   const cos = Math.cos(element.angle);
   const sin = Math.sin(element.angle);
   const horizontalSign = corner.endsWith("e") ? 1 : -1;
   const verticalSign = corner.startsWith("s") ? 1 : -1;
-  const projectedWidth = horizontalSign * (dx * cos + dy * sin);
-  const projectedHeight = verticalSign * (-dx * sin + dy * cos);
   // Image resize keeps the existing crop and flipped axes while preserving
   // the displayed aspect ratio. Shapes retain independent width and height.
   const ratio = element.width / element.height;
@@ -144,16 +276,12 @@ export function resizeElement(
     x: fixed.x + centerOffset.x * cos - centerOffset.y * sin,
     y: fixed.y + centerOffset.x * sin + centerOffset.y * cos,
   };
-  return {
-    ...element,
+  return updateNativeElement(element, {
     x: center.x - width / 2,
     y: center.y - height / 2,
     width,
     height,
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  };
+  });
 }
 
 export function rotateElement(
@@ -170,13 +298,9 @@ export function rotateElement(
   if (angle > Math.PI) {
     angle -= Math.PI * 2;
   }
-  return {
-    ...element,
+  return updateNativeElement(element, {
     angle: angle as ExcalidrawElement["angle"],
-    version: element.version + 1,
-    versionNonce: Math.floor(Math.random() * 2 ** 31),
-    updated: Date.now(),
-  };
+  });
 }
 
 export function moveSelection(
@@ -184,39 +308,97 @@ export function moveSelection(
   ids: readonly string[],
   dx: number,
   dy: number,
+  editingGroupId: string | null = null,
+  core?: CoreEditorController,
 ): SceneFile {
   if ((!dx && !dy) || ids.length === 0) {
     return scene;
   }
-  const selected = new Set(editableSelection(scene, ids));
-  if (!selected.size) {
+  const selected = new Set(
+    editingGroupId
+      ? editableNativeGroupSelection(scene, ids, editingGroupId)
+      : editableSelection(scene, ids),
+  );
+  if (!selected.size || selected.size !== new Set(ids).size) {
     return scene;
   }
-  return syncNativeBoundLabels(syncNativeBindings({
-    ...scene,
-    elements: scene.elements.map((element) =>
-      selected.has(element.id)
-        ? {
-            ...element,
-            x: element.x + dx,
-            y: element.y + dy,
-            version: element.version + 1,
-            versionNonce: Math.floor(Math.random() * 2 ** 31),
-            updated: Date.now(),
-          }
-        : element,
-    ),
-  }));
+  if (selected.size === 1) {
+    const id = [...selected][0];
+    const root = scene.elements.find((element) => element.id === id);
+    if (root?.type === "frame") {
+      return moveNativeFrameWithCore(scene, id, dx, dy, core);
+    }
+    if (root?.frameId) {
+      return moveNativeFrameChildWithCore(scene, id, dx, dy, core);
+    }
+  }
+  // Core owns group movement, bound labels and reciprocal arrow updates.
+  // Native policy has already narrowed this to valid editable roots/groups.
+  const moved = syncNativeBoundLabels(
+    dragNativeSelectionWithCore(scene, selected, dx, dy, core),
+    selected,
+  );
+  // The core drag engine calls updateBoundElements for moved boxes. Refuse
+  // the whole gesture if it ever breaks a reciprocal orbit relationship.
+  if (moved !== scene && scene.elements.some((element) =>
+    isNativeOrbitLinkedArrow(scene, element) &&
+    !isNativeOrbitLinkedArrow(
+      moved,
+      moved.elements.find((item) => item.id === element.id) ?? element,
+    )
+  )) {
+    return scene;
+  }
+  if (moved !== scene) {
+    const after = new Map(moved.elements.map((element) => [element.id, element]));
+    for (const element of scene.elements) {
+      if (
+        !selected.has(element.id) ||
+        element.type !== "arrow" ||
+        !(element.startBinding || element.endBinding) ||
+        !element.groupIds.length
+      ) continue;
+      const updated = after.get(element.id);
+      if (
+        !updated || updated.type !== "arrow" ||
+        JSON.stringify(updated.startBinding) !== JSON.stringify(element.startBinding) ||
+        JSON.stringify(updated.endBinding) !== JSON.stringify(element.endBinding)
+      ) return scene;
+    }
+    const groupIds = new Set(
+      scene.elements
+        .filter((element) => selected.has(element.id) && element.groupIds.length)
+        .map((element) => element.groupIds[element.groupIds.length - 1]),
+    );
+    for (const groupId of groupIds) {
+      if (!safeGroupMembers(moved, groupId).length) return scene;
+    }
+  }
+  return moved;
 }
 
 export function deleteSelection(
   scene: SceneFile,
   ids: readonly string[],
+  session?: CoreEditorSession<SceneFile>,
 ): SceneFile {
+  const frames = scene.elements.filter((element) =>
+    ids.includes(element.id) && element.type === "frame" && !element.isDeleted,
+  );
+  if (frames.length) {
+    // Original frame unwrapping must precede deletion so children never
+    // retain a frameId to a deleted parent.
+    if (frames.length !== ids.length) return scene;
+    let next = scene;
+    for (const frame of frames) next = unwrapNativeFrame(next, frame.id);
+    return next;
+  }
   const selected = new Set(editableSelection(scene, ids));
   const wanted = new Set(ids);
   for (const element of scene.elements) {
-    if (wanted.has(element.id) && isNativeLinkedArrow(scene, element)) {
+    if (wanted.has(element.id) &&
+      (isNativeLinkedArrow(scene, element) ||
+        isNativeOrbitLinkedArrow(scene, element))) {
       selected.add(element.id);
     }
   }
@@ -227,23 +409,30 @@ export function deleteSelection(
     const box = nativeLabelBox(scene, element);
     if (box && selected.has(box.id)) {
       selected.add(element.id);
+      continue;
+    }
+    if (
+      element.type === "text" &&
+      element.containerId &&
+      !element.isDeleted &&
+      !selected.has(element.id)
+    ) {
+      const container = scene.elements.find((item) => item.id === element.containerId);
+      if (
+        container && selected.has(container.id) && container.groupIds.length &&
+        container.boundElements?.some((ref) =>
+          ref.type === "text" && ref.id === element.id
+        ) &&
+        safeGroupMembers(scene, container.groupIds[container.groupIds.length - 1])
+          .some((member) => member.id === element.id)
+      ) {
+        selected.add(element.id);
+      }
     }
   }
-  const unlinked = detachDeletedNativeBindings(scene, selected);
-  return {
-    ...unlinked,
-    elements: unlinked.elements.map((element) =>
-      selected.has(element.id)
-        ? {
-            ...element,
-            isDeleted: true,
-            version: element.version + 1,
-            versionNonce: Math.floor(Math.random() * 2 ** 31),
-            updated: Date.now(),
-          }
-        : element,
-    ),
-  };
+  return session
+    ? session.previewDeleteDocument(scene, selected)
+    : deleteCoreDocumentElements(scene, selected);
 }
 
 export function transformSelected(
@@ -251,17 +440,60 @@ export function transformSelected(
   id: string,
   handle: Handle,
   point: Point,
+  editingGroupId: string | null = null,
 ): SceneFile {
-  return syncNativeBoundLabels(syncNativeBindings({
+  if (editingGroupId) {
+    return transformNativeInnerBoxWithCore(scene, id, editingGroupId, handle, point);
+  }
+  const current = scene.elements.find((element) => element.id === id);
+  if (!current) {
+    return scene;
+  }
+  // Native box resize now uses Excalidraw's resizeSingleElement, including
+  // its own bound-text reflow for one validated reciprocal label. Unsupported
+  // arrow links, imported orphan labels and raster crops stay guarded.
+  const textRef =
+    current.boundElements?.length === 1 &&
+    current.boundElements[0].type === "text"
+      ? scene.elements.find((item) => item.id === current.boundElements?.[0].id)
+      : null;
+  if (
+    isBoxTransformable(current, scene) &&
+    (current.type === "rectangle" ||
+      current.type === "ellipse" ||
+      current.type === "diamond") &&
+    (!current.boundElements?.length ||
+      (!!textRef && nativeLabelBox(scene, textRef)?.id === id))
+  ) {
+    return handle === "rotate"
+      ? rotateNativeBoxWithCore(scene, id, point)
+      : resizeNativeBoxWithCore(scene, id, handle, point);
+  }
+  // Image crops have additional coordinate semantics and stay on the
+  // guarded legacy path. Uncropped embedded raster geometry is core-owned.
+  if (
+    current.type === "image" &&
+    current.crop === null &&
+    isBoxTransformable(current, scene)
+  ) {
+    return handle === "rotate"
+      ? rotateNativeImageWithCore(scene, id, point)
+      : resizeNativeImageWithCore(scene, id, handle, point);
+  }
+  const transformed =
+    handle === "rotate"
+      ? rotateElement(current, point, scene)
+      : resizeElement(current, handle, point, scene);
+  if (transformed === current) {
+    return scene;
+  }
+  const updated = {
     ...scene,
     elements: scene.elements.map((element) =>
-      element.id !== id
-        ? element
-        : handle === "rotate"
-        ? rotateElement(element, point, scene)
-        : resizeElement(element, handle, point, scene),
+      element.id === id ? transformed : element,
     ),
-  }));
+  };
+  return syncNativeBoundLabels(syncNativeBindings(updated), new Set([id]));
 }
 
 /** Flip a supported raster image without rewriting its file or crop data. */
@@ -288,13 +520,7 @@ export function flipNativeImage(
     ...scene,
     elements: scene.elements.map((item) =>
       item.id === id
-        ? {
-            ...element,
-            scale: nextScale,
-            version: element.version + 1,
-            versionNonce: Math.floor(Math.random() * 2 ** 31),
-            updated: Date.now(),
-          }
+        ? updateNativeElement(element, { scale: nextScale })
         : item,
     ),
   };

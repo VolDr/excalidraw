@@ -1,0 +1,210 @@
+import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
+import { deleteCoreDocumentElements } from "@excalidraw/element";
+import type { CoreEditorSession } from "@excalidraw/element";
+
+import { editableSelection } from "./groups";
+import { nativeImageSource } from "./images";
+import { blankScene, parseScene } from "./scene";
+import { duplicateSelection } from "./selection";
+import { deleteSelection } from "./transforms";
+
+import type { SceneFile } from "./scene";
+
+const CLIPBOARD_TYPE = "excalidraw/svelte-native-selection";
+const MAX_CLIPBOARD_SIZE = 24_000_000;
+const MAX_CLIPBOARD_ELEMENTS = 1000;
+
+const unchanged = (scene: SceneFile) => ({ scene, ids: [] as string[] });
+
+/**
+ * Copy only native-editable roots, their reciprocal labels, and the image
+ * files they actually reference. Using native duplication creates an already
+ * self-contained selection without exposing foreign scene bindings.
+ */
+export function copyNativeSelection(
+  scene: SceneFile,
+  ids: readonly string[],
+  session?: CoreEditorSession<SceneFile>,
+): string | null {
+  const allowed = editableSelection(scene, ids);
+  // Never copy a subset of an unsafe/mixed selection. In particular, linked
+  // arrow targets cannot be cloned without their reciprocal arrows.
+  if (!allowed.length || allowed.length !== new Set(ids).size) {
+    return null;
+  }
+  const cloned = duplicateSelection(scene, ids, 0, session);
+  if (cloned.ids.length !== allowed.length) {
+    return null;
+  }
+  // Original duplicateElements places frame copies beside their source
+  // objects rather than at the end of the array. Identify generated IDs,
+  // not array positions, to retain every descendant and reciprocal label.
+  const existingIds = new Set(scene.elements.map((element) => element.id));
+  const elements = cloned.scene.elements.filter((element) =>
+    !existingIds.has(element.id)
+  );
+  // Paste rejects payloads above this count. Enforce the same limit before
+  // cut can delete the original selection, including its internal labels.
+  if (elements.length > MAX_CLIPBOARD_ELEMENTS) {
+    return null;
+  }
+  const files: Record<string, unknown> = {};
+  for (const element of elements) {
+    if (element.type === "image") {
+      if (!element.fileId || !nativeImageSource(scene, element)) {
+        return null;
+      }
+      files[element.fileId] = structuredClone(scene.files[element.fileId]);
+    }
+  }
+  const encoded = JSON.stringify({
+    type: CLIPBOARD_TYPE,
+    version: 1,
+    rootIds: cloned.ids,
+    elements,
+    files,
+  });
+  // A cut must not erase objects which cannot be pasted back because the
+  // serialized payload exceeds the import limit.
+  return encoded.length <= MAX_CLIPBOARD_SIZE ? encoded : null;
+}
+
+/**
+ * Cut is one atomic scene transaction. If a complete selection cannot be
+ * serialized, leave both its source objects and clipboard untouched.
+ */
+export function cutNativeSelection(
+  scene: SceneFile,
+  ids: readonly string[],
+  session?: CoreEditorSession<SceneFile>,
+): { scene: SceneFile; text: string | null } {
+  const text = copyNativeSelection(scene, ids, session);
+  if (!text) {
+    return { scene, text: null };
+  }
+  const frame = ids.length === 1
+    ? scene.elements.find((element) =>
+        element.id === ids[0] && element.type === "frame" && !element.isDeleted
+      )
+    : null;
+  const removedIds = frame
+    ? [
+        frame.id,
+        ...scene.elements.filter((element) =>
+          !element.isDeleted && element.frameId === frame.id
+        ).map((element) => element.id),
+      ]
+    : [...ids];
+  const next = frame
+    ? session
+      ? session.previewDeleteDocument(scene, new Set(removedIds))
+      : deleteCoreDocumentElements(scene, new Set(removedIds))
+    : deleteSelection(scene, ids, session);
+  if (
+    next === scene ||
+    removedIds.some(
+      (id) =>
+        !next.elements.some(
+          (element) => element.id === id && element.isDeleted,
+        ),
+    )
+  ) {
+    return { scene, text: null };
+  }
+  return { scene: next, text };
+}
+
+/**
+ * Accept only the editor's tagged selection format. Revalidate its scene
+ * and whole groups, then assign fresh element, group and binary file IDs.
+ * Plain text and malformed clipboard data are intentionally ignored.
+ */
+export function pasteNativeSelection(
+  scene: SceneFile,
+  encoded: string,
+  offset = 24,
+): { scene: SceneFile; ids: string[] } {
+  if (
+    !encoded ||
+    encoded.length > MAX_CLIPBOARD_SIZE ||
+    !Number.isFinite(offset)
+  ) {
+    return unchanged(scene);
+  }
+  try {
+    const payload: unknown = JSON.parse(encoded);
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      Array.isArray(payload) ||
+      !("type" in payload) ||
+      payload.type !== CLIPBOARD_TYPE ||
+      !("version" in payload) ||
+      payload.version !== 1 ||
+      !("elements" in payload) ||
+      !Array.isArray(payload.elements) ||
+      !payload.elements.length ||
+      payload.elements.length > MAX_CLIPBOARD_ELEMENTS ||
+      !("rootIds" in payload) ||
+      !Array.isArray(payload.rootIds) ||
+      !payload.rootIds.length ||
+      !payload.rootIds.every((id) => typeof id === "string") ||
+      new Set(payload.rootIds).size !== payload.rootIds.length ||
+      !("files" in payload)
+    ) {
+      return unchanged(scene);
+    }
+    const source = parseScene(
+      JSON.stringify({
+        ...blankScene(),
+        elements: payload.elements,
+        files: payload.files,
+      }),
+    );
+    // Every element must be part of the copyable selection: no dangling
+    // labels, partially copied groups or unsupported foreign references.
+    for (const element of source.elements) {
+      if (element.type === "image" && !nativeImageSource(source, element)) {
+        return unchanged(scene);
+      }
+    }
+    const duplicated = duplicateSelection(source, payload.rootIds, offset);
+    const sourceIds = new Set(source.elements.map((element) => element.id));
+    const pasted = duplicated.scene.elements.filter((element) =>
+      !sourceIds.has(element.id)
+    );
+    if (
+      duplicated.ids.length !== payload.rootIds.length ||
+      pasted.length !== source.elements.length
+    ) {
+      return unchanged(scene);
+    }
+
+    const fileIds = new Map<string, FileId>();
+    const files = { ...scene.files };
+    const elements: ExcalidrawElement[] = pasted.map((element) => {
+      if (element.type !== "image" || !element.fileId) {
+        return element;
+      }
+      const oldId = element.fileId;
+      let fileId = fileIds.get(oldId);
+      if (!fileId) {
+        fileId = crypto.randomUUID() as FileId;
+        fileIds.set(oldId, fileId);
+        files[fileId] = {
+          ...(structuredClone(source.files[oldId]) as Record<string, unknown>),
+          id: fileId,
+        };
+      }
+      return { ...element, fileId };
+    });
+    return {
+      scene: { ...scene, elements: [...scene.elements, ...elements], files },
+      ids: duplicated.ids,
+    };
+  } catch {
+    // Malformed or incompatible external clipboard contents never mutate
+    // the current document.
+    return unchanged(scene);
+  }
+}

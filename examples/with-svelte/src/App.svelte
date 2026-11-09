@@ -1,5 +1,9 @@
 <script lang="ts">
   import NativeEditor from "./NativeEditor.svelte";
+  import { isNonDeletedElement } from "@excalidraw/element";
+
+  import type { ExportSceneData } from "@excalidraw/excalidraw";
+  import type { BinaryFiles } from "@excalidraw/excalidraw/types";
   import {
     blankScene,
     parseScene,
@@ -12,6 +16,7 @@
   let scene = $state.raw<SceneFile>(blankScene());
   let documentEpoch = $state(0);
   let status = $state("");
+  let exportingImage = $state(false);
   let input: HTMLInputElement;
   // Import the React code only on demand, when the user opens full Excalidraw.
   let FullEditor = $state<any>(null);
@@ -38,19 +43,83 @@
     }
   }
 
-  function saveFile() {
-    const blob = new Blob([serializeScene(scene)], {
-      type: "application/vnd.excalidraw+json",
-    });
+  function downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "drawing.excalidraw";
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function saveFile() {
+    downloadBlob(
+      new Blob([serializeScene(scene)], {
+        type: "application/vnd.excalidraw+json",
+      }),
+      "drawing.excalidraw",
+    );
     status = "Файл сохранён.";
+  }
+
+  /**
+   * Export from the original Excalidraw renderer, not the native Svelte
+   * canvas. Import the export implementation on demand and never mount the
+   * React editor. Its image/font/clip/layout path remains authoritative.
+   */
+  async function exportImage(format: "png" | "svg") {
+    if (exportingImage) {
+      return;
+    }
+    exportingImage = true;
+    status = "";
+    try {
+      const { exportScene } = await import("@excalidraw/excalidraw");
+      const bg = typeof scene.appState.viewBackgroundColor === "string"
+        ? scene.appState.viewBackgroundColor
+        : "#ffffff";
+      const data: ExportSceneData = {
+        elements: scene.elements.filter(isNonDeletedElement),
+        appState: { viewBackgroundColor: bg } as ExportSceneData["appState"],
+        files: scene.files as unknown as BinaryFiles,
+      };
+      if (format === "png") {
+        const blob = await exportScene({
+          type: "png",
+          data,
+          config: {
+            canvasBackgroundColor: bg,
+            theme,
+            scale: 2,
+            embedScene: true,
+          },
+        });
+        downloadBlob(blob, "drawing.png");
+      } else {
+        const svg = await exportScene({
+          type: "svg",
+          data,
+          config: {
+            canvasBackgroundColor: bg,
+            theme,
+            embedScene: true,
+          },
+        });
+        downloadBlob(
+          new Blob([new XMLSerializer().serializeToString(svg)], {
+            type: "image/svg+xml;charset=utf-8",
+          }),
+          "drawing.svg",
+        );
+      }
+      status = `Экспорт ${format.toUpperCase()} выполнен.`;
+    } catch (error) {
+      status = error instanceof Error ? error.message : "Не удалось экспортировать изображение.";
+    } finally {
+      exportingImage = false;
+    }
   }
 
   async function importFile(event: Event) {
@@ -93,6 +162,12 @@
       />
       <button onclick={() => input.click()}>Открыть</button>
       <button onclick={saveFile}>Сохранить</button>
+      <button disabled={exportingImage} onclick={() => void exportImage("png")} title="Оригинальный экспорт Excalidraw в PNG">
+        PNG
+      </button>
+      <button disabled={exportingImage} onclick={() => void exportImage("svg")} title="Оригинальный экспорт Excalidraw в SVG">
+        SVG
+      </button>
       <button onclick={() => (theme = theme === "light" ? "dark" : "light")}>
         {theme === "light" ? "Тёмная тема" : "Светлая тема"}
       </button>
