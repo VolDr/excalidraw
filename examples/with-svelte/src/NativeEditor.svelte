@@ -374,7 +374,7 @@
     if (gesture || textEditor || !event.clipboardData) {
       return;
     }
-    const payload = copyNativeSelection(scene, selectedIds);
+    const payload = copyNativeSelection(scene, selectedIds, editorSession);
     if (payload) {
       event.clipboardData.setData("text/plain", payload);
       event.preventDefault();
@@ -387,7 +387,7 @@
     if (gesture || textEditor || !event.clipboardData) {
       return;
     }
-    const result = cutNativeSelection(scene, selectedIds);
+    const result = cutNativeSelection(scene, selectedIds, editorSession);
     if (result.text) {
       event.clipboardData.setData("text/plain", result.text);
       event.preventDefault();
