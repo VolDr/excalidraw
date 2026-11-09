@@ -1,5 +1,5 @@
 import { editableSelection, selectionUnit } from "./groups";
-import type { CoreEditorController } from "@excalidraw/element";
+import type { CoreEditorSession } from "@excalidraw/element";
 import { deleteSelection } from "./transforms";
 import { pickElement } from "./scene";
 import type { Point, SceneFile } from "./scene";
@@ -35,12 +35,12 @@ export const nativeEraserHit = (
 export const eraseNativeHits = (
   scene: SceneFile,
   ids: readonly string[],
-  controller?: CoreEditorController,
+  session?: CoreEditorSession<SceneFile>,
 ): SceneFile => {
   const selected = editableSelection(scene, ids);
   if (!selected.length || selected.length !== new Set(ids).size) return scene;
   try {
-    const next = deleteSelection(scene, selected, controller);
+    const next = deleteSelection(scene, selected, session);
     return next.elements.some((el, index) =>
       el.isDeleted !== scene.elements[index]?.isDeleted
     ) ? next : scene;
