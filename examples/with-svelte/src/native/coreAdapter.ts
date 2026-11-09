@@ -2,7 +2,6 @@ import {
   bindBindingElement,
   CoreEditorController,
   applyCoreDocumentTransaction,
-  getCoreGraphDefects,
   getGlobalFixedPointForBindableElement,
   getCommonBounds,
   getBoundTextMaxHeight,
@@ -1879,38 +1878,4 @@ export function rotateNativeGroupWithCore(
     );
   });
   return acceptCoreGroupLabels(scene, rotated, ids, labels);
-}
-
-/**
- * The official reciprocal-binding deletion lifecycle updates all affected
- * neighbors in an isolated core Scene. Soft deletion remains immutable and
- * source order/index/extension fields are preserved by the adapter.
- */
-export function deleteNativeElementsWithCore(
-  scene: SceneFile,
-  ids: ReadonlySet<string>,
-  persistentController?: CoreEditorController,
-): SceneFile {
-  if (!ids.size || scene.elements.filter(
-    (element) => ids.has(element.id) && !element.isDeleted,
-  ).length !== ids.size) return scene;
-  const controller = persistentController ??
-    new CoreEditorController(scene.elements);
-  try {
-    const next = applyCoreDocumentTransaction(
-      scene,
-      controller.previewDeleteElements(scene.elements, ids),
-    );
-    // Only the shared graph-invariant checker decides whether Excalidraw's
-    // deletion cleanup preserved imported references. Existing defects may
-    // disappear, but the operation must introduce no new dangling refs.
-    const before = getCoreGraphDefects(scene.elements);
-    const after = getCoreGraphDefects(next.elements);
-    return [...after].every((defect) => before.has(defect)) ? next : scene;
-  } catch {
-    // An imported graph with invalid extension data must not crash the UI.
-    return scene;
-  } finally {
-    if (!persistentController) controller.destroy();
-  }
 }
