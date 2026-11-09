@@ -419,7 +419,7 @@
     if (!selectedIds.length || textEditor || gesture) {
       return;
     }
-    const result = duplicateSelection(scene, selectedIds);
+    const result = duplicateSelection(scene, selectedIds, 24, editorSession);
     if (result.ids.length) {
       commit(scene, result.scene);
       setSelectedIds(result.ids);
