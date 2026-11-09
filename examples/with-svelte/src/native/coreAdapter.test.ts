@@ -1,4 +1,5 @@
 import {
+  deleteCoreDocumentElements,
   getBoundTextMaxHeight,
   getBoundTextMaxWidth,
   newArrowElement,
@@ -17,7 +18,6 @@ import { updateNativeBoxLabel } from "./boundText";
 import { groupSelection } from "./groups";
 import { SceneHistory } from "./history";
 import {
-  deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
   withNativeCoreScene,
   nativeElementsMap,
@@ -450,12 +450,12 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
       { x: 210, y: 60 },
     );
     const snapshot = structuredClone(original);
-    const removed = deleteNativeElementsWithCore(original, new Set([arrow.id]));
+    const removed = deleteCoreDocumentElements(original, new Set([arrow.id]));
     expect(removed.elements[2].isDeleted).toBe(true);
     expect(removed.elements[0].boundElements).toBeNull();
     expect(removed.elements[1].boundElements).toBeNull();
     expect(original).toEqual(snapshot);
-    expect(deleteNativeElementsWithCore(original, new Set(["missing"]))).toBe(original);
+    expect(deleteCoreDocumentElements(original, new Set(["missing"]))).toBe(original);
   });
 
   it("detaches the deleted arrow target while preserving the opposite end", () => {
@@ -468,7 +468,7 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
       { x: 110, y: 60 },
       { x: 210, y: 60 },
     );
-    const removed = deleteNativeElementsWithCore(original, new Set([left.id]));
+    const removed = deleteCoreDocumentElements(original, new Set([left.id]));
     expect(removed.elements[0].isDeleted).toBe(true);
     const surviving = removed.elements[2];
     expect(surviving.type).toBe("arrow");
@@ -489,7 +489,7 @@ describe("Svelte scene adapter to original Excalidraw core", () => {
       "Caption",
     );
     const textId = scene.elements[2].id;
-    const removed = deleteNativeElementsWithCore(scene, new Set([textId]));
+    const removed = deleteCoreDocumentElements(scene, new Set([textId]));
     expect(removed.elements[2].isDeleted).toBe(true);
     expect(removed.elements[0].boundElements).toBeNull();
     expect(removed.elements[1]).toEqual(other);
