@@ -8,7 +8,7 @@ import { alignElements, type Alignment } from "./align";
 import { distributeElements, type Distribution } from "./distribute";
 import { moveAllLeft, moveAllRight, moveOneLeft, moveOneRight } from "./zindex";
 import type { MaybeTransformHandleType } from "./transformHandles";
-import { getElementsInGroup, selectGroupsFromGivenElements } from "./groups";
+import { getElementsInGroup, getSelectedElementsByGroup, selectGroupsFromGivenElements } from "./groups";
 
 import type {
   ExcalidrawElement,
@@ -655,6 +655,10 @@ export class CoreEditorController {
         editingGroupId: null,
       };
       const elements = selected as NonDeleted<ExcalidrawElement>[];
+      const units = getSelectedElementsByGroup(
+        elements, scene.getElementsMapIncludingDeleted(), state,
+      );
+      if (units.length < (action.kind === "align" ? 2 : 3)) return;
       if (action.kind === "align") {
         alignElements(elements, action.alignment, scene, state);
       } else {
