@@ -1,5 +1,6 @@
 import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
 import { deleteCoreDocumentElements } from "@excalidraw/element";
+import type { CoreEditorSession } from "@excalidraw/element";
 
 import { editableSelection } from "./groups";
 import { nativeImageSource } from "./images";
@@ -23,6 +24,7 @@ const unchanged = (scene: SceneFile) => ({ scene, ids: [] as string[] });
 export function copyNativeSelection(
   scene: SceneFile,
   ids: readonly string[],
+  session?: CoreEditorSession<SceneFile>,
 ): string | null {
   const allowed = editableSelection(scene, ids);
   // Never copy a subset of an unsafe/mixed selection. In particular, linked
@@ -30,7 +32,7 @@ export function copyNativeSelection(
   if (!allowed.length || allowed.length !== new Set(ids).size) {
     return null;
   }
-  const cloned = duplicateSelection(scene, ids, 0);
+  const cloned = duplicateSelection(scene, ids, 0, session);
   if (cloned.ids.length !== allowed.length) {
     return null;
   }
@@ -74,8 +76,9 @@ export function copyNativeSelection(
 export function cutNativeSelection(
   scene: SceneFile,
   ids: readonly string[],
+  session?: CoreEditorSession<SceneFile>,
 ): { scene: SceneFile; text: string | null } {
-  const text = copyNativeSelection(scene, ids);
+  const text = copyNativeSelection(scene, ids, session);
   if (!text) {
     return { scene, text: null };
   }
@@ -93,8 +96,10 @@ export function cutNativeSelection(
       ]
     : [...ids];
   const next = frame
-    ? deleteCoreDocumentElements(scene, new Set(removedIds))
-    : deleteSelection(scene, ids);
+    ? session
+      ? session.previewDeleteDocument(scene, new Set(removedIds))
+      : deleteCoreDocumentElements(scene, new Set(removedIds))
+    : deleteSelection(scene, ids, session);
   if (
     next === scene ||
     removedIds.some(
