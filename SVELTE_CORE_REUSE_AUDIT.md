@@ -30,6 +30,31 @@ after all their call sites have migrated and React/Svelte behavior has
 actually been checked. The React implementation remains the fallback.
 No build, tests or CI were executed in this milestone; parity is not verified.
 
+## Shared document commands (latest refactor)
+
+- `CoreEditorSession.previewDragDocument` and `previewTransformDocument`
+  now own original-pointer-snapshot gesture previews, graph-integrity
+  validation, and immutable document adoption. Native Svelte calls these
+  commands directly for dragging, nudging, single/group transforms and
+  frame-resize previews.
+- `CoreEditorSession.previewDeleteDocument` and
+  `deleteCoreDocumentElements` now own binding-aware deletion for the
+  Svelte Delete key, eraser and native clipboard cut.
+- `applyCoreDocumentTransaction` preserves imported indices, unrelated
+  object identities, appState, files and unknown document metadata while
+  adopting the original Excalidraw Scene's changed elements.
+- Removed the Svelte-only `dragNativeGraphWithCore`,
+  `transformNativeGraphWithCore` and `deleteNativeElementsWithCore`
+  wrappers, together with their duplicate document-adoption logic.
+- Existing `withNativeCoreScene` and operation-specific adapters remain for
+  unported editing paths (specialized binding, typography, framing, crop,
+  clipboard serialization, grouping). Do not remove them until their
+  consumers have moved to shared commands. There is still no complete
+  parity with React's pointer controller / history / collaboration lifecycle.
+- Added core-session regression scenarios for immutable document previews,
+  drag repeatability, undo/redo, bad selections and deletion. They are
+  **not executed**; typecheck, build, CI and browser parity remain pending.
+
 ## Reused directly in `examples/with-svelte`
 
 | Native adapter | Existing Excalidraw implementation | Current usage |
