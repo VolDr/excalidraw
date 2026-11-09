@@ -1,7 +1,7 @@
 import type { ExcalidrawElement, FileId } from "@excalidraw/element/types";
+import { deleteCoreDocumentElements } from "@excalidraw/element";
 
 import { editableSelection } from "./groups";
-import { deleteNativeElementsWithCore } from "./coreAdapter";
 import { nativeImageSource } from "./images";
 import { blankScene, parseScene } from "./scene";
 import { duplicateSelection } from "./selection";
@@ -93,7 +93,7 @@ export function cutNativeSelection(
       ]
     : [...ids];
   const next = frame
-    ? deleteNativeElementsWithCore(scene, new Set(removedIds))
+    ? deleteCoreDocumentElements(scene, new Set(removedIds))
     : deleteSelection(scene, ids);
   if (
     next === scene ||
