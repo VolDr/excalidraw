@@ -184,4 +184,42 @@ describe("framework-independent editor session commands", () => {
     }
   });
 
+  it("duplicates a complete nested group through original duplicateElements", () => {
+    const empty = blankScene();
+    const first = createShape("rectangle", { x: 0, y: 10 }, { x: 50, y: 70 });
+    const second = createShape("diamond", { x: 100, y: 20 }, { x: 160, y: 80 });
+    const source = indexInsertedNativeElements(empty, {
+      ...empty,
+      elements: [
+        { ...first, groupIds: ["old-group"] },
+        { ...second, groupIds: ["old-group"] },
+      ],
+      files: { asset: { data: "keep" } },
+    });
+    const session = new CoreEditorSession(source);
+    try {
+      const duplicated = session.previewDuplicateDocument(
+        source, [first.id, second.id], 24,
+      );
+      expect(duplicated.document).not.toBe(source);
+      expect(duplicated.ids.length).toBe(2);
+      expect(duplicated.document.elements.length).toBe(4);
+      const copied = duplicated.ids.map((id) =>
+        duplicated.document.elements.find((element) => element.id === id),
+      );
+      expect(copied.every((element) => element)).toBe(true);
+      expect(copied[0]!.x).toBe(first.x + 24);
+      expect(copied[1]!.x).toBe(second.x + 24);
+      expect(copied[0]!.groupIds).toEqual(copied[1]!.groupIds);
+      expect(copied[0]!.groupIds).not.toEqual(["old-group"]);
+      expect(duplicated.document.files).toBe(source.files);
+      expect(source.elements.length).toBe(2);
+      const committed = session.commit(source, duplicated.document);
+      expect(session.undo().elements.length).toBe(2);
+      expect(session.redo().elements.length).toBe(committed.elements.length);
+    } finally {
+      session.destroy();
+    }
+  });
+
 });
