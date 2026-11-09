@@ -434,11 +434,31 @@ export class CoreEditorSession<
       ) return unchanged;
 
       const selection = new Map(selectedIds.map((id) => [id, byId.get(id)!]));
+      const selectedRoots = new Set(selectedIds.filter((id) => {
+        const element = byId.get(id)!;
+        return element.type !== "text" || !element.containerId;
+      }));
+      const outerGroups = new Set(
+        [...selectedRoots].map((id) => byId.get(id)!.groupIds.at(-1))
+          .filter((id): id is string => !!id),
+      );
+      // Duplicate a complete selected group as one unit. Without the
+      // original selectedGroupIds state, duplicateElements treats every
+      // child as an independent duplication and splits nested groups.
+      const selectedGroupIds = Object.fromEntries(
+        [...outerGroups].filter((groupId) =>
+          copies.filter((element) =>
+            !element.isDeleted &&
+            element.groupIds.includes(groupId) &&
+            (element.type !== "text" || !element.containerId)
+          ).every((element) => selectedRoots.has(element.id))
+        ).map((groupId) => [groupId, true]),
+      );
       const duplicated = duplicateElements({
         type: "in-place",
         elements: copies,
         idsOfElementsToDuplicate: selection,
-        appState: { editingGroupId: null, selectedGroupIds: {} },
+        appState: { editingGroupId: null, selectedGroupIds },
         randomizeSeed: true,
         overrides: ({ origElement }) => ({
           x: origElement.x + offset,
