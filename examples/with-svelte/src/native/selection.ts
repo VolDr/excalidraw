@@ -1,14 +1,6 @@
-import {
-  duplicateElement,
-  elementsOverlappingBBox,
-  fixDuplicatedBindingsAfterDuplication,
-  getElementBounds,
-} from "@excalidraw/element";
+import { CoreEditorSession, elementsOverlappingBBox, getElementBounds } from "@excalidraw/element";
 
-import type {
-  ExcalidrawElement,
-  NonDeletedSceneElementsMap,
-} from "@excalidraw/element/types";
+import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import { nativeEditableLabel } from "./boundText";
 import { duplicateNativeFrameWithCore } from "./frameDuplicate";
@@ -88,6 +80,7 @@ export function duplicateSelection(
   scene: SceneFile,
   ids: readonly string[],
   offset = 24,
+  session?: CoreEditorSession<SceneFile>,
 ): { scene: SceneFile; ids: string[] } {
   if (
     ids.length === 1 &&
@@ -142,53 +135,43 @@ export function duplicateSelection(
     return { scene, ids: [] };
   }
 
-  // Delegate identity creation, deep copy, seed generation and group ID
-  // remapping to Excalidraw's own duplication algorithm.
-  const originals = scene.elements.filter((element) => selected.has(element.id));
-  const idsByOriginal = new Map<string, string>();
-  const groupIdMap = new Map<string, string>();
-  const nativeCopies = originals.map((element) => {
-    const copy = duplicateElement(null, groupIdMap, element, true);
-    idsByOriginal.set(element.id, copy.id);
-    return copy;
-  });
-
-  // Excalidraw owns reciprocal-link remapping as well as ID creation.
-  // Run it on independent deep copies, never on the imported source scene.
-  const duplicates: ExcalidrawElement[] = nativeCopies.map((copy) => ({
-    ...copy,
-    x: copy.x + offset,
-    y: copy.y + offset,
-    index: null,
-    version: 1,
-  }));
-  const duplicateMap = nativeElementsMap({ elements: duplicates }) as NonDeletedSceneElementsMap;
-  fixDuplicatedBindingsAfterDuplication(
-    duplicates,
-    idsByOriginal,
-    duplicateMap,
-  );
-
-  const candidate = { ...scene, elements: [...scene.elements, ...duplicates] };
-  // Only adopt a linked duplicate if the core remapped BOTH its endpoint
-  // references and every new box's reciprocal boundElements record.
-  for (const duplicate of duplicates) {
-    if (
-      duplicate.type !== "arrow" ||
-      !(duplicate.startBinding || duplicate.endBinding) ||
-      !duplicate.groupIds.length
-    ) continue;
-    const outer = duplicate.groupIds[duplicate.groupIds.length - 1];
-    if (!safeGroupMembers(candidate, outer).length) {
+  // The original duplicateElements lifecycle now owns nested group IDs,
+  // frame-safe ordering, reciprocal captions, arrow bindings, and versions.
+  // Native selection policy still prevents partial imported graph copying.
+  const memberIds = scene.elements
+    .filter((element) => selected.has(element.id))
+    .map((element) => element.id);
+  const temporary = session ? null : new CoreEditorSession(scene);
+  try {
+    const duplicated = (session ?? temporary!).previewDuplicateDocument(
+      scene, memberIds, offset,
+    );
+    if (duplicated.document === scene) return { scene, ids: [] };
+    const mappedBySource = new Map(memberIds.map((id, index) => [
+      id, duplicated.ids[index],
+    ]));
+    const candidate = duplicated.document;
+    const copiedRootIds = scene.elements
+      .filter((element) => copiedParents.has(element.id))
+      .map((element) => mappedBySource.get(element.id))
+      .filter((id): id is string => !!id);
+    if (copiedRootIds.length !== requested.size) {
       return { scene, ids: [] };
     }
+    for (const duplicate of candidate.elements) {
+      if (
+        !duplicated.ids.includes(duplicate.id) ||
+        duplicate.type !== "arrow" ||
+        !(duplicate.startBinding || duplicate.endBinding) ||
+        !duplicate.groupIds.length
+      ) continue;
+      const outer = duplicate.groupIds[duplicate.groupIds.length - 1];
+      if (!safeGroupMembers(candidate, outer).length) {
+        return { scene, ids: [] };
+      }
+    }
+    return { scene: candidate, ids: copiedRootIds };
+  } finally {
+    temporary?.destroy();
   }
-
-  return {
-    scene: candidate,
-    // Select copied boxes, not their separately bound text elements.
-    ids: scene.elements
-      .filter((element) => copiedParents.has(element.id))
-      .map((element) => idsByOriginal.get(element.id)!),
-  };
 }
