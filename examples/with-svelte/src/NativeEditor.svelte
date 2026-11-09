@@ -559,7 +559,7 @@
     if (gesture || textEditor || editingGroupId) {
       return;
     }
-    const result = groupSelection(scene, selectedIds);
+    const result = groupSelection(scene, selectedIds, editorSession);
     if (result.groupId) {
       commit(scene, result.scene);
       setSelectedIds(result.ids);
@@ -570,7 +570,7 @@
     if (gesture || textEditor || editingGroupId) {
       return;
     }
-    const result = ungroupSelection(scene, selectedIds);
+    const result = ungroupSelection(scene, selectedIds, editorSession);
     if (result.ids.length) {
       commit(scene, result.scene);
       setSelectedIds(result.ids);
