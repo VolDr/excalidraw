@@ -1,7 +1,8 @@
 import { getNextSingleWidthAndHeightFromPointer, getTransformHandles } from "@excalidraw/element";
 import { pointFrom, pointRotateRads } from "@excalidraw/math";
 
-import type { CoreEditorController } from "@excalidraw/element";
+import { deleteCoreDocumentElements } from "@excalidraw/element";
+import type { CoreEditorController, CoreEditorSession } from "@excalidraw/element";
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import {
@@ -16,7 +17,6 @@ import { editableNativeGroupSelection } from "./groupEditing";
 import { unwrapNativeFrame } from "./frames";
 import { moveNativeFrameWithCore, moveNativeFrameChildWithCore } from "./frameMove";
 import {
-  deleteNativeElementsWithCore,
   dragNativeSelectionWithCore,
   resizeNativeBoxWithCore,
   resizeNativeImageWithCore,
@@ -380,7 +380,7 @@ export function moveSelection(
 export function deleteSelection(
   scene: SceneFile,
   ids: readonly string[],
-  controller?: CoreEditorController,
+  session?: CoreEditorSession<SceneFile>,
 ): SceneFile {
   const frames = scene.elements.filter((element) =>
     ids.includes(element.id) && element.type === "frame" && !element.isDeleted,
@@ -430,7 +430,9 @@ export function deleteSelection(
       }
     }
   }
-  return deleteNativeElementsWithCore(scene, selected, controller);
+  return session
+    ? session.previewDeleteDocument(scene, selected)
+    : deleteCoreDocumentElements(scene, selected);
 }
 
 export function transformSelected(
