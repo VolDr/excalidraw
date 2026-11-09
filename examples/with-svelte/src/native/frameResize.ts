@@ -1,18 +1,8 @@
-import {
-  getTransformHandles,
-  transformElements,
-} from "@excalidraw/element";
+import { CoreEditorSession, getTransformHandles } from "@excalidraw/element";
 
-import type {
-  ExcalidrawElement,
-  ExcalidrawFrameElement,
-  NonDeleted,
-} from "@excalidraw/element/types";
+import type { ExcalidrawFrameElement } from "@excalidraw/element/types";
 
-import {
-  nativeElementsMap,
-  withNativeCoreScene,
-} from "./coreAdapter";
+import { nativeElementsMap } from "./coreAdapter";
 import type { CoreEditorSession } from "@excalidraw/element";
 import { reconcileNativeResizedFrameMembership } from "./frameMembership";
 
@@ -106,28 +96,12 @@ export const resizeNativeFrameWithCore = (
   const before = eligibleFrame(scene, id);
   if (!before || !cornerHandles.includes(handle) ||
       !Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return scene;
-  let next: SceneFile;
+  // Headless consumers use the same original Scene command as live Svelte.
+  const temporary = session ? null : new CoreEditorSession(scene);
   try {
-    next = session
-      ? session.previewTransformDocument(
-          scene, [id], handle, pointer, false,
-        )
-      : withNativeCoreScene(scene, (core) => {
-      const frame = core.getNonDeletedElement(id);
-      if (!frame || frame.type !== "frame") return;
-      const originals = new Map(
-        core.getNonDeletedElements().map((el) => [
-          el.id, structuredClone(el),
-        ]),
-      ) as Map<string, NonDeleted<ExcalidrawElement>>;
-      transformElements(
-        originals, handle, [frame], core,
-        false, false, false,
-        pointer.x, pointer.y,
-        before.x + before.width / 2,
-        before.y + before.height / 2,
-      );
-    });
+    const next = (session ?? temporary!).previewTransformDocument(
+      scene, [id], handle, pointer, false,
+    );
     const after = eligibleFrame(next, id);
     if (!after || next === scene ||
         after.width < 30 || after.height < 30 ||
@@ -141,5 +115,7 @@ export const resizeNativeFrameWithCore = (
     return reconcileNativeResizedFrameMembership(scene, next, id);
   } catch {
     return scene;
+  } finally {
+    temporary?.destroy();
   }
 };
