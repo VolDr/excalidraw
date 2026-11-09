@@ -1,8 +1,8 @@
 import {
   bindBindingElement,
   CoreEditorController,
+  applyCoreDocumentTransaction,
   getCoreGraphDefects,
-  isCoreGraphTransitionValid,
   getGlobalFixedPointForBindableElement,
   getCommonBounds,
   getBoundTextMaxHeight,
@@ -60,63 +60,7 @@ export const nativeElementsMap = (
 ): ElementsMap =>
   new Map(scene.elements.map((element) => [element.id, element])) as ElementsMap;
 
-/**
- * Run a Scene-dependent Excalidraw algorithm without exposing our immutable
- * Svelte store to the core's in-place mutations.
- *
- * Scene synchronizes fractional indices when constructed. These are *not*
- * applied back to the native file: preserve original element order and index
- * explicitly, and adopt only elements whose versions changed in the core
- * transaction. Unknown extension fields and unrelated objects survive.
- */
-/**
- * All native Scene operations enter the shared framework-independent
- * CoreEditorController. This is the same mutation/selection lifecycle
- * available to non-React editors; per-feature adapters must not create
- * their own copies of Excalidraw's state or event controller.
- *
- * Excalidraw Scene may normalize old fractional indices. Only versions
- * changed *inside* the transaction can flow back to an imported document.
- * Original immutable scene references, custom data and untouched elements
- * retain their identity.
- */
-const adoptCoreTransaction = (
-  source: SceneFile,
-  tx: ReturnType<CoreEditorController["transact"]>,
-): SceneFile => {
-  const nextElements = tx.elements;
-  if (
-    nextElements.length !== source.elements.length ||
-    nextElements.some((element, index) => element.id !== source.elements[index].id)
-  ) {
-    throw new Error("Use the controller's insertion transaction for reordering");
-  }
-  let changed = false;
-  const elements = source.elements.map((original, index) => {
-    const updated = nextElements[index];
-    const initial = tx.baseline[index];
-    // Core operations may replace entire arrays or mutate imported data
-    // without incrementing a version. The shared controller checks their
-    // complete data snapshots, not only version counters.
-    if (!tx.changedIds.has(original.id)) return original;
-
-    changed = true;
-    const delta = updated.version - initial.version;
-    const candidate = {
-      ...updated,
-      index: original.index,
-      version: original.version + Math.max(0, delta),
-    };
-    // Revisions drive Excalidraw's shape cache. If a core operation changed
-    // data without bumping the version, delegate the bump to newElementWith
-    // rather than exporting stale revisions into the Svelte document.
-    return delta <= 0
-      ? newElementWith(candidate, {}, true)
-      : candidate;
-  });
-  return changed ? { ...source, elements } : source;
-};
-
+/** Compatibility bridge for still-unmigrated core operations. */
 export function withNativeCoreScene(
   scene: SceneFile,
   operation: (core: Scene) => void,
@@ -132,7 +76,7 @@ export function withNativeCoreScene(
           scene.elements, (core) => operation(core),
         )
       : controller.transact((core) => operation(core));
-    return adoptCoreTransaction(scene, result);
+    return applyCoreDocumentTransaction(scene, result);
   } finally {
     if (!persistentController) controller.destroy();
   }
@@ -167,90 +111,9 @@ export function dragNativeSelectionWithCore(
           controller.setSelection([...ids]);
           return controller.dragSelection(dx, dy);
         })();
-    return adoptCoreTransaction(scene, result);
+    return applyCoreDocumentTransaction(scene, result);
   } finally {
     if (!persistentController) controller.destroy();
-  }
-}
-
-/**
- * The fallback for imported or nontrivial graphs is not a second geometry
- * implementation. Run the original dragSelectedElements on the complete
- * core selection and accept it if Excalidraw's graph remains consistent.
- * No hard-coded list of eligible arrow types, binding modes or group depths.
- */
-export function dragNativeGraphWithCore(
-  scene: SceneFile,
-  ids: readonly string[],
-  dx: number,
-  dy: number,
-  persistentController: CoreEditorController,
-): SceneFile {
-  if (
-    !ids.length ||
-    !Number.isFinite(dx) || !Number.isFinite(dy) ||
-    (!dx && !dy) ||
-    new Set(ids).size !== ids.length ||
-    ids.some((id) => !scene.elements.some((el) =>
-      el.id === id && !el.isDeleted && !el.locked
-    ))
-  ) return scene;
-  try {
-    const result = dragNativeSelectionWithCore(
-      scene, new Set(ids), dx, dy, persistentController,
-    );
-    return result !== scene &&
-      isCoreGraphTransitionValid(scene.elements, result.elements)
-      ? result : scene;
-  } catch {
-    // Broken third-party imports must not crash the Svelte host.
-    return scene;
-  }
-}
-
-/**
- * The original Excalidraw transformElements handles multiple selection
- * geometry, arrow routing and text bindings. It is used even for imported
- * complex groups; only a universal graph-integrity postcondition applies.
- */
-export function transformNativeGraphWithCore(
-  source: SceneFile,
-  selectedIds: readonly string[],
-  handle: "nw" | "ne" | "sw" | "se" | "rotate",
-  pointer: { x: number; y: number },
-  controller: CoreEditorController,
-  shouldMaintainAspectRatio = selectedIds.length > 1,
-): SceneFile {
-  if (
-    selectedIds.length < 1 ||
-    new Set(selectedIds).size !== selectedIds.length ||
-    ![pointer.x, pointer.y].every(Number.isFinite)
-  ) return source;
-  const selected = source.elements.filter((el) =>
-    selectedIds.includes(el.id) && !el.isDeleted && !el.locked,
-  );
-  if (selected.length !== selectedIds.length) return source;
-  const [left, top, right, bottom] = getCommonBounds(
-    selected, nativeElementsMap(source),
-  );
-  if (![left, top, right, bottom].every(Number.isFinite) ||
-      right <= left || bottom <= top) return source;
-
-  try {
-    const tx = controller.previewTransformSelection(
-      source.elements,
-      new Set(selectedIds),
-      handle === "rotate" ? "rotation" : handle,
-      pointer,
-      { x: (left + right) / 2, y: (top + bottom) / 2 },
-      shouldMaintainAspectRatio,
-    );
-    const next = adoptCoreTransaction(source, tx);
-    return next !== source &&
-      isCoreGraphTransitionValid(source.elements, next.elements)
-      ? next : source;
-  } catch {
-    return source;
   }
 }
 
@@ -2034,7 +1897,7 @@ export function deleteNativeElementsWithCore(
   const controller = persistentController ??
     new CoreEditorController(scene.elements);
   try {
-    const next = adoptCoreTransaction(
+    const next = applyCoreDocumentTransaction(
       scene,
       controller.previewDeleteElements(scene.elements, ids),
     );
