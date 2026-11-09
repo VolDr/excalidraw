@@ -1,12 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { validateFractionalIndices } from "@excalidraw/element";
+import { CoreEditorSession, validateFractionalIndices } from "@excalidraw/element";
 
 import { blankScene, createShape } from "./scene";
 import { indexInsertedNativeElements } from "./ordering";
-import { canMoveNativeLayer, moveNativeLayerWithCore } from "./zOrder";
+import { canMoveNativeLayer, type NativeLayerMove } from "./zOrder";
 import { groupSelection } from "./groups";
 import { updateNativeBoxLabel } from "./boundText";
+
+const previewLayer = (
+  scene: ReturnType<typeof blankScene>,
+  idOrIds: string | readonly string[],
+  direction: NativeLayerMove,
+) => {
+  const ids = typeof idOrIds === "string" ? [idOrIds] : [...idOrIds];
+  if (!canMoveNativeLayer(scene, ids)) return scene;
+  const session = new CoreEditorSession(scene);
+  try {
+    return session.previewReorderDocument(scene, ids, direction);
+  } finally {
+    session.destroy();
+  }
+};
 
 const sceneWith3 = () => {
   const start = blankScene();
@@ -22,7 +37,7 @@ describe("native layer controls reuse Excalidraw zindex", () => {
   it("moves a safe element forward while retaining its geometry and metadata", () => {
     const source = sceneWith3();
     const id = source.elements[0].id;
-    const moved = moveNativeLayerWithCore(source, id, "forward");
+    const moved = previewLayer(source, id, "forward");
     expect(moved.elements.map((e) => e.id)).toEqual([
       source.elements[1].id,
       id,
@@ -40,10 +55,10 @@ describe("native layer controls reuse Excalidraw zindex", () => {
 
   it("preserves source and supports front/back/no-op gestures", () => {
     const source = sceneWith3();
-    const back = moveNativeLayerWithCore(source, source.elements[2].id, "bottom");
+    const back = previewLayer(source, source.elements[2].id, "bottom");
     expect(back.elements[0].id).toBe(source.elements[2].id);
-    expect(moveNativeLayerWithCore(back, source.elements[2].id, "back")).toBe(back);
-    const front = moveNativeLayerWithCore(back, source.elements[2].id, "top");
+    expect(previewLayer(back, source.elements[2].id, "back")).toBe(back);
+    const front = previewLayer(back, source.elements[2].id, "top");
     expect(front.elements[2].id).toBe(source.elements[2].id);
     expect(source.elements[0].type).toBe("rectangle");
   });
@@ -55,7 +70,7 @@ describe("native layer controls reuse Excalidraw zindex", () => {
     const grouped = groupSelection(source, [first, second]).scene;
     expect(canMoveNativeLayer(grouped, [first, second])).toBe(true);
     expect(canMoveNativeLayer(grouped, [first])).toBe(false);
-    const moved = moveNativeLayerWithCore(grouped, [first, second], "top");
+    const moved = previewLayer(grouped, [first, second], "top");
     expect(moved.elements.map((element) => element.id)).toEqual([
       source.elements[2].id, first, second,
     ]);
@@ -79,7 +94,7 @@ describe("native layer controls reuse Excalidraw zindex", () => {
       elements: [...labeled.elements, next],
     });
     expect(canMoveNativeLayer(scene, [box.id])).toBe(true);
-    const moved = moveNativeLayerWithCore(scene, box.id, "top");
+    const moved = previewLayer(scene, box.id, "top");
     expect(moved.elements[0].id).toBe(next.id);
     expect(moved.elements[1].id).toBe(box.id);
     expect(moved.elements[2].type).toBe("text");
@@ -93,11 +108,11 @@ describe("native layer controls reuse Excalidraw zindex", () => {
       ...scene,
       elements: scene.elements.map((el) => el.id === id ? { ...el, locked: true } : el),
     };
-    expect(moveNativeLayerWithCore(locked, id, "top")).toBe(locked);
+    expect(previewLayer(locked, id, "top")).toBe(locked);
     const invalid = {
       ...scene,
       elements: scene.elements.map((el) => ({ ...el, index: null })),
     };
-    expect(moveNativeLayerWithCore(invalid, id, "bottom")).toBe(invalid);
+    expect(previewLayer(invalid, id, "bottom")).toBe(invalid);
   });
 });
