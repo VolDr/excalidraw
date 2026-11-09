@@ -1342,7 +1342,7 @@
                g.handle && g.handle !== "rotate") {
       if (Math.hypot(dx, dy) > 0.2) {
         const next = resizeNativeFrameWithCore(
-          g.original, g.id, g.handle, point, coreController,
+          g.original, g.id, g.handle, point, editorSession,
         );
         if (next !== g.original) {
           g.changed = true;
