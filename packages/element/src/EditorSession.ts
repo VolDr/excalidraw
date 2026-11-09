@@ -53,6 +53,16 @@ export const applyCoreDocumentTransaction = <TDoc extends CoreEditorDocumentLike
     const original = sources.get(updated.id)!;
     const baseline = baselines.get(updated.id)!;
     if (!tx.changedIds.has(updated.id)) return original;
+    // A displaced neighbor may change array position while keeping its
+    // original Excalidraw fractional index and element data intact.
+    // Reusing that object preserves shape-cache/React revision semantics.
+    if (
+      options.allowReorder &&
+      updated.index === baseline.index &&
+      updated.version === baseline.version &&
+      updated.versionNonce === baseline.versionNonce &&
+      sameElementAsideFromOrder(original, updated)
+    ) return original;
     changed = true;
     const revisionDelta = updated.version - baseline.version;
     const next = {
