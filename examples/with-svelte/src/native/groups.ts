@@ -1,8 +1,5 @@
-import {
-  addToGroup,
-  getElementsInGroup,
-  removeFromSelectedGroups,
-} from "@excalidraw/element";
+import { changeCoreDocumentGroups, getElementsInGroup } from "@excalidraw/element";
+import type { CoreEditorSession } from "@excalidraw/element";
 
 import type { ExcalidrawElement } from "@excalidraw/element/types";
 
@@ -13,7 +10,6 @@ import {
   isTwoPointArrow,
   validBinding,
 } from "./bindings";
-import { updateNativeElement } from "./coreAdapter";
 import { nativeEditableLabel, nativeLabelBox, nativeReciprocalCaption } from "./boundText";
 import { nativeImageSource } from "./images";
 import { isNativeShape } from "./scene";
@@ -362,6 +358,7 @@ export function editableSelection(
 export function groupSelection(
   scene: SceneFile,
   ids: readonly string[],
+  session?: CoreEditorSession<SceneFile>,
 ): { scene: SceneFile; ids: string[]; groupId: string | null } {
   const selected = new Set(ids);
   const roots = scene.elements.filter((element) => selected.has(element.id));
@@ -408,26 +405,20 @@ export function groupSelection(
   }
   const allIds = new Set(candidates.map((element) => element.id));
   const groupId = crypto.randomUUID();
-  return {
-    scene: {
-      ...scene,
-      elements: scene.elements.map((element) =>
-        allIds.has(element.id)
-          ? updateNativeElement(element, {
-              groupIds: addToGroup(element.groupIds, groupId, null),
-            })
-          : element,
-      ),
-    },
-    ids: roots.map((element) => element.id),
-    groupId,
-  };
+  const operation = { kind: "add" as const, groupIds: [groupId] };
+  const grouped = session
+    ? session.previewGroupMembershipDocument(scene, allIds, operation)
+    : changeCoreDocumentGroups(scene, allIds, operation);
+  return grouped === scene
+    ? { scene, ids: [], groupId: null }
+    : { scene: grouped, ids: roots.map((element) => element.id), groupId };
 }
 
 /** Remove a whole valid native group, including its internal bound labels. */
 export function ungroupSelection(
   scene: SceneFile,
   ids: readonly string[],
+  session?: CoreEditorSession<SceneFile>,
 ): { scene: SceneFile; ids: string[] } {
   const selected = new Set(ids);
   const groupIds = new Set(
@@ -454,23 +445,15 @@ export function ungroupSelection(
     (element) =>
       element.groupIds.some((groupId) => allowed.has(groupId)),
   );
-  const selectedGroupIds = Object.fromEntries(
-    [...allowed].map((groupId) => [groupId, true]),
-  );
-  return {
-    scene: {
-      ...scene,
-      elements: scene.elements.map((element) =>
-        affected.includes(element)
-          ? updateNativeElement(element, {
-              groupIds: removeFromSelectedGroups(
-                element.groupIds,
-                selectedGroupIds,
-              ),
-            })
-          : element,
-      ),
-    },
-    ids: selectionRoots(affected).map((element) => element.id),
+  const operation = {
+    kind: "remove" as const,
+    groupIds: [...allowed],
   };
+  const memberIds = new Set(affected.map((element) => element.id));
+  const ungrouped = session
+    ? session.previewGroupMembershipDocument(scene, memberIds, operation)
+    : changeCoreDocumentGroups(scene, memberIds, operation);
+  return ungrouped === scene
+    ? { scene, ids: [] }
+    : { scene: ungrouped, ids: selectionRoots(affected).map((element) => element.id) };
 }
