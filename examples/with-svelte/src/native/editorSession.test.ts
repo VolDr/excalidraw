@@ -160,4 +160,28 @@ describe("framework-independent editor session commands", () => {
     }
   });
 
+  it("assigns Excalidraw fractional indices on session commits, not in Svelte", () => {
+    const empty = blankScene();
+    const first = createShape("rectangle", { x: 0, y: 0 }, { x: 40, y: 40 });
+    const baseline = indexInsertedNativeElements(empty, {
+      ...empty, elements: [first],
+    });
+    const second = createShape("ellipse", { x: 70, y: 0 }, { x: 110, y: 40 });
+    const pending = { ...baseline, elements: [...baseline.elements, second] };
+    const session = new CoreEditorSession(baseline);
+    try {
+      const committed = session.commit(baseline, pending);
+      validateFractionalIndices(committed.elements, {
+        includeBoundTextValidation: false, shouldThrow: true, ignoreLogs: true,
+      });
+      expect(committed.elements[0]).toBe(baseline.elements[0]);
+      expect(committed.elements[1].id).toBe(second.id);
+      expect(committed.elements[1].index).not.toBeNull();
+      expect(session.undo().elements).toEqual(baseline.elements);
+      expect(session.redo().elements).toEqual(committed.elements);
+    } finally {
+      session.destroy();
+    }
+  });
+
 });
