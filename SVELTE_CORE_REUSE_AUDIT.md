@@ -23,8 +23,8 @@ owns `zoom.value`, `scrollX` and `scrollY`. Imported file background color
 and host theme are synchronized explicitly. The JSON scene's arbitrary
 `appState` fields are **not** blindly cast to runtime AppState.
 
-**Still open:** Route the remaining clipboard, text, style, grouping, layer,
-frame, import/export and tool gesture transitions through shared controller
+**Still open:** Route the remaining clipboard serialization, text, style,
+frame, import/export and specialized tool gestures through shared controller
 commands. Replace the remaining native algorithm-specific adapters only
 after all their call sites have migrated and React/Svelte behavior has
 actually been checked. The React implementation remains the fallback.
@@ -48,12 +48,39 @@ No build, tests or CI were executed in this milestone; parity is not verified.
   wrappers, together with their duplicate document-adoption logic.
 - Existing `withNativeCoreScene` and operation-specific adapters remain for
   unported editing paths (specialized binding, typography, framing, crop,
-  clipboard serialization, grouping). Do not remove them until their
+  clipboard serialization). Do not remove them until their
   consumers have moved to shared commands. There is still no complete
   parity with React's pointer controller / history / collaboration lifecycle.
 - Added core-session regression scenarios for immutable document previews,
   drag repeatability, undo/redo, bad selections and deletion. They are
   **not executed**; typecheck, build, CI and browser parity remain pending.
+
+## Group, layer, layout and insertion consolidation (current PR head)
+
+- `CoreEditorController.previewReorderSelection` invokes the original four
+  Excalidraw z-order commands. `CoreEditorSession.previewReorderDocument`
+  validates fractional indices, stable content, unchanged IDs and no newly
+  broken reciprocal references. Reordered neighbors with unchanged element
+  data retain their source object identity.
+- `CoreEditorController.previewLayoutSelection` invokes original
+  `alignElements` / `distributeElements` using group-aware logical
+  selection units. `CoreEditorSession.previewLayoutDocument` validates
+  graph integrity and adopts only successful original-core mutations.
+- `CoreEditorController.previewGroupMembership` delegates group ID ancestry
+  mutation to original `addToGroup` / `removeFromSelectedGroups` via
+  `Scene.mutateElement`. The session validates that no unrequested metadata,
+  geometry or reciprocal links change; Svelte's existing safety checks still
+  determine which imported groups can be edited.
+- `CoreEditorSession.commit` now runs `syncInvalidIndicesImmutable`
+  at the insertion boundary. Svelte's own ordering helper is reduced to a
+  compatibility re-export, with no independent algorithm.
+- The Svelte `layoutNativeSelectionWithCore` and
+  `moveNativeLayerWithCore` mutation wrappers were removed; their
+  `native/layout.ts` and `native/zOrder.ts` modules keep only eligibility
+  checks for existing native UI capabilities.
+- Added regression cases for z-order, layout, nested group ancestry,
+  immutable document data, undo/redo, and insertion indices. **Not executed**
+  in this environment. This is not evidence of React/Svelte feature parity.
 
 ## Reused directly in `examples/with-svelte`
 
@@ -62,18 +89,18 @@ No build, tests or CI were executed in this milestone; parity is not verified.
 | `native/scene.ts` | `@excalidraw/element`: `newElement`, `newLinearElement`, `newArrowElement`, `newTextElement`, `newFreeDrawElement`, `getTextAnchorRatios`, `measureText`, `wrapText`, `hitElementItself`; `@excalidraw/math`: `pointFrom` | All native shape constructors, text metrics, precise pointer hit tests |
 | `native/selection.ts` | `@excalidraw/element`: `getElementBounds`, `elementsOverlappingBBox`, `duplicateElement`, `fixDuplicatedBindingsAfterDuplication` | Type-aware rotated bounds, marquee geometry, deep copy, ID/seed creation and reciprocal link remapping |
 | `native/groupEditing.ts` | `@excalidraw/element`: `getElementsInGroup`; original group-ID ancestry | Enter/exit nested group editing levels, select immediate child units and move individual boxes through original core drag/binding updates |
-| `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`, `addToGroup`, `removeFromSelectedGroups` | Complete outer-group selection, nested ancestry validation, wrapping and unwrapping without replacing original group-ID manipulation |
+| `native/groups.ts` | `@excalidraw/element`: `getElementsInGroup`; `CoreEditorSession.previewGroupMembershipDocument` | Safe selection and nested ancestry eligibility only; the original core now mutates group IDs and versions |
 | `native/importedOrbitRepair.ts` | `@excalidraw/element`: original `bindBindingElement` and core orthogonal rerouting | Explicitly restores missing reverse orbit refs of validated imported elbow arrows; no automatic repair or arbitrary normalization |
 | `native/importedBindings.ts` | `@excalidraw/element`: `bindBindingElement` through original `Scene` | Explicitly restores missing reverse arrow references in limited legacy inside-bound imports; validates every repaired link and forbids unrelated mutations |
 | `native/innerElementTransforms.ts` | `@excalidraw/element`: original `transformElements` using single-element resize/rotation; isolated core Scene | Core resize and rotation for individual validated inner boxes, preserving group ancestry, captions and arrow links |
 | `native/linkedGroupTransforms.ts` | `@excalidraw/element`: `resizeMultipleElements`, `transformElements`, original Scene via adapter | Rotates and uniformly resizes complete simple bound-arrow/box groups, including reciprocal captions; rejects any orphaned/unbound or foreign reference after a core transaction |
 | `native/groupTransforms.ts` | `@excalidraw/element`: `getCommonBounds`, `rescalePointsInElement`, core `resizeMultipleElements` and `transformElements` via adapter, bound-text dimensions; `@excalidraw/math`: `pointRotateRads` | Nested groups containing boxes, reciprocal captions, unbound two-point lines/arrows and uncropped embedded raster images delegate resize/rotation to core; linked arrows remain guarded |
 | `native/transforms.ts` | `@excalidraw/element`: `getTransformHandles`, `getNextSingleWidthAndHeightFromPointer`, core `dragSelectedElements`, `resizeSingleElement` and `transformElements` via adapter; `@excalidraw/math`: `pointRotateRads` | Dragging, single-box and labeled-box transforms, and uncropped embedded-raster resize/rotation delegate to core; cropped rasters and complex imported links retain guarded legacy paths |
-| `native/clipboard.ts` | Original whole-frame `duplicateElements` via frameDuplicate, `fixBindingsAfterDeletion` via coreAdapter | Clipboard extraction by new IDs instead of array position, whole-frame cut and paste, preserving children and original frame graph |
+| `native/clipboard.ts` | Original whole-frame `duplicateElements` via frameDuplicate; core session's reciprocal deletion | Clipboard extraction by new IDs instead of array position, whole-frame cut and paste, preserving children and original frame graph |
 | `native/frameDuplicate.ts` | `@excalidraw/element`: `duplicateElements`, `syncMovedIndices` | Whole-frame copy with child remapping, original nested group identity and reciprocal links; conservative imported graph validation |
 | `native/frameDrop.ts` | `@excalidraw/element`: `isCursorInFrame`, `isElementInFrame`, `addElementsToFrame`, `removeElementsFromFrame` | On pointer-up, safely adopts or releases a single unbound root on crossing frame boundaries; preserves history and original ordering |
 | `native/frameMove.ts` | `@excalidraw/element`: original `dragSelectedElements` via core Scene | Validates complete frame drags, including all child translations and unchanged external references; rejects incomplete imported group ancestry |
-| `native/frameResize.ts` | `@excalidraw/element`: `getTransformHandles`, `transformElements`, `getElementsInResizingFrame` | Frame corner resize through original core; accepts only geometry edits that keep the same frame child set |
+| `native/frameResize.ts` | `@excalidraw/element`: `getTransformHandles`; `CoreEditorSession.previewTransformDocument` | Frame eligibility and handle picking; shared core geometry and original frame-membership reconciliation |
 | `native/frames.ts` | `@excalidraw/element`: `newFrameElement`, `getElementsInNewFrame`, `addElementsToFrame`, `getCommonBounds`, `removeAllElementsFromFrame` | Frame creation, automatic membership, wrapping selection, drag with original core, unwrapping without deleting children |
 | `native/laser.ts` | `@excalidraw/laser-pointer`: original `LaserPointer` stroke smoothing and outline generation | Adds transient non-document laser pointer gestures; native canvas paints returned core polygon, no scene mutation or undo |
 | `native/lasso.ts` | `packages/excalidraw/lasso/utils.ts`: original `getLassoSelectedElementIds`, `getElementLineSegments` | Native freehand polygon selection, full-containment/intersection modes, complete safe group selection and frame-aware clipping |
@@ -85,10 +112,10 @@ No build, tests or CI were executed in this milestone; parity is not verified.
 | `native/renderCore.ts` | `@excalidraw/element`: `ShapeCache.generateElementShape`, `getElementAbsoluteCoords`, `paintTextElementOnCanvas`, `paintImageElementOnCanvas` | Core-generated RoughJS drawables and original pressure-sensitive freehand SVG outlines, including round corners, stroke styles and arrowheads, rendered by the native Svelte canvas with the original rotation center |
 | `native/imageCrop.ts` | `@excalidraw/element`: `getUncroppedImageElement`, `cropElement`; `@excalidraw/math`: `pointRotateRads` | Native center-crop and crop reset actions using original crop/source rectangle/rotated geometry |
 | `native/viewport.ts` | `@excalidraw/element`: `getCommonBounds`; `@excalidraw/excalidraw` (public export): `zoomToFitBounds` | Svelte commands fit all / selected elements via original bounds and zoom algorithm; only pixel/scene scroll conversion belongs to the host |
-| `native/zOrder.ts` | `@excalidraw/element`: `moveOneLeft`, `moveOneRight`, `moveAllLeft`, `moveAllRight`, `Scene`, `validateFractionalIndices` | Core z-order controls and fractional-index updates on complete native selections, including contiguous flat groups and safe bound captions; no custom layer algorithm |
-| `native/layout.ts` | `@excalidraw/element`: `alignElements`, `distributeElements`, `Scene` via adapter | Original group-aware bounds, translations and version updates for independent roots, complete nested groups and reciprocal captioned boxes; postchecks reject detached arrow links or broken group ancestry |
+| `native/zOrder.ts` | `CoreEditorSession.previewReorderDocument` owns original `moveOneLeft/Right`, `moveAllLeft/Right` | Svelte exposes eligibility checks only; order, fractional index updates and immutable adoption belong to the core |
+| `native/layout.ts` | `CoreEditorSession.previewLayoutDocument` owns original `alignElements` and `distributeElements` | Svelte exposes safe-selection eligibility and counts only; core handles the full geometry transaction |
 | `native/history.ts` | `@excalidraw/element`: `ElementsDelta.calculate`, `ElementsDelta.inverse`, `ElementsDelta.applyTo`, `validateFractionalIndices` | Core delta-based undo/redo for valid same-identity edits with original binding reconciliation and revision semantics; snapshots remain fallback for insertion, deletion, reordering and imported incompatibilities |
-| `native/ordering.ts` | `@excalidraw/element`: `syncInvalidIndicesImmutable` | Official fractional-index repair at the insertion boundary, preserving already valid ordering and existing element references |
+| `native/ordering.ts` | `CoreEditorSession.commit` and `indexCoreInsertedElements` reuse original `syncInvalidIndicesImmutable` | Compatibility re-export for existing tests; insertion indexing is owned by the shared document lifecycle |
 | `native/textStyles.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `getTextAnchorRatios`, `Scene` via adapter; `@excalidraw/common`: `getLineHeight` | Standalone text and validated reciprocal box captions use original font metrics, wrapping and container resize; imported/rotated/complex bindings remain guarded |
 | `native/styles.ts` | `@excalidraw/element`: `newElementWith` via `updateNativeElement` | Native Svelte style controls for safe independent shapes/text/images: core versioning for fill/stroke/opacity and supported arrowheads; grouped/bound/imported unsafe elements stay read-only |
 | `native/complexCaptions.ts` | `@excalidraw/element`: `redrawTextBoundingBox`, `updateBoundElements`, `normalizeText`, bound-text max sizes | Edits captions on closed box/text/arrow groups through original text reflow and arrow rerouting, while verifying target and group invariants |
