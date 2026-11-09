@@ -2,7 +2,7 @@ import { CoreEditorController, type CoreEditorTransactionResult } from "./Editor
 import { getCommonBounds } from "./bounds";
 import { getCoreGraphDefects, isCoreGraphTransitionValid } from "./EditorGraph";
 import { newElementWith } from "./mutateElement";
-import { validateFractionalIndices } from "./fractionalIndex";
+import { syncInvalidIndicesImmutable, validateFractionalIndices } from "./fractionalIndex";
 import type { Alignment } from "./align";
 import type { Distribution } from "./distribute";
 import type { ExcalidrawElement } from "./types";
@@ -90,6 +90,36 @@ const sameElementAsideFromOrder = (
     return stable;
   };
   return JSON.stringify(strip(before)) === JSON.stringify(strip(after));
+};
+
+/**
+ * The original fractional-index reconciler owns insertion ordering.
+ * Existing valid elements and unknown document fields retain identity.
+ */
+export const indexCoreInsertedElements = <TDoc extends CoreEditorDocumentLike>(
+  previous: TDoc,
+  next: TDoc,
+): TDoc => {
+  if (next.elements.length <= previous.elements.length) return next;
+  const ids = new Set(next.elements.map((element) => element.id));
+  if (
+    ids.size !== next.elements.length ||
+    !previous.elements.every((element) => ids.has(element.id))
+  ) return next;
+  try {
+    const indexed = syncInvalidIndicesImmutable(next.elements);
+    if (!indexed) return next;
+    let changed = false;
+    const elements = next.elements.map((element) => {
+      const corrected = indexed.get(element.id) ?? element;
+      if (corrected !== element) changed = true;
+      return corrected;
+    });
+    return changed ? ({ ...next, elements } as TDoc) : next;
+  } catch {
+    // A malformed imported document must not be discarded on insertion.
+    return next;
+  }
 };
 
 /**
@@ -412,9 +442,10 @@ export class CoreEditorSession<
   commit(previous: TDoc, next: TDoc): TDoc {
     this.assertOpen();
     if (previous === next) return next;
-    this.history.commit(previous, next);
-    this.replaceDocument(next);
-    return next;
+    const indexed = indexCoreInsertedElements(previous, next);
+    this.history.commit(previous, indexed);
+    this.replaceDocument(indexed);
+    return indexed;
   }
 
   undo(current: TDoc = this.document): TDoc {
