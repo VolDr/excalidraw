@@ -1,12 +1,8 @@
-import { alignElements, distributeElements } from "@excalidraw/element";
-
 import type { Alignment, Distribution } from "@excalidraw/element";
-import type { ExcalidrawElement, NonDeletedExcalidrawElement } from "@excalidraw/element/types";
-import type { AppState } from "@excalidraw/excalidraw/types";
+import type { ExcalidrawElement } from "@excalidraw/element/types";
 
 import { nativeEditableLabel } from "./boundText";
 import { isSafeBoundBox } from "./bindings";
-import { withNativeCoreScene } from "./coreAdapter";
 import { editableSelection, safeGroupMembers } from "./groups";
 import { nativeStyleTarget } from "./styles";
 
@@ -18,7 +14,6 @@ export type NativeLayoutAction =
 
 type LayoutSelection = {
   unitCount: number;
-  selectedGroupIds: Record<string, boolean>;
 };
 
 const isBoundLabel = (element: ExcalidrawElement) =>
@@ -46,7 +41,6 @@ const nativeLayoutSelection = (
 
   const byId = new Map(scene.elements.map((element) => [element.id, element]));
   const units = new Set<string>();
-  const selectedGroupIds: Record<string, boolean> = {};
 
   for (const id of ids) {
     const element = byId.get(id);
@@ -66,7 +60,6 @@ const nativeLayoutSelection = (
       ) {
         return null;
       }
-      selectedGroupIds[groupId] = true;
       units.add(`group:${groupId}`);
       continue;
     }
@@ -88,7 +81,7 @@ const nativeLayoutSelection = (
   // A whole selected group is one unit; two members of the same group
   // do not constitute two candidates for align/distribute.
   return units.size >= 2
-    ? { unitCount: units.size, selectedGroupIds }
+    ? { unitCount: units.size }
     : null;
 };
 
@@ -101,70 +94,3 @@ export const canLayoutNativeSelection = (
   scene: SceneFile,
   ids: readonly string[],
 ) => nativeLayoutUnitCount(scene, ids) >= 2;
-
-/**
- * Core Scene holds the original group-aware alignment/distribution
- * geometry, bound-text positioning and element-version semantics.
- * Svelte provides only the validated selection and undo transaction.
- */
-export const layoutNativeSelectionWithCore = (
-  scene: SceneFile,
-  ids: readonly string[],
-  action: NativeLayoutAction,
-): SceneFile => {
-  const selection = nativeLayoutSelection(scene, ids);
-  if (
-    !selection ||
-    (action.kind === "distribute" && selection.unitCount < 3)
-  ) {
-    return scene;
-  }
-
-  const result = withNativeCoreScene(scene, (core) => {
-    const selected = ids.map((id) => core.getNonDeletedElement(id));
-    if (selected.some((element) => !element)) {
-      return;
-    }
-    const elements = selected as NonDeletedExcalidrawElement[];
-    const appState = {
-      selectedElementIds: Object.fromEntries(ids.map((id) => [id, true])),
-      selectedGroupIds: selection.selectedGroupIds,
-      editingGroupId: null,
-    } as AppState;
-
-    if (action.kind === "align") {
-      alignElements(elements, action.alignment, core, appState);
-    } else {
-      distributeElements(
-        elements,
-        core.getElementsMapIncludingDeleted(),
-        action.distribution,
-        appState,
-        core,
-      );
-    }
-  });
-  if (result === scene) return scene;
-
-  // The original core can move a complete nested group as one unit.
-  // Verify that no selected arrow lost or changed its reciprocal binding
-  // and that every selected group's ancestry remains valid afterwards.
-  for (const id of Object.keys(selection.selectedGroupIds)) {
-    if (!safeGroupMembers(result, id).length) return scene;
-  }
-  const afterById = new Map(result.elements.map((element) => [element.id, element]));
-  for (const element of scene.elements) {
-    if (
-      element.type !== "arrow" ||
-      !(element.startBinding || element.endBinding) ||
-      !ids.includes(element.id)
-    ) continue;
-    const updated = afterById.get(element.id);
-    if (
-      !updated || updated.type !== "arrow" ||
-      JSON.stringify(updated.startBinding) !== JSON.stringify(element.startBinding) ||
-      JSON.stringify(updated.endBinding) !== JSON.stringify(element.endBinding)
-    ) return scene;
-  }
-  return result;
-};
