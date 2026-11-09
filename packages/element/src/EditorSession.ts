@@ -9,7 +9,6 @@ import {
   type CoreEditorDocumentLike,
 } from "./EditorHistory";
 
-
 /**
  * Adopt a transaction into an immutable document without losing unknown scene
  * fields, embedded files, fractional indices, unrelated object identities or
@@ -86,7 +85,6 @@ export class CoreEditorSession<
     this.assertOpen();
     return this.history.canRedo;
   }
-
 
   /**
    * Run the original Excalidraw drag engine from a gesture-start snapshot.
