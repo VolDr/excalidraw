@@ -147,9 +147,9 @@ export function duplicateSelection(
       scene, memberIds, offset,
     );
     if (duplicated.document === scene) return { scene, ids: [] };
-    const mappedBySource = new Map(memberIds.map((id, index) => [
-      id, duplicated.ids[index],
-    ]));
+    const mappedBySource = new Map<string, string>(
+      memberIds.map((id, index) => [id, duplicated.ids[index]] as const),
+    );
     const candidate = duplicated.document;
     const copiedRootIds = scene.elements
       .filter((element) => copiedParents.has(element.id))
